@@ -345,6 +345,7 @@ scene.add(skybox);
 
 // --- Milky Way GLB Model + Solar System Marker ---
 let milkyWayModel = null;
+let galaxyModel2 = null;       // Galaxy.glb — test model loaded alongside need_some_space.glb
 let galacticCorePos = null;   // world-space position of the galactic centre (set on GLB load)
 let galaxyVisualRadius = 0;   // half the galaxy's XZ extent in scene units
 
@@ -415,6 +416,28 @@ gltfLoader.load('need_some_space.glb', function(gltf) {
   console.log('Milky Way GLB loaded successfully');
 }, undefined, function(error) {
   console.error('GLB load error:', error);
+});
+
+// --- Galaxy.glb (test model — remove this block to revert) ---
+gltfLoader.load('Galaxy.glb', function(gltf) {
+  galaxyModel2 = gltf.scene;
+  galaxyModel2.scale.set(50000, 50000, 50000);
+  galaxyModel2.rotation.set(0, 0, 0);
+  scene.add(galaxyModel2);
+
+  // Same centering + Orion Arm positioning as need_some_space.glb
+  const box2 = new THREE.Box3().setFromObject(galaxyModel2);
+  const center2 = box2.getCenter(new THREE.Vector3());
+  galaxyModel2.position.sub(center2);
+  const size2 = box2.getSize(new THREE.Vector3());
+  const r2 = Math.max(size2.x, size2.z) / 2;
+  galaxyModel2.position.x -= r2 * 0.52;
+  galaxyModel2.position.y -= r2 * 0.001;
+
+  galaxyModel2.visible = false;
+  console.log('Galaxy.glb loaded successfully');
+}, undefined, function(error) {
+  console.error('Galaxy.glb load error:', error);
 });
 
 // SUN CORE (keep emissive low so shading is visible)
@@ -2306,6 +2329,7 @@ function animate(){
   const outsideSkybox = camDist > SKYBOX_RADIUS;
   skybox.visible = !outsideSkybox;
   if (milkyWayModel) milkyWayModel.visible = outsideSkybox;
+  if (galaxyModel2)  galaxyModel2.visible  = outsideSkybox;
   solarSystemMarker.visible = outsideSkybox;
   const _ssBtn = document.getElementById('solarSystemBtn');
   if (_ssBtn) _ssBtn.style.display = outsideSkybox ? 'block' : 'none';
