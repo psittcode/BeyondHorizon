@@ -255,6 +255,17 @@ Speed<br>
     width: 100%;
     margin-bottom: 6px;
   ">Hide Sun Trail</button>
+  <button id="galGridBtn" style="
+    background: rgba(68,153,204,0.15);
+    color: #66bbdd;
+    border: 1px solid rgba(68,153,204,0.4);
+    padding: 5px 14px;
+    cursor: pointer;
+    border-radius: 4px;
+    font-size: 12px;
+    width: 100%;
+    margin-bottom: 4px;
+  ">Hide Grid &amp; Plane</button>
   <button id="galResetBtn" style="
     background: rgba(255,255,255,0.12);
     color: white;
@@ -1644,8 +1655,8 @@ galPlane.rotation.x = -Math.PI / 2;
 galacticGroup.add(galPlane);
 
 // Grid on the galactic plane for spatial reference
-const galGrid = new THREE.GridHelper(640, 16, 0x1a2d6e, 0x0f1d44);
-galGrid.material.opacity = 0.3;
+const galGrid = new THREE.GridHelper(640, 16, 0x4499cc, 0x1a3366);
+galGrid.material.opacity = 0.55;
 galGrid.material.transparent = true;
 galacticGroup.add(galGrid);
 
@@ -1787,6 +1798,7 @@ let galSavedMilkyWayScale = null;
 let galSavedMilkyWayPos   = null;
 let galSavedBeauGaScale   = null;
 let galSavedBeauGaPos     = null;
+let galGridVisible        = true;
 let galacticSpeed       = 0.1;  // Myr/s — driven by log slider, independent of planet speed
 let galacticAngle       = 0;    // radians, accumulated each frame
 let galPaused           = false;
@@ -1864,6 +1876,10 @@ function enterGalacticView() {
   galSunTrail.visible = true;
   document.getElementById('galEarthTrailBtn').textContent = 'Hide Earth Trail';
   document.getElementById('galSunTrailBtn').textContent = 'Hide Sun Trail';
+  galGridVisible = true;
+  galGrid.visible = true;
+  galPlane.visible = true;
+  document.getElementById('galGridBtn').textContent = 'Hide Grid & Plane';
   updateGalElapsedDisplay();
 
   document.getElementById('simTimeBlock').style.display = 'none';
@@ -1994,6 +2010,9 @@ function flyToMilkyWay() {
   document.getElementById('panel').style.display = 'block';
   document.getElementById('panelContent').innerHTML = MILKY_WAY_INFO;
   document.getElementById('backToList').style.display = 'inline-block';
+
+  // Already in galactic view — just show the panel, keep camera where it is
+  if (galacticViewActive) return;
 
   // Camera destination: above the galactic disc, looking down at the core
   const R = galaxyVisualRadius;
@@ -2136,6 +2155,14 @@ document.getElementById('galSunTrailBtn').onclick = () => {
   galSunTrail.visible = galSunTrailVisible;
   document.getElementById('galSunTrailBtn').textContent =
     galSunTrailVisible ? 'Hide Sun Trail' : 'Show Sun Trail';
+};
+
+document.getElementById('galGridBtn').onclick = () => {
+  galGridVisible = !galGridVisible;
+  galGrid.visible = galGridVisible;
+  galPlane.visible = galGridVisible;
+  document.getElementById('galGridBtn').textContent =
+    galGridVisible ? 'Hide Grid & Plane' : 'Show Grid & Plane';
 };
 
 document.getElementById('galResetBtn').onclick = () => {
