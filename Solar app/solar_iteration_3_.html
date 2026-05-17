@@ -1939,7 +1939,12 @@ function enterGalacticView() {
   updateGalElapsedDisplay();
 
   document.getElementById('simTimeBlock').style.display = 'none';
-  document.getElementById('galacticLegend').style.display = 'block';
+  const _galPanel = document.getElementById('galacticLegend');
+  _galPanel.style.top    = '8px';
+  _galPanel.style.right  = '20px';
+  _galPanel.style.bottom = 'auto';
+  _galPanel.style.left   = 'auto';
+  _galPanel.style.display = 'block';
   document.getElementById('galacticLegendCollapsed').style.display = 'none';
 
   camera.position.set(GAL_R * 0.5, GAL_R * 0.7, GAL_R * 1.5);
