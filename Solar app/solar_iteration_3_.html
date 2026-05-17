@@ -2075,7 +2075,7 @@ function flyToMilkyWay() {
   // Show galaxy info in the side panel
   document.getElementById('panel').style.display = 'block';
   document.getElementById('panelContent').innerHTML = MILKY_WAY_INFO;
-  document.getElementById('backToList').style.display = 'inline-block';
+  document.getElementById('backToList').style.display = 'none';
 
   // Exit galactic view first so the camera can fly to the full galaxy from solar-system space
   if (galacticViewActive) exitGalacticView();
