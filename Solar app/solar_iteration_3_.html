@@ -195,8 +195,8 @@ Speed<br>
 <div id="galacticLegend" style="
   display: none;
   position: absolute;
-  bottom: 8px;
-  left: 20px;
+  top: 8px;
+  right: 20px;
   background: rgba(5,10,30,0.88);
   color: #ddeeff;
   font-family: monospace;
@@ -317,8 +317,8 @@ Speed<br>
 <div id="galacticLegendCollapsed" onclick="expandGalacticLegend()" style="
   display: none;
   position: absolute;
-  bottom: 8px;
-  left: 20px;
+  top: 8px;
+  right: 20px;
   background: rgba(5,10,30,0.88);
   color: #88aaff;
   font-family: monospace;
@@ -2134,10 +2134,11 @@ function expandGalacticLegend() {
   // On first interaction, convert CSS bottom/left into inline top/left so that
   // the element can be freely repositioned without fighting the stylesheet.
   function ensureTopLeft() {
-    if (panel.style.bottom === 'auto') return;
+    if (panel.style.right === 'auto' && panel.style.bottom === 'auto') return;
     panel.style.top    = panel.offsetTop  + 'px';
     panel.style.left   = panel.offsetLeft + 'px';
     panel.style.bottom = 'auto';
+    panel.style.right  = 'auto';
   }
 
   // ── Drag ──────────────────────────────────────────────────────────────────
