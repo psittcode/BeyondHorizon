@@ -115,6 +115,19 @@ Speed<br>
   border-radius: 4px;
   font-size: 13px;
 ">Galactic View</button>
+
+<button id="solarSystemBtn" onclick="flyToSolarSystem()" style="
+  display: none;
+  background: rgba(255,200,50,0.2);
+  color: white;
+  border: 1px solid rgba(255,200,50,0.5);
+  padding: 6px 12px;
+  cursor: pointer;
+  border-radius: 4px;
+  font-size: 13px;
+  width: 100%;
+  margin-top: 4px;
+">The Solar System</button>
 </div>
 
 <!-- Spaceship Earth legend panel -->
@@ -363,6 +376,14 @@ gltfLoader.load('need_some_space.glb', function(gltf) {
   const box = new THREE.Box3().setFromObject(milkyWayModel);
   const center = box.getCenter(new THREE.Vector3());
   milkyWayModel.position.sub(center);
+
+  // Place the solar system at 52% of the galaxy's visual radius from the galactic centre,
+  // matching the Sun's real position in the Orion Arm (~26 000 ly from centre, ~52% outward).
+  const size = box.getSize(new THREE.Vector3());
+  const galaxyRadius = Math.max(size.x, size.z) / 2;
+  milkyWayModel.position.x -= galaxyRadius * 0.52;
+  // Sun sits ~50–80 ly above the galactic midplane — negligible at galaxy scale (~0.1%)
+  milkyWayModel.position.y -= galaxyRadius * 0.001;
 
   milkyWayModel.visible = false;
   console.log('Milky Way GLB loaded successfully');
@@ -1803,6 +1824,58 @@ function exitGalacticView() {
   document.getElementById('galacticBtn').textContent = 'Galactic View';
 }
 
+// Fly the camera from wherever it is back into the solar system (triggered by the
+// "The Solar System" button that appears when zoomed out to galaxy scale).
+function flyToSolarSystem() {
+  // Clean up galactic view state without jumping the camera position
+  if (galacticViewActive) {
+    lockedObject = null;
+    galEarthZoomedIn = false;
+    galacticViewActive = false;
+    galacticGroup.visible = false;
+    galEarthMarker.visible = false;
+    galEarthTrail.visible = false;
+    galSunTrail.visible = false;
+    if (galSavedHelioVis) {
+      helioObjects.forEach((o, i) => { o.visible = galSavedHelioVis[i]; });
+      galSavedHelioVis = null;
+    }
+    document.getElementById('simTimeBlock').style.display = '';
+    document.getElementById('galacticLegend').style.display = 'none';
+    document.getElementById('galacticBtn').textContent = 'Galactic View';
+    document.getElementById('seFromGalBtn').textContent = 'Spaceship Earth →';
+  }
+  if (spaceshipViewActive) exitSpaceshipView();
+
+  helioObjects.forEach(o => { o.visible = true; });
+  orbitLines.forEach(o => { o.visible = orbitsVisible; });
+  lockedObject = null;
+
+  const myGeneration = ++flyGeneration;
+  isFlyingTo = true;
+
+  const startPos    = camera.position.clone();
+  const startTarget = controls.target.clone();
+  const endPos      = new THREE.Vector3(0, 22, 110);
+  const endTarget   = new THREE.Vector3(0, 0, 0);
+
+  let t = 0;
+  (function flyIn() {
+    if (myGeneration !== flyGeneration) { isFlyingTo = false; return; }
+    t += 0.012; // ~83-frame descent for a cinematic feel
+    if (t > 1) t = 1;
+    const ease = t * t * (3 - 2 * t);
+
+    camera.position.lerpVectors(startPos, endPos, ease);
+    controls.target.lerpVectors(startTarget, endTarget, ease);
+    camera.up.set(Math.sin(ECLIPTIC_TILT), Math.cos(ECLIPTIC_TILT), 0);
+    controls.update();
+
+    if (t < 1) requestAnimationFrame(flyIn);
+    else isFlyingTo = false;
+  })();
+}
+
 document.getElementById('galacticBtn').onclick = () => {
   if (galacticViewActive) exitGalacticView();
   else enterGalacticView();
@@ -2148,11 +2221,15 @@ function animate(){
   const FRAME_MS = 1000 / 60;
   const deltaScale = deltaMs / FRAME_MS;
 
-  // Show galaxy + Solar System marker only when camera has exited the skybox sphere
+  // Show galaxy + Solar System marker only when camera has exited the skybox sphere;
+  // hide the skybox itself at galaxy scale so it doesn't appear as a bubble over the galaxy.
   const camDist = camera.position.length();
   const outsideSkybox = camDist > SKYBOX_RADIUS;
+  skybox.visible = !outsideSkybox;
   if (milkyWayModel) milkyWayModel.visible = outsideSkybox;
   solarSystemMarker.visible = outsideSkybox;
+  const _ssBtn = document.getElementById('solarSystemBtn');
+  if (_ssBtn) _ssBtn.style.display = outsideSkybox ? 'block' : 'none';
 
   // Advance simulation clock — at 1× real life, advances by real elapsed ms
   const simMsPerFrame = deltaMs * (speed / SPEED_REALLIFE);
