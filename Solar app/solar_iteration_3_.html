@@ -195,7 +195,7 @@ Speed<br>
 <div id="galacticLegend" style="
   display: none;
   position: absolute;
-  bottom: 24px;
+  bottom: 8px;
   left: 20px;
   background: rgba(5,10,30,0.88);
   color: #ddeeff;
@@ -317,7 +317,7 @@ Speed<br>
 <div id="galacticLegendCollapsed" onclick="expandGalacticLegend()" style="
   display: none;
   position: absolute;
-  bottom: 24px;
+  bottom: 8px;
   left: 20px;
   background: rgba(5,10,30,0.88);
   color: #88aaff;
@@ -395,17 +395,16 @@ const skyMaterial = new THREE.MeshBasicMaterial({
 const skybox = new THREE.Mesh(skyGeometry, skyMaterial);
 scene.add(skybox);
 
-// ── Galaxy-view flat background ──────────────────────────────────────────────
-// THREE.Texture used as scene.background renders as a static 2D viewport fill —
-// no sphere geometry, no rotation with camera. Toggled on when camera exits the
-// skybox sphere so the galaxy view has a proper deep-space background.
-(function() {
+// ── Galaxy-view skybox ────────────────────────────────────────────────────────
+// Same BackSide-sphere setup as the solar-system skybox, but much larger so the
+// camera is always inside it when at galaxy scale. Visible only when the camera
+// exits the inner skybox sphere.
+const galaxySkybox = (function() {
   const W = 2048, H = 1024;
   const cv = document.createElement('canvas');
   cv.width = W; cv.height = H;
   const cx = cv.getContext('2d');
 
-  // Base: very dark space
   cx.fillStyle = '#00000c';
   cx.fillRect(0, 0, W, H);
 
@@ -425,18 +424,17 @@ scene.add(skybox);
   // Stars
   for (let i = 0; i < 3200; i++) {
     const sx = Math.random() * W, sy = Math.random() * H;
-    const bright = Math.random() < 0.018; // ~57 larger bright stars
+    const bright = Math.random() < 0.018;
     const r   = bright ? Math.random() * 1.6 + 1.0 : Math.random() * 0.65 + 0.15;
     const v   = Math.floor(Math.random() * 90 + 165);
     const rnd = Math.random();
-    // slight colour tint: blue-white / pure white / warm white
     const [sr, sg, sb] = rnd < 0.33 ? [v-18, v-8, v] : rnd < 0.66 ? [v, v, v] : [v, v-4, v-18];
     const alpha = bright ? 0.75 + Math.random() * 0.25 : 0.35 + Math.random() * 0.55;
     cx.beginPath();
     cx.arc(sx, sy, r, 0, Math.PI * 2);
     cx.fillStyle = `rgba(${sr},${sg},${sb},${alpha})`;
     cx.fill();
-    if (bright) { // diffraction spike on brightest stars
+    if (bright) {
       cx.strokeStyle = `rgba(${sr},${sg},${sb},0.18)`;
       cx.lineWidth = 0.6;
       cx.beginPath(); cx.moveTo(sx - 8, sy); cx.lineTo(sx + 8, sy); cx.stroke();
@@ -444,7 +442,17 @@ scene.add(skybox);
     }
   }
 
-  window._galaxyBgTex = new THREE.CanvasTexture(cv);
+  const mesh = new THREE.Mesh(
+    new THREE.SphereGeometry(800000, 32, 32),
+    new THREE.MeshBasicMaterial({
+      map: new THREE.CanvasTexture(cv),
+      side: THREE.BackSide,
+      depthWrite: false
+    })
+  );
+  mesh.visible = false;
+  scene.add(mesh);
+  return mesh;
 })();
 
 // --- Milky Way GLB Model + Solar System Marker ---
@@ -2562,8 +2570,8 @@ function animate(){
   // hide the skybox itself at galaxy scale so it doesn't appear as a bubble over the galaxy.
   const camDist = camera.position.length();
   const outsideSkybox = camDist > SKYBOX_RADIUS;
-  skybox.visible = !outsideSkybox;
-  scene.background = outsideSkybox ? window._galaxyBgTex : null;
+  skybox.visible       = !outsideSkybox;
+  galaxySkybox.visible =  outsideSkybox;
   const showGalaxy = outsideSkybox || galacticViewActive;
   if (milkyWayModel) milkyWayModel.visible = showGalaxy;
   if (beauGaDisc)    beauGaDisc.visible    = showGalaxy;
