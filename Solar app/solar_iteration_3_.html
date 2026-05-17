@@ -425,7 +425,8 @@ gltfLoader.load('need_some_space.glb', function(gltf) {
   const beauGaMat = new THREE.MeshBasicMaterial({
     map: beauGaTex,
     transparent: true,
-    alphaTest: 0.01,
+    alphaTest: 0,
+    blending: THREE.AdditiveBlending,
     color: 0xffffff,
     depthWrite: false,
     depthTest: false,
