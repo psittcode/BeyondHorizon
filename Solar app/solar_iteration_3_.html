@@ -259,7 +259,7 @@ Speed<br>
 <script>
 const scene = new THREE.Scene();
 
-const camera = new THREE.PerspectiveCamera(75, innerWidth/innerHeight, 0.1, 100000);
+const camera = new THREE.PerspectiveCamera(75, innerWidth/innerHeight, 0.1, 300000);
 camera.position.set(0, 22, 110);
 
 // Tilt the camera's "up" vector by 23.4° so the ecliptic plane appears inclined
@@ -279,7 +279,7 @@ document.body.appendChild(renderer.domElement);
 // Controls
 const controls = new THREE.OrbitControls(camera, renderer.domElement);
 controls.enablePan = false;
-controls.maxDistance = 50000;
+controls.maxDistance = 200000;
 
 // Lights
 scene.add(new THREE.AmbientLight(0xffffff, 0.15));
@@ -308,7 +308,8 @@ const ganymedeTexture = textureLoader.load("Ganymede.jpeg");
 const ioTexture = textureLoader.load("Io.jpeg");
 
 // 🌌 MILKY WAY SKYBOX
-const skyGeometry = new THREE.SphereGeometry(5000, 64, 64);
+const SKYBOX_RADIUS = 20000;
+const skyGeometry = new THREE.SphereGeometry(SKYBOX_RADIUS, 64, 64);
 const skyMaterial = new THREE.MeshBasicMaterial({
   map: milkyWayTexture,
   side: THREE.BackSide // render on the inside of the sphere
@@ -316,12 +317,44 @@ const skyMaterial = new THREE.MeshBasicMaterial({
 const skybox = new THREE.Mesh(skyGeometry, skyMaterial);
 scene.add(skybox);
 
-// --- Milky Way GLB Model ---
+// --- Milky Way GLB Model + Solar System Marker ---
+let milkyWayModel = null;
+
+// Solar System marker lives in world space at origin (the Sun's actual scene position)
+const solarSystemMarker = new THREE.Group();
+solarSystemMarker.visible = false;
+scene.add(solarSystemMarker);
+
+const ssDot = new THREE.Mesh(
+  new THREE.SphereGeometry(100, 16, 16),
+  new THREE.MeshBasicMaterial({ color: 0xffff00 })
+);
+solarSystemMarker.add(ssDot);
+
+(function() {
+  const c = document.createElement('canvas');
+  c.width = 512; c.height = 128;
+  const ctx = c.getContext('2d');
+  ctx.clearRect(0, 0, 512, 128);
+  ctx.fillStyle = '#ffff00';
+  ctx.font = 'bold 56px Arial';
+  ctx.fillText('Solar System', 10, 85);
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: new THREE.CanvasTexture(c),
+    depthTest: false
+  }));
+  sp.scale.set(3000, 750, 1);
+  sp.position.set(0, 180, 0);
+  solarSystemMarker.add(sp);
+})();
+
 const gltfLoader = new THREE.GLTFLoader();
 gltfLoader.load('need_some_space.glb', function(gltf) {
-  const milkyWayModel = gltf.scene;
-  milkyWayModel.scale.set(300, 300, 300);
-  milkyWayModel.rotation.x = Math.PI / 2;
+  milkyWayModel = gltf.scene;
+  milkyWayModel.scale.set(2000, 2000, 2000);
+  // GLB disc is flat in XZ plane; apply only the galactic-ecliptic inclination (60.2°).
+  milkyWayModel.rotation.x = 60.2 * Math.PI / 180;
+  milkyWayModel.visible = false;
   scene.add(milkyWayModel);
   console.log('Milky Way GLB loaded successfully');
 }, undefined, function(error) {
@@ -2105,6 +2138,12 @@ function animate(){
   // so they behave identically at any refresh rate
   const FRAME_MS = 1000 / 60;
   const deltaScale = deltaMs / FRAME_MS;
+
+  // Show galaxy + Solar System marker only when camera has exited the skybox sphere
+  const camDist = camera.position.length();
+  const outsideSkybox = camDist > SKYBOX_RADIUS;
+  if (milkyWayModel) milkyWayModel.visible = outsideSkybox;
+  solarSystemMarker.visible = outsideSkybox;
 
   // Advance simulation clock — at 1× real life, advances by real elapsed ms
   const simMsPerFrame = deltaMs * (speed / SPEED_REALLIFE);
