@@ -395,6 +395,58 @@ const skyMaterial = new THREE.MeshBasicMaterial({
 const skybox = new THREE.Mesh(skyGeometry, skyMaterial);
 scene.add(skybox);
 
+// ── Galaxy-view flat background ──────────────────────────────────────────────
+// THREE.Texture used as scene.background renders as a static 2D viewport fill —
+// no sphere geometry, no rotation with camera. Toggled on when camera exits the
+// skybox sphere so the galaxy view has a proper deep-space background.
+(function() {
+  const W = 2048, H = 1024;
+  const cv = document.createElement('canvas');
+  cv.width = W; cv.height = H;
+  const cx = cv.getContext('2d');
+
+  // Base: very dark space
+  cx.fillStyle = '#00000c';
+  cx.fillRect(0, 0, W, H);
+
+  // Faint nebula clouds
+  const nebulae = [[55,25,120],[15,45,100],[75,18,55],[8,55,80],[40,10,90],[20,70,60]];
+  for (let i = 0; i < nebulae.length; i++) {
+    const [nr, ng, nb] = nebulae[i];
+    const ncx = Math.random() * W, ncy = Math.random() * H;
+    const nr2 = 180 + Math.random() * 320;
+    const g = cx.createRadialGradient(ncx, ncy, 0, ncx, ncy, nr2);
+    g.addColorStop(0, `rgba(${nr},${ng},${nb},0.07)`);
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    cx.fillStyle = g;
+    cx.fillRect(0, 0, W, H);
+  }
+
+  // Stars
+  for (let i = 0; i < 3200; i++) {
+    const sx = Math.random() * W, sy = Math.random() * H;
+    const bright = Math.random() < 0.018; // ~57 larger bright stars
+    const r   = bright ? Math.random() * 1.6 + 1.0 : Math.random() * 0.65 + 0.15;
+    const v   = Math.floor(Math.random() * 90 + 165);
+    const rnd = Math.random();
+    // slight colour tint: blue-white / pure white / warm white
+    const [sr, sg, sb] = rnd < 0.33 ? [v-18, v-8, v] : rnd < 0.66 ? [v, v, v] : [v, v-4, v-18];
+    const alpha = bright ? 0.75 + Math.random() * 0.25 : 0.35 + Math.random() * 0.55;
+    cx.beginPath();
+    cx.arc(sx, sy, r, 0, Math.PI * 2);
+    cx.fillStyle = `rgba(${sr},${sg},${sb},${alpha})`;
+    cx.fill();
+    if (bright) { // diffraction spike on brightest stars
+      cx.strokeStyle = `rgba(${sr},${sg},${sb},0.18)`;
+      cx.lineWidth = 0.6;
+      cx.beginPath(); cx.moveTo(sx - 8, sy); cx.lineTo(sx + 8, sy); cx.stroke();
+      cx.beginPath(); cx.moveTo(sx, sy - 8); cx.lineTo(sx, sy + 8); cx.stroke();
+    }
+  }
+
+  window._galaxyBgTex = new THREE.CanvasTexture(cv);
+})();
+
 // --- Milky Way GLB Model + Solar System Marker ---
 let milkyWayModel = null;
 let beauGaDisc = null;   // BeauGa.png flat disc galaxy
@@ -2511,6 +2563,7 @@ function animate(){
   const camDist = camera.position.length();
   const outsideSkybox = camDist > SKYBOX_RADIUS;
   skybox.visible = !outsideSkybox;
+  scene.background = outsideSkybox ? window._galaxyBgTex : null;
   const showGalaxy = outsideSkybox || galacticViewActive;
   if (milkyWayModel) milkyWayModel.visible = showGalaxy;
   if (beauGaDisc)    beauGaDisc.visible    = showGalaxy;
