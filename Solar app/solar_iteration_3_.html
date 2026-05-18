@@ -1455,12 +1455,16 @@ const mouse = new THREE.Vector2();
 
 function refreshMarsPanel() {
   const pc = document.getElementById("panelContent");
-  pc.innerHTML = marsTransformed ? marsTransformedInfo : marsOriginalInfo;
-  const btn = document.createElement("button");
-  btn.style.cssText = "background:rgba(255,255,255,0.15);color:white;border:1px solid rgba(255,255,255,0.4);padding:6px 12px;cursor:pointer;border-radius:4px;font-size:13px;margin-top:12px;width:100%;display:block";
-  btn.textContent = marsTransformed ? "Restore Mars" : "Transform Mars";
-  btn.addEventListener("click", marsTransformed ? restoreMars : transformMars);
-  pc.appendChild(btn);
+  const info = marsTransformed ? marsTransformedInfo : marsOriginalInfo;
+  const label = marsTransformed ? "Restore Mars" : "Transform Mars";
+  const btnHtml = `<button id="marsTransformBtn" style="background:rgba(255,255,255,0.15);color:white;border:1px solid rgba(255,255,255,0.4);padding:6px 12px;cursor:pointer;border-radius:4px;font-size:13px;margin-bottom:10px;width:100%;display:block">${label}</button>`;
+  // Insert the button right after the first <br><br> (after the heading)
+  const splitAt = info.indexOf('<br><br>') + '<br><br>'.length;
+  pc.innerHTML = info.substring(0, splitAt) + btnHtml + info.substring(splitAt);
+  document.getElementById("marsTransformBtn").addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (marsTransformed) restoreMars(); else transformMars();
+  });
 }
 
 function transformMars() {
@@ -1468,6 +1472,7 @@ function transformMars() {
   marsTransformed = true;
   refreshMarsPanel();
   gltfLoader.load("terraformed_mars.glb", function(gltf) {
+    if (!marsTransformed) return; // user restored before GLB finished loading
     terraformedMarsModel = gltf.scene;
     const box = new THREE.Box3().setFromObject(terraformedMarsModel);
     const center = box.getCenter(new THREE.Vector3());
@@ -1488,6 +1493,7 @@ function restoreMars() {
     terraformedMarsModel = null;
   }
   marsMesh.material = marsOriginalMaterial;
+  lockedObject = marsMesh; // re-establish camera lock so it doesn't drift to origin
   refreshMarsPanel();
 }
 
