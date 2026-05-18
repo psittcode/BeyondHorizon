@@ -141,6 +141,19 @@ Speed<br>
   width: 100%;
   margin-top: 4px;
 ">The Milky Way Galaxy</button>
+
+<button id="otherGalaxiesBtn" style="
+  display: none;
+  background: rgba(255,160,80,0.2);
+  color: #ffb060;
+  border: 1px solid rgba(255,160,80,0.5);
+  padding: 6px 12px;
+  cursor: pointer;
+  border-radius: 4px;
+  font-size: 13px;
+  width: 100%;
+  margin-top: 4px;
+">Other Galaxies</button>
 </div>
 
 <!-- Spaceship Earth legend panel -->
@@ -500,9 +513,11 @@ gltfLoader.load('need_some_space.glb', function(gltf) {
     0
   );
   galaxyVisualRadius = galaxyRadius;
-  // Reveal the Milky Way navigation button now that the model is ready
+  // Reveal the Milky Way navigation buttons now that the model is ready
   const mwBtn = document.getElementById('milkyWayBtn');
   if (mwBtn) mwBtn.style.display = 'block';
+  const ogBtn = document.getElementById('otherGalaxiesBtn');
+  if (ogBtn) ogBtn.style.display = 'block';
 
   // --- BeauGa.png flat galaxy disc ---
   const beauGaTex = new THREE.TextureLoader().load('BeauGa.png');
@@ -2153,12 +2168,6 @@ function showMilkyWayPanel() {
   document.getElementById('panel').style.display = 'block';
   document.getElementById('panelContent').innerHTML = MILKY_WAY_INFO;
   document.getElementById('backToList').style.display = 'none';
-  // "Other Galaxies" button at the bottom of the Milky Way info panel
-  const btn = document.createElement('button');
-  btn.style.cssText = 'background:rgba(255,160,80,0.2);color:#ffb060;border:1px solid rgba(255,160,80,0.5);padding:6px 12px;cursor:pointer;border-radius:4px;font-size:13px;margin-top:12px;width:100%;display:block';
-  btn.textContent = 'Other Galaxies →';
-  btn.addEventListener('click', (e) => { e.stopPropagation(); enterKeplerView(); });
-  document.getElementById('panelContent').appendChild(btn);
 }
 
 function flyToMilkyWay() {
@@ -2679,7 +2688,8 @@ function exitKeplerView() {
   showMilkyWayPanel();
 }
 
-document.getElementById('keplerBackBtn').onclick = () => { exitKeplerView(); };
+document.getElementById('otherGalaxiesBtn').onclick = () => { enterKeplerView(); };
+document.getElementById('keplerBackBtn').onclick    = () => { exitKeplerView(); };
 
 function animate(){
   requestAnimationFrame(animate);
