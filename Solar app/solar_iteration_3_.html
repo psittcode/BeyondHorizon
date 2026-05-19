@@ -3013,6 +3013,7 @@ function animate(){
     const _bhTree = new Set();
     if (blackHoleModel) blackHoleModel.traverse(function(o) { _bhTree.add(o); });
     scene.traverse(function(obj) {
+      if (obj === scene) return; // never hide the scene root — Three.js culls all children if scene.visible=false
       _bhSavedVisibility.set(obj, obj.visible);
       if (!_bhTree.has(obj)) obj.visible = false;
     });
