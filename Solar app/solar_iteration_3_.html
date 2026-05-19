@@ -458,6 +458,11 @@ let bhTransitionT       = 0;     // 0 = normal galaxy view, 1 = full black hole 
 let BH_CLOSE_DIST       = 0;     // camera-to-core distance at which transition reaches 100%
 let BH_FAR_DIST         = 0;     // camera-to-core distance at which transition begins
 let bhRendererSettings  = false; // tracks whether BH renderer settings are currently active
+// Saved renderer state — set just before the first BH transition so we restore
+// the exact original values when zooming back out, not hardcoded defaults.
+let bhOrigToneMapping   = null;
+let bhOrigExposure      = null;
+let bhOrigEncoding      = null;
 
 // Solar System marker lives in world space at origin (the Sun's actual scene position)
 const solarSystemMarker = new THREE.Group();
@@ -575,12 +580,19 @@ gltfLoader.load('need_some_space.glb', function(gltf) {
     // Counter-rotating around Z cancels that tilt so the ring lies in the galaxy plane.
     bhScene.rotation.z = -Math.atan2(0.3661, 0.9306); // ≈ -0.375 rad
 
-    // Touch needsUpdate so materials rebuild with whatever renderer settings
-    // are active (ACES tone-mapping, sRGB encoding) once the BH becomes visible.
+    // Touch needsUpdate so materials rebuild when renderer settings flip.
+    // Also pin the event horizon mesh to pure black — tone mapping can wash it
+    // out to grey/white even at low exposure if the original material has any
+    // non-zero color or emissive baked in.
     bhScene.traverse(function(child) {
-      if (!child.isMesh) return;
+      if (!child.isMesh || !child.material) return;
       child.renderOrder = 3;   // render after galaxy GLB (renderOrder 1)
-      if (child.material) child.material.needsUpdate = true;
+      const n = child.material.name || '';
+      if (n === 'black_hole_center' || n.toLowerCase().includes('center') || n.toLowerCase().includes('sphere')) {
+        child.material.color.set(0x000000);
+        if (child.material.emissive) child.material.emissive.set(0x000000);
+      }
+      child.material.needsUpdate = true;
     });
 
     // Wrapper group spins around world Y; bhScene sits inside with the corrective
@@ -2921,15 +2933,22 @@ function animate(){
   // and restore defaults when it's gone.  Only flip once per boundary crossing so
   // shaders are not rebuilt on every frame.
   if (bhTransitionT > 0.01 && !bhRendererSettings) {
-    renderer.toneMapping         = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.5;
+    // Save the renderer's current state so we can restore it exactly on exit —
+    // avoids hardcoding defaults that might not match what the rest of the app set.
+    bhOrigToneMapping = renderer.toneMapping;
+    bhOrigExposure    = renderer.toneMappingExposure;
+    bhOrigEncoding    = renderer.outputEncoding;
+    // Reinhard handles very bright emissive materials better than ACES —
+    // it preserves deep blacks and doesn't clip towards white at low exposure.
+    renderer.toneMapping         = THREE.ReinhardToneMapping;
+    renderer.toneMappingExposure = 0.35;
     renderer.outputEncoding      = THREE.sRGBEncoding;
     bhRendererSettings = true;
     scene.traverse(function(o) { if (o.isMesh && o.material) o.material.needsUpdate = true; });
   } else if (bhTransitionT <= 0.01 && bhRendererSettings) {
-    renderer.toneMapping         = THREE.NoToneMapping;
-    renderer.toneMappingExposure = 1.0;
-    renderer.outputEncoding      = THREE.LinearEncoding;
+    renderer.toneMapping         = bhOrigToneMapping;
+    renderer.toneMappingExposure = bhOrigExposure;
+    renderer.outputEncoding      = bhOrigEncoding;
     bhRendererSettings = false;
     scene.traverse(function(o) { if (o.isMesh && o.material) o.material.needsUpdate = true; });
   }
