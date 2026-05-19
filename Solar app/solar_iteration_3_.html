@@ -370,12 +370,6 @@ Speed<br>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128/examples/js/controls/OrbitControls.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128/examples/js/loaders/GLTFLoader.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128/examples/js/shaders/CopyShader.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128/examples/js/shaders/LuminosityHighPassShader.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128/examples/js/postprocessing/EffectComposer.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128/examples/js/postprocessing/RenderPass.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128/examples/js/postprocessing/ShaderPass.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128/examples/js/postprocessing/UnrealBloomPass.js"></script>
 
 <script>
 const scene = new THREE.Scene();
@@ -480,7 +474,6 @@ let bhOrigExposure           = null;
 let bhOrigEnvironment        = null;
 let bhOrigAmbientIntensity   = 0;
 let bhOrigSunIntensity       = 0;
-let bhComposer               = null; // EffectComposer with UnrealBloomPass, active only during BH view
 
 // Solar System marker lives in world space at origin (the Sun's actual scene position)
 const solarSystemMarker = new THREE.Group();
@@ -2973,15 +2966,6 @@ function animate(){
     scene.environment      = null;
     renderer.toneMapping         = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.0;
-    if (!bhComposer) {
-      const _rp = new THREE.RenderPass(scene, camera);
-      const _bp = new THREE.UnrealBloomPass(
-        new THREE.Vector2(innerWidth, innerHeight), 0.8, 0.3, 0.0
-      );
-      bhComposer = new THREE.EffectComposer(renderer);
-      bhComposer.addPass(_rp);
-      bhComposer.addPass(_bp);
-    }
     bhRendererSettings = true;
     scene.traverse(function(o) { if (o.isMesh && o.material) o.material.needsUpdate = true; });
   } else if (bhTransitionT <= 0.01 && bhRendererSettings) {
@@ -3274,11 +3258,7 @@ function animate(){
     controls.update();
   }
 
-  if (bhRendererSettings && bhComposer) {
-    bhComposer.render();
-  } else {
-    renderer.render(scene, camera);
-  }
+  renderer.render(scene, camera);
 }
 animate();
 
@@ -3384,7 +3364,6 @@ window.addEventListener("resize", ()=>{
     keplerCamera.updateProjectionMatrix();
   }
   renderer.setSize(innerWidth, innerHeight);
-  if (bhComposer) bhComposer.setSize(innerWidth, innerHeight);
 });
 </script>
 
