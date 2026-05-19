@@ -589,17 +589,25 @@ gltfLoader.load('need_some_space.glb', function(gltf) {
     blackHoleModel.position.copy(galacticCorePos);
     blackHoleModel.visible = false;
 
-    // Replace PBR materials (broken in r128) with MeshBasicMaterial + actual
-    // texture maps loaded from black_hole/textures/.  MeshBasicMaterial.map
-    // renders unlit (= behaves like emissive), which is exactly what we want
-    // for a glowing accretion disk.
+    // Replace PBR materials (broken in r128) with materials that honour
+    // the GLTF's per-layer emissive intensities exactly:
+    //   light3  emissiveFactor [0.2, 0.2, 0.2]            → dim outer haze
+    //   light2  emissiveFactor [0.6, 0.6, 0.6]            → medium ring
+    //   light1  emissiveFactor [1,1,1] × emissiveStrength 2 → brightest inner glow
+    //   ring    diffuseFactor  [0.5, 0.5, 0.5, 1.0]       → full-opacity ring
+    //   ring2   diffuseFactor  [0.5, 0.5, 0.5, 0.2]       → barely-visible haze
+    //   center  diffuseFactor  [0, 0, 0, 0.888]            → near-opaque dark
+    //
+    // MeshStandardMaterial with color=black + emissiveMap + emissiveIntensity
+    // renders as pure emissive (no diffuse contribution) which is exactly what
+    // the PBR model intends — the glow textures are self-luminous.
     const bht = new THREE.TextureLoader();
     const bhTex = {
-      blackDiffuse:  bht.load('black_hole/textures/black_hole_blackoutside_diffuse.png'),
+      blackDiffuse:   bht.load('black_hole/textures/black_hole_blackoutside_diffuse.png'),
       light1Emissive: bht.load('black_hole/textures/black_hole_light1_emissive.png'),
       light2Emissive: bht.load('black_hole/textures/black_hole_light2_emissive.png'),
       light3Emissive: bht.load('black_hole/textures/black_hole_light3_emissive.png'),
-      ringDiffuse:   bht.load('black_hole/textures/ring_diffuse.png'),
+      ringDiffuse:    bht.load('black_hole/textures/ring_diffuse.png'),
     };
 
     blackHoleModel.traverse(function(child) {
@@ -615,45 +623,70 @@ gltfLoader.load('need_some_space.glb', function(gltf) {
 
       let mat;
       if (n === 'black_hole_blackoutside') {
-        // Outer shell — textured black with alpha cutout
+        // Outer shell: textured black with hard alpha cutout (alphaCutoff 0.79)
         mat = new THREE.MeshBasicMaterial({
           map: bhTex.blackDiffuse,
-          alphaTest: 0.5,
+          color: 0x000000,
+          alphaTest: 0.79,
           side: THREE.DoubleSide,
           depthTest: false, depthWrite: false
         });
       } else if (n === 'black_hole_center') {
+        // diffuseFactor [0,0,0,0.888] — near-opaque dark centre
         mat = new THREE.MeshBasicMaterial({
-          color: 0x000000, transparent: true, opacity: 0.92,
+          color: 0x000000,
+          transparent: true, opacity: 0.888,
           depthTest: false, depthWrite: false
         });
       } else if (n === 'black_hole_light1') {
-        mat = new THREE.MeshBasicMaterial({
-          map: bhTex.light1Emissive,
-          transparent: true, opacity: 0.95,
-          blending: THREE.AdditiveBlending,
+        // emissiveFactor [1,1,1] × emissiveStrength 2.0 — innermost, brightest
+        mat = new THREE.MeshStandardMaterial({
+          color: 0x000000,
+          emissive: 0xffffff,
+          emissiveMap: bhTex.light1Emissive,
+          emissiveIntensity: 2.0,
+          roughness: 1.0, metalness: 0.0,
           depthTest: false, depthWrite: false
         });
       } else if (n === 'black_hole_light2') {
-        mat = new THREE.MeshBasicMaterial({
-          map: bhTex.light2Emissive,
-          transparent: true, opacity: 0.85,
-          blending: THREE.AdditiveBlending,
+        // emissiveFactor [0.6,0.6,0.6]
+        mat = new THREE.MeshStandardMaterial({
+          color: 0x000000,
+          emissive: 0xffffff,
+          emissiveMap: bhTex.light2Emissive,
+          emissiveIntensity: 0.6,
+          roughness: 1.0, metalness: 0.0,
           depthTest: false, depthWrite: false
         });
       } else if (n === 'black_hole_light3') {
+        // emissiveFactor [0.2,0.2,0.2] — outermost, dimmest
+        mat = new THREE.MeshStandardMaterial({
+          color: 0x000000,
+          emissive: 0xffffff,
+          emissiveMap: bhTex.light3Emissive,
+          emissiveIntensity: 0.2,
+          roughness: 1.0, metalness: 0.0,
+          depthTest: false, depthWrite: false
+        });
+      } else if (n === 'ring') {
+        // diffuseFactor [0.5, 0.5, 0.5, 1.0], alphaMode BLEND
         mat = new THREE.MeshBasicMaterial({
-          map: bhTex.light3Emissive,
-          transparent: true, opacity: 0.70,
-          blending: THREE.AdditiveBlending,
+          map: bhTex.ringDiffuse,
+          color: new THREE.Color(0.5, 0.5, 0.5),
+          transparent: true, opacity: 1.0,
+          depthTest: false, depthWrite: false
+        });
+      } else if (n === 'ring2') {
+        // diffuseFactor [0.5, 0.5, 0.5, 0.2] — barely visible outer haze
+        mat = new THREE.MeshBasicMaterial({
+          map: bhTex.ringDiffuse,
+          color: new THREE.Color(0.5, 0.5, 0.5),
+          transparent: true, opacity: 0.2,
           depthTest: false, depthWrite: false
         });
       } else {
-        // ring / ring2 — accretion disc diffuse
         mat = new THREE.MeshBasicMaterial({
-          map: bhTex.ringDiffuse,
-          transparent: true, opacity: 0.70,
-          blending: THREE.AdditiveBlending,
+          color: 0xff6820, transparent: true, opacity: 0.3,
           depthTest: false, depthWrite: false
         });
       }
