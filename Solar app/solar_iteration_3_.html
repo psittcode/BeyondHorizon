@@ -1532,15 +1532,26 @@ function transformMars() {
     if (!marsTransformed) return; // user restored before GLB finished loading
     let extractedTexture = null;
     gltf.scene.traverse(function(child) {
-      if (!extractedTexture && child.isMesh && child.material && child.material.map) {
-        extractedTexture = child.material.map;
+      if (!extractedTexture && child.isMesh && child.material) {
+        extractedTexture = child.material.map
+          || child.material.emissiveMap
+          || child.material.roughnessMap
+          || null;
       }
     });
     if (!extractedTexture) return;
     extractedTexture.flipY = false;
+    extractedTexture.encoding = THREE.sRGBEncoding;
+    extractedTexture.needsUpdate = true;
     const radius = marsMesh.userData.size;
     const geo = new THREE.SphereGeometry(radius, 64, 64);
-    const mat = new THREE.MeshStandardMaterial({ map: extractedTexture });
+    const mat = new THREE.MeshStandardMaterial({
+      map: extractedTexture,
+      color: 0xffffff,
+      metalness: 0,
+      roughness: 1,
+    });
+    mat.needsUpdate = true;
     terraformedMarsModel = new THREE.Mesh(geo, mat);
     marsMesh.material = new THREE.MeshBasicMaterial({ transparent: true, opacity: 0 });
     marsMesh.add(terraformedMarsModel);
