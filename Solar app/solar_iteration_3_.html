@@ -393,20 +393,32 @@ renderer.shadowMap.enabled = true;
 
 document.body.appendChild(renderer.domElement);
 
-// Bloom post-processing for black hole accretion disk.
-// bloomPass.strength is driven by bhTransitionT in the animate loop so bloom
-// only activates while the black hole is visible — no effect on the solar
-// system or galactic views.
-const bloomRenderPass = new THREE.RenderPass(scene, camera);
-const bloomPass = new THREE.UnrealBloomPass(
-  new THREE.Vector2(innerWidth, innerHeight),
-  0,    // strength — ramps up in animate loop
-  0.8,  // radius
-  0.1   // threshold
-);
-const bloomComposer = new THREE.EffectComposer(renderer);
-bloomComposer.addPass(bloomRenderPass);
-bloomComposer.addPass(bloomPass);
+// Bloom post-processing — wrapped in try/catch so a CDN load failure or
+// missing THREE.EffectComposer/RenderPass/UnrealBloomPass (e.g. 404, namespace
+// mismatch) does NOT kill the script and black out the whole app.
+// When bloom is unavailable the animate loop falls back to renderer.render().
+let bloomPass = null;
+let bloomComposer = null;
+try {
+  if (THREE.EffectComposer && THREE.RenderPass && THREE.UnrealBloomPass) {
+    const _bloomRenderPass = new THREE.RenderPass(scene, camera);
+    bloomPass = new THREE.UnrealBloomPass(
+      new THREE.Vector2(innerWidth, innerHeight),
+      0,    // strength — ramps up in animate loop
+      0.8,  // radius
+      0.1   // threshold
+    );
+    bloomComposer = new THREE.EffectComposer(renderer);
+    bloomComposer.addPass(_bloomRenderPass);
+    bloomComposer.addPass(bloomPass);
+  } else {
+    console.warn('Three.js post-processing not available — bloom disabled');
+  }
+} catch (e) {
+  console.warn('Bloom composer init failed, falling back to direct render:', e);
+  bloomPass = null;
+  bloomComposer = null;
+}
 
 
 
@@ -3092,7 +3104,7 @@ function animate(){
   }
   // Bloom strength tracks the black hole transition so it only fires when the
   // black hole is actually visible.  At bhTransitionT=1 it reaches full 3.0.
-  bloomPass.strength = 3.0 * bhTransitionT;
+  if (bloomPass) bloomPass.strength = 3.0 * bhTransitionT;
   // ── End black hole transition ─────────────────────────────────────────────
 
   // Advance simulation clock — at 1× real life, advances by real elapsed ms
@@ -3374,7 +3386,11 @@ function animate(){
     controls.update();
   }
 
-  bloomComposer.render();
+  if (bloomComposer) {
+    bloomComposer.render();
+  } else {
+    renderer.render(scene, camera);
+  }
 }
 animate();
 
@@ -3480,7 +3496,7 @@ window.addEventListener("resize", ()=>{
     keplerCamera.updateProjectionMatrix();
   }
   renderer.setSize(innerWidth, innerHeight);
-  bloomComposer.setSize(innerWidth, innerHeight);
+  if (bloomComposer) bloomComposer.setSize(innerWidth, innerHeight);
 });
 </script>
 
