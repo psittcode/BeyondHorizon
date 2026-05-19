@@ -1193,6 +1193,7 @@ Despite the setbacks, the dream endures. Research indicates that complete habita
 let marsTransformed = false;
 let terraformedMarsModel = null;
 let marsCloudMesh = null;
+let terraformedMarsMaterial = null;
 
 // Cloud layer
 const cloudTexture = textureLoader.load("2k_earth_clouds.jpg");
@@ -1529,39 +1530,80 @@ function transformMars() {
   if (marsTransformed) return;
   marsTransformed = true;
   refreshMarsPanel();
-  // The GLB embeds 8192×4096 textures which exceed safe GPU limits on many devices,
-  // causing a hard cutoff at the midpoint. Load geometry from the GLB but replace
-  // the large textures with pre-resized 4096×2048 copies loaded via TextureLoader.
+
+  const marsRadius = marsMesh.userData.size;
   const maxAnisotropy = renderer.capabilities.getMaxAnisotropy();
+
   function applyTexQuality(tex) {
     tex.anisotropy = maxAnisotropy;
-    tex.wrapS = THREE.RepeatWrapping;      // prevents hard meridian seam on sphere
-    tex.wrapT = THREE.ClampToEdgeWrapping; // clamp at poles is correct
+    tex.wrapS = THREE.RepeatWrapping;
+    tex.wrapT = THREE.ClampToEdgeWrapping;
     tex.minFilter = THREE.LinearMipmapLinearFilter;
     tex.magFilter = THREE.LinearFilter;
     tex.needsUpdate = true;
   }
-  const colorTex = textureLoader.load("terraformed_mars_color.png", applyTexQuality);
-  const emissiveTex = textureLoader.load("terraformed_mars_emissive.png", applyTexQuality);
 
+  const colorTex = textureLoader.load("terraformed_mars_color.png", applyTexQuality);
+  const nightTex = textureLoader.load("terraformed_mars_emissive.png", applyTexQuality);
+
+  // Use a SphereGeometry for the surface so UV coords are guaranteed 0→1 equirectangular.
+  // The GLB mesh may have UV coordinates that don't span the full texture, causing a cropped look.
+  terraformedMarsMaterial = new THREE.ShaderMaterial({
+    uniforms: {
+      dayTexture:   { value: colorTex },
+      nightTexture: { value: nightTex },
+      sunDirection: { value: new THREE.Vector3(1, 0, 0) }
+    },
+    vertexShader: `
+      varying vec2 vUv;
+      varying vec3 vNormal;
+      void main() {
+        vUv = uv;
+        vNormal = normalize((modelMatrix * vec4(normal, 0.0)).xyz);
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: `
+      uniform sampler2D dayTexture;
+      uniform sampler2D nightTexture;
+      uniform vec3 sunDirection;
+      varying vec2 vUv;
+      varying vec3 vNormal;
+      void main() {
+        float intensity = dot(vNormal, sunDirection);
+        float blend = smoothstep(-0.15, 0.15, intensity);
+        vec4 day   = texture2D(dayTexture,   vUv);
+        vec4 night = texture2D(nightTexture, vUv);
+        gl_FragColor = mix(night, day, blend);
+      }
+    `
+  });
+
+  terraformedMarsModel = new THREE.Group();
+  const surfaceMesh = new THREE.Mesh(
+    new THREE.SphereGeometry(marsRadius, 64, 64),
+    terraformedMarsMaterial
+  );
+  terraformedMarsModel.add(surfaceMesh);
+
+  // Load GLB only for atmosphere and cloud layers; hide its surface mesh
   gltfLoader.load("terraformed_mars.glb", function(gltf) {
-    if (!marsTransformed) return; // user restored before GLB finished loading
-    terraformedMarsModel = gltf.scene;
+    if (!marsTransformed) return;
     marsCloudMesh = null;
-    // GLB contains: Atmosphere (transparent, no tex), Clouds (transparent+tex), Mars (opaque+tex)
-    terraformedMarsModel.traverse(function(child) {
+    const glbScene = gltf.scene;
+
+    const box = new THREE.Box3().setFromObject(glbScene);
+    const center = box.getCenter(new THREE.Vector3());
+    const maxDim = Math.max(...box.getSize(new THREE.Vector3()).toArray());
+    const glbScale = (marsRadius * 2) / maxDim;
+
+    glbScene.traverse(function(child) {
       if (!child.isMesh) return;
       const mat = Array.isArray(child.material) ? child.material[0] : child.material;
       if (!mat) return;
       if (!mat.transparent) {
-        // Mars surface — swap in our safe-sized textures
-        mat.map = colorTex;
-        mat.emissiveMap = emissiveTex;
-        mat.emissive.set(0xffffff); // full white so emissive map drives city-light intensity
-        mat.emissiveIntensity = 1;
-        mat.needsUpdate = true;
+        child.visible = false; // replaced by our SphereGeometry surface
       } else if (mat.map) {
-        // Cloud mesh (transparent + has a texture) — keep GLB texture, just tune quality
         [mat.map].forEach(function(tex) {
           tex.anisotropy = maxAnisotropy;
           tex.wrapS = THREE.RepeatWrapping;
@@ -1573,22 +1615,17 @@ function transformMars() {
         marsCloudMesh = child;
       }
     });
-    // Center the GLB at its own origin
-    const box = new THREE.Box3().setFromObject(terraformedMarsModel);
-    const center = box.getCenter(new THREE.Vector3());
-    terraformedMarsModel.position.sub(center);
-    // Scale to match Mars's diameter
-    const size = box.getSize(new THREE.Vector3());
-    const maxDim = Math.max(size.x, size.y, size.z);
-    terraformedMarsModel.scale.setScalar((marsMesh.userData.size * 2) / maxDim);
-    // Float cloud layer just above the surface (after model scale is set)
+
+    glbScene.position.sub(center);
+    glbScene.scale.setScalar(glbScale);
     if (marsCloudMesh) marsCloudMesh.scale.setScalar(1.02);
-    // Place in scene at Mars's current world position and rotation
-    scene.add(terraformedMarsModel);
-    terraformedMarsModel.position.copy(marsMesh.position);
-    terraformedMarsModel.rotation.copy(marsMesh.rotation);
-    marsMesh.visible = false;
+    terraformedMarsModel.add(glbScene);
   });
+
+  scene.add(terraformedMarsModel);
+  terraformedMarsModel.position.copy(marsMesh.position);
+  terraformedMarsModel.rotation.copy(marsMesh.rotation);
+  marsMesh.visible = false;
 }
 
 function restoreMars() {
@@ -1599,6 +1636,7 @@ function restoreMars() {
     terraformedMarsModel = null;
   }
   marsCloudMesh = null;
+  terraformedMarsMaterial = null;
   marsMesh.visible = true;
   lockedObject = marsMesh; // re-establish camera lock so it doesn't drift to origin
   refreshMarsPanel();
@@ -3081,6 +3119,12 @@ function animate(){
     const earthPos = earthMesh.position.clone();
     const dir = earthPos.clone().negate().normalize(); // direction from Earth to Sun (Sun is at 0,0,0)
     earthMesh.material.uniforms.sunDirection.value.copy(dir);
+  }
+
+  // ☀️ Update Terraformed Mars shader sun direction
+  if (terraformedMarsMaterial) {
+    const marsPos = marsMesh.position.clone();
+    terraformedMarsMaterial.uniforms.sunDirection.value.copy(marsPos.clone().negate().normalize());
   }
   
 
