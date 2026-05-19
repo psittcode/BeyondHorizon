@@ -1193,6 +1193,7 @@ Despite the setbacks, the dream endures. Research indicates that complete habita
 let marsTransformed = false;
 let terraformedMarsModel = null;
 let marsCloudMesh = null;
+let terraformedMarsMaterial = null;
 
 // Cloud layer
 const cloudTexture = textureLoader.load("2k_earth_clouds.jpg");
@@ -1549,17 +1550,44 @@ function transformMars() {
   const nightTex = textureLoader.load("terraformed_mars_emissive.png", applyTexQuality);
   const cloudTex = textureLoader.load("clouds.png", applyTexQuality);
 
-  const surfaceMat = new THREE.MeshStandardMaterial({
-    map: colorTex,
-    emissiveMap: nightTex,
-    emissive: new THREE.Color(0xffffff),
-    emissiveIntensity: 1.0
+  // ShaderMaterial: city lights only appear on the night side and fade with the terminator
+  terraformedMarsMaterial = new THREE.ShaderMaterial({
+    uniforms: {
+      dayTexture:   { value: colorTex },
+      nightTexture: { value: nightTex },
+      sunDirection: { value: new THREE.Vector3(1, 0, 0) }
+    },
+    vertexShader: `
+      varying vec2 vUv;
+      varying vec3 vNormal;
+      void main() {
+        vUv = uv;
+        vNormal = normalize((modelMatrix * vec4(normal, 0.0)).xyz);
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: `
+      uniform sampler2D dayTexture;
+      uniform sampler2D nightTexture;
+      uniform vec3 sunDirection;
+      varying vec2 vUv;
+      varying vec3 vNormal;
+      void main() {
+        float intensity = dot(vNormal, sunDirection);
+        float blend = smoothstep(-0.15, 0.15, intensity);
+        vec4 day   = texture2D(dayTexture,   vUv);
+        vec4 night = texture2D(nightTexture, vUv);
+        // Dim ambient keeps night side from being pitch-black; city lights add on top
+        vec3 darkSide = day.rgb * 0.06 + night.rgb;
+        gl_FragColor = vec4(mix(darkSide, day.rgb, blend), 1.0);
+      }
+    `
   });
 
   terraformedMarsModel = new THREE.Group();
   terraformedMarsModel.add(new THREE.Mesh(
     new THREE.SphereGeometry(marsRadius, 64, 64),
-    surfaceMat
+    terraformedMarsMaterial
   ));
 
   // Cloud layer — RGBA alpha channel drives per-pixel cloud opacity
@@ -1591,6 +1619,7 @@ function restoreMars() {
     terraformedMarsModel = null;
   }
   marsCloudMesh = null;
+  terraformedMarsMaterial = null;
   marsMesh.visible = true;
   lockedObject = marsMesh; // re-establish camera lock so it doesn't drift to origin
   refreshMarsPanel();
@@ -3075,6 +3104,11 @@ function animate(){
     earthMesh.material.uniforms.sunDirection.value.copy(dir);
   }
 
+  // ☀️ Update Terraformed Mars shader sun direction
+  if (terraformedMarsMaterial) {
+    terraformedMarsMaterial.uniforms.sunDirection.value
+      .copy(marsMesh.position.clone().negate().normalize());
+  }
 
   // Lock camera target to selected object (only after fly animation completes)
   if (lockedObject && !isFlyingTo) {
