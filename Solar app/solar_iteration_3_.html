@@ -451,16 +451,6 @@ const galaxySkybox = new THREE.Mesh(
 galaxySkybox.visible = false;
 scene.add(galaxySkybox);
 
-// ── Black-hole deep-space skybox ─────────────────────────────────────────────
-// Replaces the Milky Way skybox when the BH view activates. Pure near-black
-// with a faint blue tint so it reads as deep space rather than a void.
-const bhSkybox = new THREE.Mesh(
-  new THREE.SphereGeometry(490, 32, 32),
-  new THREE.MeshBasicMaterial({ color: 0x020408, side: THREE.BackSide, depthWrite: false })
-);
-bhSkybox.visible = true; // DEBUG: force always visible to confirm it renders
-scene.add(bhSkybox);
-
 // --- Milky Way GLB Model + Solar System Marker ---
 let milkyWayModel = null;
 let beauGaDisc = null;   // BeauGa.png flat disc galaxy
@@ -605,6 +595,7 @@ gltfLoader.load('need_some_space.glb', function(gltf) {
       if (!child.isMesh || !child.material) return;
       child.layers.set(1);   // bloom layer — only these receive UnrealBloom
       child.renderOrder = 3;
+      child.material.color = new THREE.Color(1, 1, 1); // remove any grey tint, show pure texture
       if (child.material.emissiveMap) {
         child.material.emissiveIntensity = 2.5;
         child.material.needsUpdate = true;
@@ -2936,22 +2927,10 @@ function animate(){
   }
 
   if (BH_CLOSE_DIST > 0) {
-    // Swap to the dark deep-space skybox when the BH becomes active,
-    // restoring the Milky Way skybox when zooming back out.
+    // Hide the Milky Way skybox when BH is active — setClearColor(0x000005) provides
+    // the dark background. Restore when zooming back out.
     const bhActive = bhTransitionT > 0.01;
-    // DEBUG: log once per second while BH is active
-    if (bhActive && Math.floor(nowMs / 1000) !== Math.floor((nowMs - deltaMs) / 1000)) {
-      console.log('[BH skybox]', 'exists:', !!bhSkybox, 'visible:', bhSkybox.visible,
-        'bhTransitionT:', bhTransitionT.toFixed(3), 'outsideSkybox:', outsideSkybox,
-        'position:', bhSkybox.position.toArray().map(v => v.toFixed(0)));
-    }
-    if (outsideSkybox) {
-      galaxySkybox.visible = !bhActive;
-      bhSkybox.visible     =  bhActive;
-      if (bhActive) bhSkybox.position.copy(camera.position);
-    } else {
-      bhSkybox.visible = false;
-    }
+    if (outsideSkybox) galaxySkybox.visible = !bhActive;
 
     if (blackHoleModel) {
       blackHoleModel.visible = bhTransitionT > 0.02;
@@ -2973,14 +2952,14 @@ function animate(){
     sunLight.intensity     = 0;
     scene.environment      = null;
     renderer.toneMapping         = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.0;
+    renderer.toneMappingExposure = 0.7;
     if (!bloomComposer) {
       // bloomComposer: camera sees only layer 1 (BH meshes) → bloom → render target
       bloomComposer = new THREE.EffectComposer(renderer);
       bloomComposer.renderToScreen = false;
       bloomComposer.addPass(new THREE.RenderPass(scene, camera));
       bloomComposer.addPass(new THREE.UnrealBloomPass(
-        new THREE.Vector2(innerWidth, innerHeight), 1.2, 0.4, 0.0
+        new THREE.Vector2(innerWidth, innerHeight), 0.6, 0.4, 0.0
       ));
       // finalComposer: full scene + additive mix of bloom texture
       const _mixMat = new THREE.ShaderMaterial({
