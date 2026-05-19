@@ -617,8 +617,10 @@ gltfLoader.load('need_some_space.glb', function(gltf) {
           '  vec3 dark=vec3(0.05,0.03,0.01);',
           '  vec3 mid=vec3(0.6,0.35,0.05);',
           '  vec3 bright=vec3(1.0,0.9,0.7);',
-          '  vec3 col=mix(mix(dark,mid,lum),bright,pow(lum,2.0));',
-          '  gl_FragColor=vec4(col*tex.a,tex.a);',
+          '  vec3 remapped=mix(mix(dark,mid,lum),bright,pow(lum,2.0));',
+          '  vec3 col=mix(remapped,tex.rgb*1.5,0.25);',
+          '  col=clamp(col,0.0,0.85);',
+          '  gl_FragColor=vec4(col,tex.a);',
           '}'
         ].join('\n'),
         transparent: m.transparent || false,
