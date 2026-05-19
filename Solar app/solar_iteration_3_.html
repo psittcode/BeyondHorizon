@@ -400,7 +400,8 @@ controls.enablePan = false;
 controls.maxDistance = 1000000;
 
 // Lights
-scene.add(new THREE.AmbientLight(0xffffff, 0.15));
+const ambientLight = new THREE.AmbientLight(0xffffff, 0.15);
+scene.add(ambientLight);
 
 const sunLight = new THREE.PointLight(0xffffff, 1.5);
 sunLight.position.set(0, 0, 0);
@@ -464,30 +465,12 @@ let BH_FAR_DIST         = 0;     // camera-to-core distance at which transition 
 let bhRendererSettings  = false; // tracks whether BH renderer settings are currently active
 // Saved renderer / scene state — captured just before the first BH transition
 // so we restore exact original values when zooming back out.
-let bhOrigToneMapping   = null;
-let bhOrigExposure      = null;
-let bhOrigEnvironment   = null;
-let bhEnvTexture        = null; // PMREM environment for BH PBR rendering
-let bhComposer          = null; // EffectComposer with UnrealBloomPass, active only during BH view
-
-// Pre-bake a dark warm PMREM environment for the black hole view.
-// Must be declared after bhEnvTexture (let TDZ) and after renderer creation.
-// Wrapped in try/catch so a PMREMGenerator failure cannot crash the whole script.
-try {
-  const _pmrem = new THREE.PMREMGenerator(renderer);
-  _pmrem.compileCubemapShader();
-  const _envScene = new THREE.Scene();
-  _envScene.background = new THREE.Color(0x0a0604);
-  const _envSphere = new THREE.Mesh(
-    new THREE.SphereGeometry(1, 16, 8),
-    new THREE.MeshBasicMaterial({ color: 0x5a1800, side: THREE.BackSide })
-  );
-  _envScene.add(_envSphere);
-  bhEnvTexture = _pmrem.fromScene(_envScene).texture;
-  _pmrem.dispose();
-} catch (e) {
-  console.warn('PMREM environment generation failed, BH will render without IBL:', e);
-}
+let bhOrigToneMapping        = null;
+let bhOrigExposure           = null;
+let bhOrigEnvironment        = null;
+let bhOrigAmbientIntensity   = 0;
+let bhOrigSunIntensity       = 0;
+let bhComposer               = null; // EffectComposer with UnrealBloomPass, active only during BH view
 
 // Solar System marker lives in world space at origin (the Sun's actual scene position)
 const solarSystemMarker = new THREE.Group();
@@ -605,14 +588,16 @@ gltfLoader.load('need_some_space.glb', function(gltf) {
     // Counter-rotating around Z cancels that tilt so the ring lies in the galaxy plane.
     bhScene.rotation.z = -Math.atan2(0.3661, 0.9306); // ≈ -0.375 rad
 
-    // Do not modify any materials — let the GLB's own materials render as-is.
-    // renderOrder 3 ensures the model draws after the galaxy GLB (renderOrder 1).
-    // needsUpdate tells Three.js to recompile shaders with the active renderer
-    // settings (ACES tone mapping, environment) when the BH view activates.
+    // Boost emissive self-illumination so the glowing rings shine without any
+    // lights or environment map. Only materials that already have an emissiveMap
+    // are touched — dark non-emissive parts stay dark.
     bhScene.traverse(function(child) {
       if (!child.isMesh || !child.material) return;
       child.renderOrder = 3;
-      child.material.needsUpdate = true;
+      if (child.material.emissiveMap) {
+        child.material.emissiveIntensity = 2.5;
+        child.material.needsUpdate = true;
+      }
     });
 
     // Wrapper group spins around world Y; bhScene sits inside with the corrective
@@ -2953,16 +2938,21 @@ function animate(){
   // and restore defaults when it's gone.  Only flip once per boundary crossing so
   // shaders are not rebuilt on every frame.
   if (bhTransitionT > 0.01 && !bhRendererSettings) {
-    bhOrigToneMapping = renderer.toneMapping;
-    bhOrigExposure    = renderer.toneMappingExposure;
-    bhOrigEnvironment = scene.environment;
+    bhOrigToneMapping      = renderer.toneMapping;
+    bhOrigExposure         = renderer.toneMappingExposure;
+    bhOrigEnvironment      = scene.environment;
+    bhOrigAmbientIntensity = ambientLight.intensity;
+    bhOrigSunIntensity     = sunLight.intensity;
+    // Zero lights so only self-emissive parts of the GLB glow; dark disk stays dark.
+    ambientLight.intensity = 0;
+    sunLight.intensity     = 0;
+    scene.environment      = null;
     renderer.toneMapping         = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 0.3;
-    if (bhEnvTexture) scene.environment = bhEnvTexture;
+    renderer.toneMappingExposure = 1.2;
     if (!bhComposer) {
       const _rp = new THREE.RenderPass(scene, camera);
       const _bp = new THREE.UnrealBloomPass(
-        new THREE.Vector2(innerWidth, innerHeight), 0.6, 0.2, 0.3
+        new THREE.Vector2(innerWidth, innerHeight), 1.0, 0.3, 0.0
       );
       bhComposer = new THREE.EffectComposer(renderer);
       bhComposer.addPass(_rp);
@@ -2971,6 +2961,8 @@ function animate(){
     bhRendererSettings = true;
     scene.traverse(function(o) { if (o.isMesh && o.material) o.material.needsUpdate = true; });
   } else if (bhTransitionT <= 0.01 && bhRendererSettings) {
+    ambientLight.intensity = bhOrigAmbientIntensity;
+    sunLight.intensity     = bhOrigSunIntensity;
     renderer.toneMapping         = bhOrigToneMapping;
     renderer.toneMappingExposure = bhOrigExposure;
     scene.environment            = bhOrigEnvironment;
