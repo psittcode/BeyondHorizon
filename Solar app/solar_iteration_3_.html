@@ -595,7 +595,7 @@ gltfLoader.load('need_some_space.glb', function(gltf) {
       if (!child.isMesh || !child.material) return;
       child.layers.set(1);   // bloom layer — only these receive UnrealBloom
       child.renderOrder = 3;
-      child.material.color = new THREE.Color(1, 1, 1); // remove any grey tint, show pure texture
+      child.material.color = new THREE.Color(0.9, 0.6, 0.2); // warm amber tint over texture colours
       if (child.material.emissiveMap) {
         child.material.emissiveIntensity = 2.5;
         child.material.needsUpdate = true;
@@ -2984,6 +2984,8 @@ function animate(){
       finalComposer.addPass(new THREE.RenderPass(scene, camera));
       finalComposer.addPass(_fsp);
     }
+    galaxySkybox.visible = false; // hide Milky Way texture; setClearColor provides dark bg
+    skybox.visible       = false; // hide inner solar-system skybox too
     bhRendererSettings = true;
     scene.traverse(function(o) { if (o.isMesh && o.material) o.material.needsUpdate = true; });
   } else if (bhTransitionT <= 0.01 && bhRendererSettings) {
@@ -2992,6 +2994,8 @@ function animate(){
     renderer.toneMapping         = bhOrigToneMapping;
     renderer.toneMappingExposure = bhOrigExposure;
     scene.environment            = bhOrigEnvironment;
+    galaxySkybox.visible = outsideSkybox; // restore correct skybox for current camera position
+    skybox.visible       = !outsideSkybox;
     bhRendererSettings = false;
     scene.traverse(function(o) { if (o.isMesh && o.material) o.material.needsUpdate = true; });
   }
