@@ -408,7 +408,7 @@ sunLight.position.set(0, 0, 0);
 scene.add(sunLight);
 
 // Warm ambient light added only during the black hole view — not in scene by default
-const bhLight = new THREE.AmbientLight(0xc8a050, 1.5);
+const bhLight = new THREE.AmbientLight(0xc8a050, 2.5);
 
 const textureLoader = new THREE.TextureLoader();
 const jupiterTexture = textureLoader.load("jupiter.jpg");
@@ -593,22 +593,20 @@ gltfLoader.load('need_some_space.glb', function(gltf) {
     // Counter-rotating around Z cancels that tilt so the ring lies in the galaxy plane.
     bhScene.rotation.z = -Math.atan2(0.3661, 0.9306); // ≈ -0.375 rad
 
-    // Replace every BH material with MeshBasicMaterial so the raw texture renders
-    // without any lighting. depthWrite=false on transparent meshes stops Z-fighting
-    // between the layered ring geometries (the actual cause of the flicker).
+    // Keep original GLB materials (MeshStandardMaterial with emissive maps) intact
+    // so PBR colors and self-glow render correctly.
+    // For transparent ring layers: disable both depthWrite AND depthTest so
+    // overlapping transparent fragments never Z-fight regardless of camera angle.
     bhScene.traverse(function(child) {
       if (!child.isMesh || !child.material) return;
       child.renderOrder = 3;
       const m = child.material;
       const isTransparent = m.transparent || (m.opacity !== undefined && m.opacity < 1);
-      child.material = new THREE.MeshBasicMaterial({
-        map:        m.map  || null,
-        color:      new THREE.Color(1, 1, 1),
-        transparent: isTransparent,
-        opacity:    m.opacity !== undefined ? m.opacity : 1,
-        side:       m.side   !== undefined ? m.side    : THREE.FrontSide,
-        depthWrite: !isTransparent
-      });
+      if (isTransparent) {
+        m.depthWrite = false;
+        m.depthTest  = false;
+      }
+      m.needsUpdate = true;
     });
 
     // Wrapper group spins around world Y; bhScene sits inside with the corrective
@@ -2959,7 +2957,7 @@ function animate(){
     sunLight.intensity     = 0;
     scene.environment      = null;
     renderer.toneMapping         = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 0.4;
+    renderer.toneMappingExposure = 1.2;
     scene.add(bhLight);
     // Save visibility of every scene object, then hide all except the BH model tree
     _bhSavedVisibility = new Map();
