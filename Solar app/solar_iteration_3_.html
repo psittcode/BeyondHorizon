@@ -1192,6 +1192,7 @@ Despite the setbacks, the dream endures. Research indicates that complete habita
 <span style="font-size:10px;opacity:0.6;">Sources: Wikipedia – Terraforming; Wikipedia – SpaceX Mars Colonization Program; NASA / AIP Publishing – Terraforming Mars, Physics Today; Terraforming World Initiative – Carl Sagan; Space Settlement Progress – Perspectives on Mars Terraforming; Aerospace America – A Closer Look at SpaceX's Mars Plan; NasaCityLights – SpaceX Starship Mars Mission 2026</span>`;
 let marsTransformed = false;
 let terraformedMarsModel = null;
+let marsCloudMesh = null;
 
 // Cloud layer
 const cloudTexture = textureLoader.load("2k_earth_clouds.jpg");
@@ -1531,6 +1532,25 @@ function transformMars() {
   gltfLoader.load("terraformed_mars.glb", function(gltf) {
     if (!marsTransformed) return; // user restored before GLB finished loading
     terraformedMarsModel = gltf.scene;
+    const maxAnisotropy = renderer.capabilities.getMaxAnisotropy();
+    // Apply texture quality and identify surface vs cloud mesh
+    marsCloudMesh = null;
+    terraformedMarsModel.traverse(function(child) {
+      if (!child.isMesh) return;
+      const mats = Array.isArray(child.material) ? child.material : [child.material];
+      mats.forEach(function(mat) {
+        if (mat && mat.map) {
+          mat.map.anisotropy = maxAnisotropy;
+          mat.map.minFilter = THREE.LinearMipmapLinearFilter;
+          mat.map.magFilter = THREE.LinearFilter;
+          mat.map.needsUpdate = true;
+        }
+      });
+      // Cloud mesh has a transparent material; pick the last one found (outermost)
+      const m0 = Array.isArray(child.material) ? child.material[0] : child.material;
+      if (m0 && m0.transparent) marsCloudMesh = child;
+    });
+    if (marsCloudMesh) marsCloudMesh.scale.setScalar(1.02); // float above surface
     // Center the GLB at its own origin
     const box = new THREE.Box3().setFromObject(terraformedMarsModel);
     const center = box.getCenter(new THREE.Vector3());
@@ -1554,6 +1574,7 @@ function restoreMars() {
     scene.remove(terraformedMarsModel);
     terraformedMarsModel = null;
   }
+  marsCloudMesh = null;
   marsMesh.visible = true;
   lockedObject = marsMesh; // re-establish camera lock so it doesn't drift to origin
   refreshMarsPanel();
@@ -2810,6 +2831,10 @@ function animate(){
       if (terraformedMarsModel) {
         terraformedMarsModel.position.copy(m.position);
         terraformedMarsModel.rotation.copy(m.rotation);
+        if (marsCloudMesh) {
+          // Extra 0.5× on top of inherited parent rotation = 1.5× total cloud spin
+          marsCloudMesh.rotation.y += 0.01181 * speed * deltaScale * 0.5;
+        }
       }
     }
     if (m.userData.name === "Jupiter") {
