@@ -1533,24 +1533,28 @@ function transformMars() {
     if (!marsTransformed) return; // user restored before GLB finished loading
     terraformedMarsModel = gltf.scene;
     const maxAnisotropy = renderer.capabilities.getMaxAnisotropy();
-    // Apply texture quality and identify surface vs cloud mesh
+    // Apply texture quality, fix seam wrapping, and identify cloud mesh
+    // GLB contains: Atmosphere (transparent, no tex), Clouds (transparent+tex), Mars (opaque+tex)
     marsCloudMesh = null;
     terraformedMarsModel.traverse(function(child) {
       if (!child.isMesh) return;
       const mats = Array.isArray(child.material) ? child.material : [child.material];
       mats.forEach(function(mat) {
-        if (mat && mat.map) {
-          mat.map.anisotropy = maxAnisotropy;
-          mat.map.minFilter = THREE.LinearMipmapLinearFilter;
-          mat.map.magFilter = THREE.LinearFilter;
-          mat.map.needsUpdate = true;
-        }
+        if (!mat) return;
+        [mat.map, mat.emissiveMap, mat.roughnessMap, mat.normalMap].forEach(function(tex) {
+          if (!tex) return;
+          tex.wrapS = THREE.RepeatWrapping; // fix UV seam cutoff at longitude 0/360
+          tex.wrapT = THREE.RepeatWrapping;
+          tex.anisotropy = maxAnisotropy;
+          tex.minFilter = THREE.LinearMipmapLinearFilter;
+          tex.magFilter = THREE.LinearFilter;
+          tex.needsUpdate = true;
+        });
       });
-      // Cloud mesh has a transparent material; pick the last one found (outermost)
+      // Cloud mesh = transparent material that also has a color texture (not the atmosphere)
       const m0 = Array.isArray(child.material) ? child.material[0] : child.material;
-      if (m0 && m0.transparent) marsCloudMesh = child;
+      if (m0 && m0.transparent && m0.map) marsCloudMesh = child;
     });
-    if (marsCloudMesh) marsCloudMesh.scale.setScalar(1.02); // float above surface
     // Center the GLB at its own origin
     const box = new THREE.Box3().setFromObject(terraformedMarsModel);
     const center = box.getCenter(new THREE.Vector3());
@@ -1559,6 +1563,8 @@ function transformMars() {
     const size = box.getSize(new THREE.Vector3());
     const maxDim = Math.max(size.x, size.y, size.z);
     terraformedMarsModel.scale.setScalar((marsMesh.userData.size * 2) / maxDim);
+    // Float cloud layer just above the surface (after model scale is set)
+    if (marsCloudMesh) marsCloudMesh.scale.setScalar(1.02);
     // Place in scene at Mars's current world position and rotation
     scene.add(terraformedMarsModel);
     terraformedMarsModel.position.copy(marsMesh.position);
