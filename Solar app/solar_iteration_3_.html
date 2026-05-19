@@ -604,10 +604,11 @@ gltfLoader.load('need_some_space.glb', function(gltf) {
         m.emissiveIntensity = 2.0;
         m.needsUpdate = true;
       } else {
-        // Replace with MeshBasicMaterial — renders raw texture, ignores all lighting
+        // Replace with MeshBasicMaterial — renders raw texture, ignores all lighting.
+        // Dark golden-brown color multiplies over texture: red→amber, green→olive-gold.
         child.material = new THREE.MeshBasicMaterial({
           map:         m.map         || null,
-          color:       m.color       ? m.color.clone() : new THREE.Color(1, 1, 1),
+          color:       new THREE.Color(0.55, 0.38, 0.12),
           transparent: m.transparent || false,
           opacity:     m.opacity     !== undefined ? m.opacity : 1,
           side:        m.side        !== undefined ? m.side    : THREE.FrontSide
@@ -2999,6 +3000,8 @@ function animate(){
     }
     galaxySkybox.visible = false; // hide Milky Way texture; setClearColor provides dark bg
     skybox.visible       = false; // hide inner solar-system skybox too
+    if (milkyWayModel) milkyWayModel.visible = false; // hide galaxy GLB so it doesn't show grey between disk and skybox
+    if (beauGaDisc)    beauGaDisc.visible    = false;
     bhRendererSettings = true;
     scene.traverse(function(o) { if (o.isMesh && o.material) o.material.needsUpdate = true; });
   } else if (bhTransitionT <= 0.01 && bhRendererSettings) {
@@ -3009,6 +3012,8 @@ function animate(){
     scene.environment            = bhOrigEnvironment;
     galaxySkybox.visible = outsideSkybox; // restore correct skybox for current camera position
     skybox.visible       = !outsideSkybox;
+    if (milkyWayModel) milkyWayModel.visible = true;
+    if (beauGaDisc)    beauGaDisc.visible    = true;
     bhRendererSettings = false;
     scene.traverse(function(o) { if (o.isMesh && o.material) o.material.needsUpdate = true; });
   }
