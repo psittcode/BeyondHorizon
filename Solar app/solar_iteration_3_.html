@@ -570,10 +570,28 @@ gltfLoader.load('need_some_space.glb', function(gltf) {
   const bhLoader = new THREE.GLTFLoader();
   bhLoader.load('black_hole/scene.gltf', function(bhGltf) {
     blackHoleModel = bhGltf.scene;
-    blackHoleModel.scale.setScalar(galaxyVisualRadius * 0.02);
+    blackHoleModel.scale.setScalar(galaxyVisualRadius * 0.025);
     blackHoleModel.position.copy(galacticCorePos);
     blackHoleModel.visible = false;
+
+    // Force every mesh in the model to render on top of the galaxy geometry.
+    // renderOrder 3 > galaxy's 1; depthTest false means it ignores the depth
+    // buffer written by the galaxy model and always draws through it.
+    blackHoleModel.traverse(function(child) {
+      if (child.isMesh) {
+        child.renderOrder = 3;
+        if (child.material) {
+          const mats = Array.isArray(child.material) ? child.material : [child.material];
+          mats.forEach(function(mat) {
+            mat.depthTest  = false;
+            mat.depthWrite = false;
+          });
+        }
+      }
+    });
+
     scene.add(blackHoleModel);
+    console.log('Black hole model loaded, scale =', galaxyVisualRadius * 0.025);
   }, undefined, function(err) {
     console.error('Black hole GLB load error:', err);
   });
@@ -2872,13 +2890,14 @@ function animate(){
   if (_ssBtn) _ssBtn.style.display = outsideSkybox ? 'block' : 'none';
 
   // ── Black hole galactic-core transition ──────────────────────────────────
-  // Active only in the Milky Way page view (outside skybox, not in galactic orbit / spaceship)
-  const inMilkyWayView = outsideSkybox && !galacticViewActive && !spaceshipViewActive;
+  // Active only once fully arrived at the Milky Way page view — not during fly animations
+  // and not inside any other mode. isFlyingTo gates out the transition that would otherwise
+  // fire prematurely as the camera crosses SKYBOX_RADIUS on its way to the galaxy.
+  const inMilkyWayView = outsideSkybox && !galacticViewActive && !spaceshipViewActive && !isFlyingTo;
   if (inMilkyWayView && galacticCorePos && BH_CLOSE_DIST > 0) {
     const camToCore = camera.position.distanceTo(galacticCorePos);
-    const rawT = 1 - THREE.MathUtils.clamp(
-      (camToCore - BH_CLOSE_DIST) / (BH_FAR_DIST - BH_CLOSE_DIST), 0, 1
-    );
+    const rawFrac = (camToCore - BH_CLOSE_DIST) / (BH_FAR_DIST - BH_CLOSE_DIST);
+    const rawT = 1 - Math.max(0, Math.min(1, rawFrac));
     bhTransitionT += (rawT - bhTransitionT) * 0.04;
   } else {
     // Fade out quickly when not in the right view
@@ -2887,9 +2906,9 @@ function animate(){
 
   if (BH_CLOSE_DIST > 0) {
     // Tint galaxy skybox: normal starfield → very dark deep orange at full transition
-    const skyR = THREE.MathUtils.lerp(1.0, 0.06,  bhTransitionT);
-    const skyG = THREE.MathUtils.lerp(1.0, 0.015, bhTransitionT);
-    const skyB = THREE.MathUtils.lerp(1.0, 0.0,   bhTransitionT);
+    const skyR = 1.0 + (0.06  - 1.0) * bhTransitionT;
+    const skyG = 1.0 + (0.015 - 1.0) * bhTransitionT;
+    const skyB = 1.0 + (0.0   - 1.0) * bhTransitionT;
     galaxySkybox.material.color.setRGB(skyR, skyG, skyB);
 
     if (blackHoleModel) {
