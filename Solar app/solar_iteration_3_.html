@@ -632,7 +632,7 @@ gltfLoader.load('need_some_space.glb', function(gltf) {
       '  float lum=dot(tex.rgb,vec3(0.299,0.587,0.114));',
       '  vec3 dark  =vec3(0.12,0.07,0.02);',
       '  vec3 mid   =vec3(0.75,0.48,0.08);',
-      '  vec3 bright=vec3(1.0,0.92,0.75);',
+      '  vec3 bright=vec3(0.62,0.55,0.42);',
       '  vec3 remap=lum<0.5?mix(dark,mid,lum*2.0):mix(mid,bright,(lum-0.5)*2.0);',
       '  vec3 color=mix(remap,tex.rgb*1.5,0.10);',
       '  gl_FragColor=vec4(color,tex.a*bhOpacity);',
@@ -687,9 +687,9 @@ gltfLoader.load('need_some_space.glb', function(gltf) {
     bloomComposer.addPass(new THREE.RenderPass(scene, camera));
     bloomComposer.addPass(new THREE.UnrealBloomPass(
       new THREE.Vector2(window.innerWidth, window.innerHeight),
-      0.4,   // strength
-      0.2,   // radius — tight, concentrated
-      0.4    // threshold — only the bright inner ring blooms
+      0.12,  // strength — subtle, soft halo only
+      0.5,   // radius — wider spread for diffuse glow
+      0.78   // threshold — only absolute hottest pixels bloom
     ));
 
     // Wrapper group spins around world Y; bhScene sits inside with the corrective
