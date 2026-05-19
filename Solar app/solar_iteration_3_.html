@@ -2952,7 +2952,7 @@ function animate(){
     if (!bhComposer) {
       const _rp = new THREE.RenderPass(scene, camera);
       const _bp = new THREE.UnrealBloomPass(
-        new THREE.Vector2(innerWidth, innerHeight), 1.0, 0.3, 0.0
+        new THREE.Vector2(innerWidth, innerHeight), 0.4, 0.15, 0.0
       );
       bhComposer = new THREE.EffectComposer(renderer);
       bhComposer.addPass(_rp);
