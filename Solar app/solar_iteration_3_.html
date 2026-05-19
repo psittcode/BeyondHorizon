@@ -370,6 +370,12 @@ Speed<br>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128/examples/js/controls/OrbitControls.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128/examples/js/loaders/GLTFLoader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128/examples/js/shaders/CopyShader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128/examples/js/shaders/LuminosityHighPassShader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128/examples/js/postprocessing/EffectComposer.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128/examples/js/postprocessing/RenderPass.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128/examples/js/postprocessing/ShaderPass.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128/examples/js/postprocessing/UnrealBloomPass.js"></script>
 
 <script>
 const scene = new THREE.Scene();
@@ -474,6 +480,8 @@ let bhOrigExposure           = null;
 let bhOrigEnvironment        = null;
 let bhOrigAmbientIntensity   = 0;
 let bhOrigSunIntensity       = 0;
+let bloomComposer            = null; // renders layer-1 (BH) only with UnrealBloom → texture
+let finalComposer            = null; // renders full scene, additively blends bloom texture
 
 // Solar System marker lives in world space at origin (the Sun's actual scene position)
 const solarSystemMarker = new THREE.Group();
@@ -591,11 +599,11 @@ gltfLoader.load('need_some_space.glb', function(gltf) {
     // Counter-rotating around Z cancels that tilt so the ring lies in the galaxy plane.
     bhScene.rotation.z = -Math.atan2(0.3661, 0.9306); // ≈ -0.375 rad
 
-    // Boost emissive self-illumination so the glowing rings shine without any
-    // lights or environment map. Only materials that already have an emissiveMap
-    // are touched — dark non-emissive parts stay dark.
+    // Assign BH meshes to layer 1 for selective bloom. Boost emissiveIntensity
+    // on materials that have an emissiveMap so the rings glow with zero lights.
     bhScene.traverse(function(child) {
       if (!child.isMesh || !child.material) return;
+      child.layers.set(1);   // bloom layer — only these receive UnrealBloom
       child.renderOrder = 3;
       if (child.material.emissiveMap) {
         child.material.emissiveIntensity = 2.5;
@@ -2966,6 +2974,37 @@ function animate(){
     scene.environment      = null;
     renderer.toneMapping         = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.0;
+    if (!bloomComposer) {
+      // bloomComposer: camera sees only layer 1 (BH meshes) → bloom → render target
+      bloomComposer = new THREE.EffectComposer(renderer);
+      bloomComposer.renderToScreen = false;
+      bloomComposer.addPass(new THREE.RenderPass(scene, camera));
+      bloomComposer.addPass(new THREE.UnrealBloomPass(
+        new THREE.Vector2(innerWidth, innerHeight), 1.2, 0.4, 0.0
+      ));
+      // finalComposer: full scene + additive mix of bloom texture
+      const _mixMat = new THREE.ShaderMaterial({
+        uniforms: {
+          baseTexture:  { value: null },
+          bloomTexture: { value: bloomComposer.renderTarget2.texture }
+        },
+        vertexShader: [
+          'varying vec2 vUv;',
+          'void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}'
+        ].join(''),
+        fragmentShader: [
+          'uniform sampler2D baseTexture;',
+          'uniform sampler2D bloomTexture;',
+          'varying vec2 vUv;',
+          'void main(){gl_FragColor=texture2D(baseTexture,vUv)+texture2D(bloomTexture,vUv);}'
+        ].join('')
+      });
+      const _fsp = new THREE.ShaderPass(_mixMat, 'baseTexture');
+      _fsp.needsSwap = true;
+      finalComposer = new THREE.EffectComposer(renderer);
+      finalComposer.addPass(new THREE.RenderPass(scene, camera));
+      finalComposer.addPass(_fsp);
+    }
     bhRendererSettings = true;
     scene.traverse(function(o) { if (o.isMesh && o.material) o.material.needsUpdate = true; });
   } else if (bhTransitionT <= 0.01 && bhRendererSettings) {
@@ -3258,7 +3297,16 @@ function animate(){
     controls.update();
   }
 
-  renderer.render(scene, camera);
+  if (bhRendererSettings && bloomComposer && finalComposer) {
+    // Bloom pass: restrict camera to layer 1 so only BH meshes contribute to bloom
+    camera.layers.set(1);
+    bloomComposer.render();
+    // Final pass: full scene with bloom additively blended in
+    camera.layers.enableAll();
+    finalComposer.render();
+  } else {
+    renderer.render(scene, camera);
+  }
 }
 animate();
 
@@ -3364,6 +3412,8 @@ window.addEventListener("resize", ()=>{
     keplerCamera.updateProjectionMatrix();
   }
   renderer.setSize(innerWidth, innerHeight);
+  if (bloomComposer) bloomComposer.setSize(innerWidth, innerHeight);
+  if (finalComposer)  finalComposer.setSize(innerWidth, innerHeight);
 });
 </script>
 
