@@ -2261,6 +2261,7 @@ function exitGalacticView() {
 // Fly the camera from wherever it is back into the solar system (triggered by the
 // "The Solar System" button that appears when zoomed out to galaxy scale).
 function flyToSolarSystem() {
+  renderer.setClearColor(0x000000, 1); // TEST: restore default clear colour when leaving Milky Way view
   showBodiesList();
   // Clean up galactic view state without jumping the camera position
   if (galacticViewActive) {
@@ -2363,6 +2364,8 @@ function showMilkyWayPanel() {
 
 function flyToMilkyWay() {
   if (!galacticCorePos) return; // GLB not yet loaded
+
+  renderer.setClearColor(0x000005, 1); // TEST: force near-black canvas background for Milky Way view
 
   showMilkyWayPanel();
 
