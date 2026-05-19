@@ -475,6 +475,7 @@ let bhOrigAmbientIntensity   = 0;
 let bhOrigSunIntensity       = 0;
 let bloomComposer            = null; // renders layer-1 (BH) only with UnrealBloom → texture
 let finalComposer            = null; // renders full scene, additively blends bloom texture
+let _bhSavedVisibility       = null; // Map<Object3D, boolean> — saved on BH enter, restored on exit
 
 // Solar System marker lives in world space at origin (the Sun's actual scene position)
 const solarSystemMarker = new THREE.Group();
@@ -592,11 +593,38 @@ gltfLoader.load('need_some_space.glb', function(gltf) {
     // Counter-rotating around Z cancels that tilt so the ring lies in the galaxy plane.
     bhScene.rotation.z = -Math.atan2(0.3661, 0.9306); // ≈ -0.375 rad
 
-    // Assign BH meshes to bloom layer and draw order — do not touch any materials.
+    // Assign BH meshes to bloom layer and replace materials with a luminance-remap
+    // ShaderMaterial that maps all colours to a warm golden palette regardless of
+    // whether the source texture is red, green, or white.
     bhScene.traverse(function(child) {
-      if (!child.isMesh) return;
+      if (!child.isMesh || !child.material) return;
       child.layers.set(1);   // bloom layer — only these receive UnrealBloom
       child.renderOrder = 3;
+      const m = child.material;
+      if (!m.map) return;    // no texture — leave material as-is
+      child.material = new THREE.ShaderMaterial({
+        uniforms: { map: { value: m.map } },
+        vertexShader: [
+          'varying vec2 vUv;',
+          'void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}'
+        ].join(''),
+        fragmentShader: [
+          'uniform sampler2D map;',
+          'varying vec2 vUv;',
+          'void main(){',
+          '  vec4 tex=texture2D(map,vUv);',
+          '  float lum=dot(tex.rgb,vec3(0.299,0.587,0.114));',
+          '  vec3 dark=vec3(0.05,0.03,0.01);',
+          '  vec3 mid=vec3(0.6,0.35,0.05);',
+          '  vec3 bright=vec3(1.0,0.9,0.7);',
+          '  vec3 col=mix(mix(dark,mid,lum),bright,pow(lum,2.0));',
+          '  gl_FragColor=vec4(col*tex.a,tex.a);',
+          '}'
+        ].join('\n'),
+        transparent: m.transparent || false,
+        side:        m.side        !== undefined ? m.side      : THREE.FrontSide,
+        depthWrite:  m.depthWrite  !== undefined ? m.depthWrite : true
+      });
     });
 
     // Wrapper group spins around world Y; bhScene sits inside with the corrective
@@ -2898,12 +2926,15 @@ function animate(){
   // hide the skybox itself at galaxy scale so it doesn't appear as a bubble over the galaxy.
   const camDist = camera.position.length();
   const outsideSkybox = camDist > SKYBOX_RADIUS;
-  skybox.visible       = !outsideSkybox;
-  galaxySkybox.visible =  outsideSkybox;
+  // Only drive visibility from here when BH is NOT active — save/restore handles it during BH view
+  if (!bhRendererSettings) {
+    skybox.visible       = !outsideSkybox;
+    galaxySkybox.visible =  outsideSkybox;
+    const showGalaxy = outsideSkybox || galacticViewActive;
+    if (milkyWayModel) milkyWayModel.visible = showGalaxy;
+    if (beauGaDisc)    beauGaDisc.visible    = showGalaxy;
+  }
   galaxySkybox.position.copy(camera.position);
-  const showGalaxy = outsideSkybox || galacticViewActive;
-  if (milkyWayModel) milkyWayModel.visible = showGalaxy;
-  if (beauGaDisc)    beauGaDisc.visible    = showGalaxy;
   solarSystemMarker.visible = outsideSkybox && !galacticViewActive;
   const _ssBtn = document.getElementById('solarSystemBtn');
   if (_ssBtn) _ssBtn.style.display = outsideSkybox ? 'block' : 'none';
@@ -2924,11 +2955,6 @@ function animate(){
   }
 
   if (BH_CLOSE_DIST > 0) {
-    // Hide the Milky Way skybox when BH is active — setClearColor(0x000005) provides
-    // the dark background. Restore when zooming back out.
-    const bhActive = bhTransitionT > 0.01;
-    if (outsideSkybox) galaxySkybox.visible = !bhActive;
-
     if (blackHoleModel) {
       blackHoleModel.visible = bhTransitionT > 0.02;
       blackHoleModel.rotation.y += 0.0015 * deltaScale;
@@ -2950,12 +2976,7 @@ function animate(){
     scene.environment      = null;
     renderer.toneMapping         = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 0.4;
-    scene.add(bhLight); // warm golden ambient — illuminates outer disk texture without white light
-    // DEBUG: list every scene object so we can identify the grey background mesh
-    console.log('[BH activate] scene object visibility:');
-    scene.traverse(function(o) {
-      console.log('  visible=' + o.visible + '  type=' + o.type + '  name="' + (o.name || '') + '"');
-    });
+    scene.add(bhLight);
     if (!bloomComposer) {
       // bloomComposer: camera sees only layer 1 (BH meshes) → bloom → render target
       bloomComposer = new THREE.EffectComposer(renderer);
@@ -2987,10 +3008,14 @@ function animate(){
       finalComposer.addPass(new THREE.RenderPass(scene, camera));
       finalComposer.addPass(_fsp);
     }
-    galaxySkybox.visible = false; // hide Milky Way texture; setClearColor provides dark bg
-    skybox.visible       = false; // hide inner solar-system skybox too
-    if (milkyWayModel) milkyWayModel.visible = false; // hide galaxy GLB so it doesn't show grey between disk and skybox
-    if (beauGaDisc)    beauGaDisc.visible    = false;
+    // Save visibility of every scene object, then hide all except the BH model tree
+    _bhSavedVisibility = new Map();
+    const _bhTree = new Set();
+    if (blackHoleModel) blackHoleModel.traverse(function(o) { _bhTree.add(o); });
+    scene.traverse(function(obj) {
+      _bhSavedVisibility.set(obj, obj.visible);
+      if (!_bhTree.has(obj)) obj.visible = false;
+    });
     bhRendererSettings = true;
     scene.traverse(function(o) { if (o.isMesh && o.material) o.material.needsUpdate = true; });
   } else if (bhTransitionT <= 0.01 && bhRendererSettings) {
@@ -3000,10 +3025,10 @@ function animate(){
     renderer.toneMapping         = bhOrigToneMapping;
     renderer.toneMappingExposure = bhOrigExposure;
     scene.environment            = bhOrigEnvironment;
-    galaxySkybox.visible = outsideSkybox; // restore correct skybox for current camera position
-    skybox.visible       = !outsideSkybox;
-    if (milkyWayModel) milkyWayModel.visible = true;
-    if (beauGaDisc)    beauGaDisc.visible    = true;
+    if (_bhSavedVisibility) {
+      _bhSavedVisibility.forEach(function(wasVisible, obj) { obj.visible = wasVisible; });
+      _bhSavedVisibility = null;
+    }
     bhRendererSettings = false;
     scene.traverse(function(o) { if (o.isMesh && o.material) o.material.needsUpdate = true; });
   }
