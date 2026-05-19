@@ -388,27 +388,6 @@ renderer.shadowMap.enabled = true;
 
 document.body.appendChild(renderer.domElement);
 
-// Pre-bake a dark warm PMREM environment for the black hole view.
-// Wrapped in try/catch — a PMREMGenerator failure at startup must NOT abort the
-// whole script (same pattern as the EffectComposer black-screen incident).
-// If it fails, bhEnvTexture stays null and the animate loop skips environment assignment.
-try {
-  const _pmrem = new THREE.PMREMGenerator(renderer);
-  _pmrem.compileCubemapShader();
-  const _envScene = new THREE.Scene();
-  _envScene.background = new THREE.Color(0x0a0604);
-  const _envSphere = new THREE.Mesh(
-    new THREE.SphereGeometry(1, 16, 8),
-    new THREE.MeshBasicMaterial({ color: 0x5a1800, side: THREE.BackSide })
-  );
-  _envScene.add(_envSphere);
-  bhEnvTexture = _pmrem.fromScene(_envScene).texture;
-  _pmrem.dispose();
-} catch (e) {
-  console.warn('PMREM environment generation failed, BH will render without IBL:', e);
-  bhEnvTexture = null;
-}
-
 // Controls
 const controls = new THREE.OrbitControls(camera, renderer.domElement);
 controls.enablePan = false;
@@ -482,7 +461,26 @@ let bhRendererSettings  = false; // tracks whether BH renderer settings are curr
 let bhOrigToneMapping   = null;
 let bhOrigExposure      = null;
 let bhOrigEnvironment   = null;
-let bhEnvTexture        = null; // PMREM environment for BH PBR rendering (set up after renderer)
+let bhEnvTexture        = null; // PMREM environment for BH PBR rendering
+
+// Pre-bake a dark warm PMREM environment for the black hole view.
+// Must be declared after bhEnvTexture (let TDZ) and after renderer creation.
+// Wrapped in try/catch so a PMREMGenerator failure cannot crash the whole script.
+try {
+  const _pmrem = new THREE.PMREMGenerator(renderer);
+  _pmrem.compileCubemapShader();
+  const _envScene = new THREE.Scene();
+  _envScene.background = new THREE.Color(0x0a0604);
+  const _envSphere = new THREE.Mesh(
+    new THREE.SphereGeometry(1, 16, 8),
+    new THREE.MeshBasicMaterial({ color: 0x5a1800, side: THREE.BackSide })
+  );
+  _envScene.add(_envSphere);
+  bhEnvTexture = _pmrem.fromScene(_envScene).texture;
+  _pmrem.dispose();
+} catch (e) {
+  console.warn('PMREM environment generation failed, BH will render without IBL:', e);
+}
 
 // Solar System marker lives in world space at origin (the Sun's actual scene position)
 const solarSystemMarker = new THREE.Group();
