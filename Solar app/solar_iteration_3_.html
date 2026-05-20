@@ -588,25 +588,6 @@ gltfLoader.load('need_some_space.glb', function(gltf) {
     // Counter-rotating around Z cancels that tilt so the ring lies in the galaxy plane.
     bhScene.rotation.z = -Math.atan2(0.3661, 0.9306); // ≈ -0.375 rad
 
-    // Identify event horizon: smallest non-transparent mesh (central black sphere)
-    bhScene.updateMatrixWorld(true);
-    var _bhInfos = [];
-    bhScene.traverse(function(c) {
-      if (!c.isMesh || !c.material) return;
-      var bb = new THREE.Box3().setFromObject(c);
-      var sz = bb.getSize(new THREE.Vector3());
-      _bhInfos.push({ mesh: c, vol: sz.x * sz.y * sz.z });
-    });
-    _bhInfos.sort(function(a, b) { return a.vol - b.vol; });
-    var _eventHorizon = null;
-    for (var _i = 0; _i < _bhInfos.length; _i++) {
-      var _im = _bhInfos[_i].mesh.material;
-      if (!_im.transparent && (_im.opacity === undefined || _im.opacity >= 0.99)) {
-        _eventHorizon = _bhInfos[_i].mesh;
-        break;
-      }
-    }
-
     var _bhVert = [
       'varying vec2 vUv;',
       'void main(){',
@@ -615,44 +596,45 @@ gltfLoader.load('need_some_space.glb', function(gltf) {
       '}'
     ].join('\n');
 
+    // pow(lum,3.0) steepens the curve so only the truly brightest pixels glow;
+    // dark/mid pixels stay very dark, creating sharp contrast at the inner ring.
     var _bhFrag = [
       'uniform sampler2D map;',
       'varying vec2 vUv;',
       'void main(){',
       '  vec4 tex=texture2D(map,vUv);',
       '  float lum=dot(tex.rgb,vec3(0.299,0.587,0.114));',
-      '  vec3 dark  =vec3(0.12,0.07,0.02);',
-      '  vec3 mid   =vec3(0.75,0.48,0.08);',
-      '  vec3 bright=vec3(0.95,0.65,0.15);',
-      '  vec3 remapped=mix(mix(dark,mid,lum),bright,pow(lum,2.0));',
-      '  vec3 color=mix(remapped,tex.rgb*1.2,0.12);',
-      '  color=clamp(color,0.0,0.72);',
+      '  float darkLum=pow(lum,3.0);',
+      '  vec3 dark  =vec3(0.015,0.008,0.002);',
+      '  vec3 mid   =vec3(0.32,0.18,0.025);',
+      '  vec3 bright=vec3(0.62,0.38,0.06);',
+      '  vec3 color=mix(dark,mix(mid,bright,darkLum),darkLum);',
+      '  color=clamp(color,0.0,0.58);',
       '  gl_FragColor=vec4(color,tex.a);',
       '}'
     ].join('\n');
 
-    var _bhHorizFrag = [
-      'void main(){',
-      '  gl_FragColor=vec4(0.01,0.005,0.005,1.0);',
-      '}'
-    ].join('\n');
-
+    // Classify each mesh by bounding box shape:
+    // sphere (event horizon) = all dims roughly equal; disk/ring = much wider than tall.
+    bhScene.updateMatrixWorld(true);
     bhScene.traverse(function(child) {
       if (!child.isMesh || !child.material) return;
       child.renderOrder = 3;
-      var origMat  = child.material;
-      var isTransp = origMat.transparent || (origMat.opacity !== undefined && origMat.opacity < 1.0);
+      var bb  = new THREE.Box3().setFromObject(child);
+      var sz  = bb.getSize(new THREE.Vector3());
+      var maxDim = Math.max(sz.x, sz.y, sz.z);
+      var minDim = Math.min(sz.x, sz.y, sz.z);
+      var isSphere = maxDim > 0 && (minDim / maxDim > 0.45);
 
-      if (child === _eventHorizon) {
-        child.layers.set(0);  // excluded from bloom — must never glow
-        child.material = new THREE.ShaderMaterial({
-          vertexShader:   _bhVert,
-          fragmentShader: _bhHorizFrag,
-          depthWrite: true,
-          depthTest:  true
-        });
+      if (isSphere) {
+        // Event horizon sphere — pure black, excluded from bloom entirely
+        child.layers.set(0);
+        child.material = new THREE.MeshBasicMaterial({ color: 0x000000 });
       } else {
-        child.layers.set(1);  // BH layer — eligible for bloom
+        // Disk / ring meshes — luminance-remap shader, eligible for bloom
+        child.layers.set(1);
+        var origMat  = child.material;
+        var isTransp = origMat.transparent || (origMat.opacity !== undefined && origMat.opacity < 1.0);
         var texMap = origMat.map || (function(){
           var d = new Uint8Array([128,128,128,255]);
           var t = new THREE.DataTexture(d, 1, 1, THREE.RGBAFormat);
@@ -677,9 +659,9 @@ gltfLoader.load('need_some_space.glb', function(gltf) {
     bloomComposer.addPass(new THREE.RenderPass(scene, camera));
     bloomComposer.addPass(new THREE.UnrealBloomPass(
       new THREE.Vector2(window.innerWidth, window.innerHeight),
-      0.6,   // strength
-      0.4,   // radius
-      0.0    // threshold
+      0.5,   // strength
+      0.12,  // radius
+      0.18   // threshold
     ));
 
     // finalComposer: full scene + additive bloom blend
@@ -3052,7 +3034,7 @@ function animate(){
       '| bloom radius:',   _bp ? _bp.radius   : 'n/a',
       '| bloom threshold:',_bp ? _bp.threshold : 'n/a');
     renderer.toneMapping         = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 0.7;
+    renderer.toneMappingExposure = 0.45;
     renderer.outputEncoding      = THREE.sRGBEncoding;
     _bhSavedVisibility = new Map();
     const _bhTree = new Set();
