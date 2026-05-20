@@ -635,25 +635,23 @@ gltfLoader.load('need_some_space.glb', function(gltf) {
       child.material.depthWrite = false;
       var n = child.name;
       if (n.includes('light1')) {
-        // Innermost — very bright so it reads as the hot corona touching the sphere
+        // Innermost ring — bright but defined, not a wash; subtle bloom only
         child.renderOrder = 3;
         child.material.emissiveMap       = null;
-        child.material.emissive          = new THREE.Color(1.0, 0.80, 0.35);
-        child.material.emissiveIntensity = 2.2;
+        child.material.emissive          = new THREE.Color(1.0, 0.78, 0.30);
+        child.material.emissiveIntensity = 1.1;
         child.layers.set(1);
       } else if (n.includes('light2')) {
-        // Second ring — clearly dimmer than light1, warmer/deeper orange
         child.renderOrder = 3;
         child.material.emissiveMap       = null;
         child.material.emissive          = new THREE.Color(1.0, 0.58, 0.10);
-        child.material.emissiveIntensity = 0.85;
+        child.material.emissiveIntensity = 0.52;
         child.layers.set(1);
       } else if (n.includes('light3')) {
-        // Third ring — noticeably dimmer again, darker amber fading outward
         child.renderOrder = 3;
         child.material.emissiveMap       = null;
         child.material.emissive          = new THREE.Color(0.85, 0.40, 0.04);
-        child.material.emissiveIntensity = 0.32;
+        child.material.emissiveIntensity = 0.24;
         child.layers.set(1);
       } else if (n.includes('ring2')) {
         // Keep original GLTF material (glossiness=1.0, specular=0.6) so the disc-level
@@ -697,16 +695,15 @@ gltfLoader.load('need_some_space.glb', function(gltf) {
             'void main(){',
             '  float nDotV   = abs(dot(normalize(vNormal), normalize(vViewPos)));',
             '  float edge    = 1.0 - nDotV;',
-            // Very tight specular rim — warm amber where disc light grazes the glass surface
-            '  float rim     = pow(edge, 3.2);',
-            // Faint wide fill — barely-there depth so surface reads as glass not void
-            '  float fill    = pow(edge, 0.8) * 0.045;',
-            // Deep dark blue-grey glass base (subtle violet tint = polished glass colour)
-            '  vec3 dark     = vec3(0.018, 0.014, 0.028);',
-            // Warm amber disc reflection at grazing angle — luminance ~0.28 (below bloom)
-            '  vec3 rimCol   = vec3(0.52, 0.28, 0.055);',
-            // Very faint warm fill
-            '  vec3 fillCol  = vec3(0.10, 0.055, 0.01);',
+            // Tight rim — matches light1 ring colour so sphere edge "dissolves" into disc
+            '  float rim     = pow(edge, 2.8);',
+            // Very faint fill — just enough surface depth to read as glass, not void
+            '  float fill    = pow(edge, 0.7) * 0.03;',
+            // Near-black glass base
+            '  vec3 dark     = vec3(0.012, 0.010, 0.018);',
+            // Rim exactly matches inner ring warmth — glass transparency illusion
+            '  vec3 rimCol   = vec3(0.46, 0.24, 0.045);',
+            '  vec3 fillCol  = vec3(0.08, 0.04, 0.006);',
             '  gl_FragColor  = vec4(dark + fillCol * fill + rimCol * rim, 1.0);',
             '}'
           ].join('\n'),
