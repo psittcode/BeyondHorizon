@@ -592,11 +592,10 @@ gltfLoader.load('need_some_space.glb', function(gltf) {
     // Use the GLB's own materials — the emissive textures contain the correct warm colors.
     // Set emissiveIntensity per mesh name to restore KHR_materials_emissive_strength
     // values that Three.js r128 does not support natively.
-    // Replicate Sketchfab's HDR warm-environment look without an actual env map:
-    // - blackoutside diffuse is GREYSCALE → tint it warm amber via emissive
-    // - ring has ring_diffuse.png (actual color map) → use as emissive map
-    // - ring2 diffuse is ring_specularGlossiness.png (grey/metallic) → tint warm amber
-    // - All glow meshes on layer 1 so bloom captures them
+    // All emissive textures are grey or greenish-teal — their colour comes entirely from
+    // Sketchfab's warm HDR environment, which we replicate by setting an explicit warm
+    // amber `emissive` Color.  The emissive map then acts as a luminance/shape mask;
+    // the emissive Color provides the hue.
     // ring2 check must come before ring (ring2 name contains "ring").
     bhScene.traverse(function(child) {
       if (!child.isMesh || !child.material) return;
@@ -604,34 +603,37 @@ gltfLoader.load('need_some_space.glb', function(gltf) {
       child.material.depthWrite = false;
       var n = child.name;
       if (n.includes('light1')) {
-        child.material.emissiveIntensity = 1.0;
+        // innermost brightest ring — warm white-hot centre fading to amber
+        child.material.emissive          = new THREE.Color(1.0, 0.75, 0.3);
+        child.material.emissiveIntensity = 1.5;
         child.layers.set(1);
       } else if (n.includes('light2')) {
-        child.material.emissiveIntensity = 0.8;
-        child.layers.set(1);
-      } else if (n.includes('light3')) {
-        child.material.emissiveIntensity = 0.4;
-        child.layers.set(1);
-      } else if (n.includes('ring2')) {
-        // ring2 diffuse is actually the specGloss map (grey) — override with warm amber tint
-        child.material.emissive          = new THREE.Color(0.8, 0.45, 0.05);
-        child.material.emissiveIntensity = 0.25;
-        child.layers.set(1);
-      } else if (n.includes('ring')) {
-        // ring has ring_diffuse.png — actual warm colors; use as emissive
-        if (child.material.map) {
-          child.material.emissiveMap = child.material.map;
-          child.material.emissive    = new THREE.Color(1, 1, 1);
-        }
+        child.material.emissive          = new THREE.Color(1.0, 0.65, 0.15);
         child.material.emissiveIntensity = 0.9;
         child.layers.set(1);
-      } else if (n.includes('blackoutside')) {
-        // diffuse is greyscale — Sketchfab's warm env tinted this golden; replicate that
-        child.material.emissive          = new THREE.Color(0.65, 0.38, 0.04);
+      } else if (n.includes('light3')) {
+        child.material.emissive          = new THREE.Color(0.9, 0.5, 0.05);
         child.material.emissiveIntensity = 0.5;
         child.layers.set(1);
+      } else if (n.includes('ring2')) {
+        // secondary particle rings — very faint warm amber shimmer
+        child.material.emissive          = new THREE.Color(0.8, 0.45, 0.05);
+        child.material.emissiveIntensity = 0.3;
+        child.layers.set(1);
+      } else if (n.includes('ring')) {
+        // main accretion ring — grey texture used as shape mask, warm amber tint
+        if (child.material.map) child.material.emissiveMap = child.material.map;
+        child.material.emissive          = new THREE.Color(1.0, 0.70, 0.2);
+        child.material.emissiveIntensity = 1.0;
+        child.layers.set(1);
+      } else if (n.includes('blackoutside')) {
+        // outer disc — greyscale texture, tinted deep amber
+        if (child.material.map) child.material.emissiveMap = child.material.map;
+        child.material.emissive          = new THREE.Color(0.65, 0.38, 0.04);
+        child.material.emissiveIntensity = 0.6;
+        child.layers.set(1);
       } else if (n.includes('center')) {
-        child.material.opacity    = 0.888;
+        child.material.opacity     = 0.888;
         child.material.transparent = true;
         child.layers.set(0);
       } else {
