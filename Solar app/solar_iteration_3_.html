@@ -639,12 +639,12 @@ gltfLoader.load('need_some_space.glb', function(gltf) {
 
     bhScene.traverse(function(child) {
       if (!child.isMesh || !child.material) return;
-      child.layers.set(1);
       child.renderOrder = 3;
       var origMat  = child.material;
       var isTransp = origMat.transparent || (origMat.opacity !== undefined && origMat.opacity < 1.0);
 
       if (child === _eventHorizon) {
+        child.layers.set(0);  // excluded from bloom — must never glow
         child.material = new THREE.ShaderMaterial({
           vertexShader:   _bhVert,
           fragmentShader: _bhHorizFrag,
@@ -652,6 +652,7 @@ gltfLoader.load('need_some_space.glb', function(gltf) {
           depthTest:  true
         });
       } else {
+        child.layers.set(1);  // BH layer — eligible for bloom
         var texMap = origMat.map || (function(){
           var d = new Uint8Array([128,128,128,255]);
           var t = new THREE.DataTexture(d, 1, 1, THREE.RGBAFormat);
@@ -677,8 +678,8 @@ gltfLoader.load('need_some_space.glb', function(gltf) {
     bloomComposer.addPass(new THREE.UnrealBloomPass(
       new THREE.Vector2(window.innerWidth, window.innerHeight),
       0.8,   // strength
-      0.25,  // radius
-      0.05   // threshold
+      0.12,  // radius
+      0.2    // threshold
     ));
 
     // finalComposer: full scene + additive bloom blend
@@ -3046,7 +3047,7 @@ function animate(){
     bhOrigExposure       = renderer.toneMappingExposure;
     bhOrigOutputEncoding = renderer.outputEncoding;
     renderer.toneMapping         = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 0.55;
+    renderer.toneMappingExposure = 0.38;
     renderer.outputEncoding      = THREE.sRGBEncoding;
     _bhSavedVisibility = new Map();
     const _bhTree = new Set();
