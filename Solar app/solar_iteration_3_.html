@@ -687,9 +687,9 @@ gltfLoader.load('need_some_space.glb', function(gltf) {
     bloomComposer.addPass(new THREE.RenderPass(scene, camera));
     bloomComposer.addPass(new THREE.UnrealBloomPass(
       new THREE.Vector2(window.innerWidth, window.innerHeight),
-      0.12,  // strength — subtle, soft halo only
-      0.5,   // radius — wider spread for diffuse glow
-      0.78   // threshold — only absolute hottest pixels bloom
+      0.6,   // strength
+      0.4,   // radius
+      0.0    // threshold
     ));
 
     // Wrapper group spins around world Y; bhScene sits inside with the corrective
@@ -3039,8 +3039,8 @@ function animate(){
     ambientLight.intensity = 0;
     sunLight.intensity     = 0;
     scene.environment      = null;
-    renderer.toneMapping         = THREE.LinearToneMapping;
-    renderer.toneMappingExposure = 0.35;
+    renderer.toneMapping         = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 0.7;
     scene.add(bhLight);
     // Save visibility of every scene object, then hide all except the BH model tree
     _bhSavedVisibility = new Map();
