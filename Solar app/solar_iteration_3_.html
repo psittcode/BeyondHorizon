@@ -408,7 +408,6 @@ sunLight.position.set(0, 0, 0);
 scene.add(sunLight);
 
 // Warm ambient light added only during the black hole view — not in scene by default
-const bhLight = new THREE.AmbientLight(0xc8a050, 2.5);
 
 const textureLoader = new THREE.TextureLoader();
 const jupiterTexture = textureLoader.load("jupiter.jpg");
@@ -465,17 +464,10 @@ let blackHoleModel      = null;
 let bhTransitionT       = 0;     // 0 = normal galaxy view, 1 = full black hole environment
 let BH_CLOSE_DIST       = 0;     // camera-to-core distance at which transition reaches 100%
 let BH_FAR_DIST         = 0;     // camera-to-core distance at which transition begins
-let bhRendererSettings  = false; // tracks whether BH renderer settings are currently active
-// Saved renderer / scene state — captured just before the first BH transition
-// so we restore exact original values when zooming back out.
-let bhOrigToneMapping        = null;
-let bhOrigExposure           = null;
-let bhOrigEnvironment        = null;
-let bhOrigAmbientIntensity   = 0;
-let bhOrigSunIntensity       = 0;
-let bloomComposer            = null; // renders layer-1 (BH) only with UnrealBloom → texture
-let finalComposer            = null; // renders full scene, additively blends bloom texture
-let _bhSavedVisibility       = null; // Map<Object3D, boolean> — saved on BH enter, restored on exit
+let bhRendererSettings  = false; // true while BH is visible — gates visibility save/restore
+let bloomComposer       = null;  // unused; kept so resize handler null-check still works
+let finalComposer       = null;
+let _bhSavedVisibility  = null;  // Map<Object3D, boolean> — saved on BH enter, restored on exit
 
 // Solar System marker lives in world space at origin (the Sun's actual scene position)
 const solarSystemMarker = new THREE.Group();
@@ -593,104 +585,7 @@ gltfLoader.load('need_some_space.glb', function(gltf) {
     // Counter-rotating around Z cancels that tilt so the ring lies in the galaxy plane.
     bhScene.rotation.z = -Math.atan2(0.3661, 0.9306); // ≈ -0.375 rad
 
-    // Identify event horizon: the smallest non-transparent mesh (the central black sphere).
-    bhScene.updateMatrixWorld(true);
-    var _bhInfos = [];
-    bhScene.traverse(function(c) {
-      if (!c.isMesh || !c.material) return;
-      var bb = new THREE.Box3().setFromObject(c);
-      var sz = bb.getSize(new THREE.Vector3());
-      _bhInfos.push({ mesh: c, vol: sz.x * sz.y * sz.z });
-    });
-    _bhInfos.sort(function(a, b) { return a.vol - b.vol; });
-    var _eventHorizon = null;
-    for (var _i = 0; _i < _bhInfos.length; _i++) {
-      var _mat = _bhInfos[_i].mesh.material;
-      if (!_mat.transparent && (_mat.opacity === undefined || _mat.opacity >= 0.99)) {
-        _eventHorizon = _bhInfos[_i].mesh;
-        break;
-      }
-    }
-
-    // Shared vertex shader
-    var _bhVert = [
-      'varying vec2 vUv;',
-      'void main(){',
-      '  vUv=uv;',
-      '  gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);',
-      '}'
-    ].join('\n');
-
-    // Luminance-remap fragment: maps texture luminance → dark brown→mid gold→bright warm-white
-    // 10% original texture blended in for subtle nuance without rainbow artefacts
-    var _bhFrag = [
-      'uniform sampler2D map;',
-      'uniform float bhOpacity;',
-      'varying vec2 vUv;',
-      'void main(){',
-      '  vec4 tex=texture2D(map,vUv);',
-      '  float lum=dot(tex.rgb,vec3(0.299,0.587,0.114));',
-      '  vec3 dark  =vec3(0.12,0.07,0.02);',
-      '  vec3 mid   =vec3(0.75,0.48,0.08);',
-      '  vec3 bright=vec3(0.62,0.55,0.42);',
-      '  vec3 remap=lum<0.5?mix(dark,mid,lum*2.0):mix(mid,bright,(lum-0.5)*2.0);',
-      '  vec3 color=mix(remap,tex.rgb*1.5,0.10);',
-      '  gl_FragColor=vec4(color,tex.a*bhOpacity);',
-      '}'
-    ].join('\n');
-
-    // Event horizon: deep brown-black, no texture lookup
-    var _bhHorizFrag = [
-      'void main(){',
-      '  gl_FragColor=vec4(0.02,0.01,0.01,1.0);',
-      '}'
-    ].join('\n');
-
-    // Apply shaders; transparent ring layers get depthTest=false to stop Z-fighting
-    bhScene.traverse(function(child) {
-      if (!child.isMesh || !child.material) return;
-      child.renderOrder = 3;
-      var origMat  = child.material;
-      var isTransp = origMat.transparent || (origMat.opacity !== undefined && origMat.opacity < 1.0);
-
-      if (child === _eventHorizon) {
-        child.material = new THREE.ShaderMaterial({
-          vertexShader:   _bhVert,
-          fragmentShader: _bhHorizFrag,
-          depthWrite: true,
-          depthTest:  true
-        });
-      } else {
-        var texMap = origMat.map || (function(){
-          var d = new Uint8Array([128,128,128,255]);
-          var t = new THREE.DataTexture(d, 1, 1, THREE.RGBAFormat);
-          t.needsUpdate = true;
-          return t;
-        })();
-        child.material = new THREE.ShaderMaterial({
-          uniforms: {
-            map:       { value: texMap },
-            bhOpacity: { value: origMat.opacity !== undefined ? origMat.opacity : 1.0 }
-          },
-          vertexShader:   _bhVert,
-          fragmentShader: _bhFrag,
-          transparent: isTransp,
-          depthWrite:  !isTransp,
-          depthTest:   !isTransp,
-          side: origMat.side !== undefined ? origMat.side : THREE.FrontSide
-        });
-      }
-    });
-
-    // Tight concentrated bloom: strength 1.0, radius 0.2 — only brightest inner pixels
-    bloomComposer = new THREE.EffectComposer(renderer);
-    bloomComposer.addPass(new THREE.RenderPass(scene, camera));
-    bloomComposer.addPass(new THREE.UnrealBloomPass(
-      new THREE.Vector2(window.innerWidth, window.innerHeight),
-      0.6,   // strength
-      0.4,   // radius
-      0.0    // threshold
-    ));
+    // No material overrides — render exactly as the GLTF intended.
 
     // Wrapper group spins around world Y; bhScene sits inside with the corrective
     // Z tilt so the ring stays flat in the galaxy plane while rotating.
@@ -3030,42 +2925,22 @@ function animate(){
   // and restore defaults when it's gone.  Only flip once per boundary crossing so
   // shaders are not rebuilt on every frame.
   if (bhTransitionT > 0.01 && !bhRendererSettings) {
-    bhOrigToneMapping      = renderer.toneMapping;
-    bhOrigExposure         = renderer.toneMappingExposure;
-    bhOrigEnvironment      = scene.environment;
-    bhOrigAmbientIntensity = ambientLight.intensity;
-    bhOrigSunIntensity     = sunLight.intensity;
-    // Zero lights so only self-emissive parts of the GLB glow; dark disk stays dark.
-    ambientLight.intensity = 0;
-    sunLight.intensity     = 0;
-    scene.environment      = null;
-    renderer.toneMapping         = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 0.7;
-    scene.add(bhLight);
-    // Save visibility of every scene object, then hide all except the BH model tree
+    // Hide everything except the BH model so it appears against the dark clear colour
     _bhSavedVisibility = new Map();
     const _bhTree = new Set();
     if (blackHoleModel) blackHoleModel.traverse(function(o) { _bhTree.add(o); });
     scene.traverse(function(obj) {
-      if (obj === scene) return; // never hide the scene root — Three.js culls all children if scene.visible=false
+      if (obj === scene) return;
       _bhSavedVisibility.set(obj, obj.visible);
       if (!_bhTree.has(obj)) obj.visible = false;
     });
     bhRendererSettings = true;
-    scene.traverse(function(o) { if (o.isMesh && o.material) o.material.needsUpdate = true; });
   } else if (bhTransitionT <= 0.01 && bhRendererSettings) {
-    scene.remove(bhLight);
-    ambientLight.intensity = bhOrigAmbientIntensity;
-    sunLight.intensity     = bhOrigSunIntensity;
-    renderer.toneMapping         = bhOrigToneMapping;
-    renderer.toneMappingExposure = bhOrigExposure;
-    scene.environment            = bhOrigEnvironment;
     if (_bhSavedVisibility) {
       _bhSavedVisibility.forEach(function(wasVisible, obj) { obj.visible = wasVisible; });
       _bhSavedVisibility = null;
     }
     bhRendererSettings = false;
-    scene.traverse(function(o) { if (o.isMesh && o.material) o.material.needsUpdate = true; });
   }
   // ── End black hole transition ─────────────────────────────────────────────
 
@@ -3348,11 +3223,7 @@ function animate(){
     controls.update();
   }
 
-  if (bhRendererSettings && bloomComposer) {
-    bloomComposer.render();
-  } else {
-    renderer.render(scene, camera);
-  }
+  renderer.render(scene, camera);
 }
 animate();
 
