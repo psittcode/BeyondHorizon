@@ -664,32 +664,32 @@ gltfLoader.load('need_some_space.glb', function(gltf) {
 
       if (n.includes('light1') || n.includes('light2') || n.includes('light3')) {
         var emTex   = child.material.emissiveMap || child.material.map || null;
-        // light1: cool-white (slight blue) — dominant innermost, overexposed white read
-        // light2/3: progressively warmer but low intensity so outer ring additive doesn't flood inner
-        var ringCol = n.includes('light1') ? new THREE.Color(0.92, 0.96, 1.00)
-                    : n.includes('light2') ? new THREE.Color(1.00, 0.88, 0.74)
-                    :                        new THREE.Color(1.00, 0.70, 0.44);
-        var intens  = n.includes('light1') ? 1.50
-                    : n.includes('light2') ? 0.38
-                    :                        0.22;
-        var lumPow  = n.includes('light1') ? 2.8 : 2.4;
+        // light1: pure white at very high intensity — floods inner zone white, overpowering all warm bleed
+        // light2: salmon-pink (matches reference bright inner band color)
+        // light3: orange-gold transition band
+        var ringCol = n.includes('light1') ? new THREE.Color(1.00, 1.00, 1.00)
+                    : n.includes('light2') ? new THREE.Color(1.00, 0.78, 0.70)
+                    :                        new THREE.Color(1.00, 0.60, 0.42);
+        var intens  = n.includes('light1') ? 3.50
+                    : n.includes('light2') ? 1.00
+                    :                        0.55;
+        var lumPow  = n.includes('light1') ? 2.5 : 2.2;
         child.renderOrder = 3;
         child.material = _makeLumMat(emTex, ringCol, intens, lumPow, true);
         child.layers.set(1);
       } else if (n.includes('ring2')) {
-        // Particle ring — warm amber specks, reduced to not flood inner zone
         child.renderOrder = 3;
         child.material.emissive          = new THREE.Color(0.85, 0.58, 0.18);
         child.material.emissiveIntensity = 0.20;
         child.layers.set(1);
       } else if (n.includes('ring')) {
-        // Outer disc — golden, pulled back so warm bleed into inner zone is minimal
+        // Outer disc — warm golden
         var rTex = child.material.map || null;
         child.renderOrder = 3;
         child.material = _makeLumMat(rTex, new THREE.Color(0.90, 0.66, 0.26), 0.32, 1.8, true);
         child.layers.set(1);
       } else if (n.includes('blackoutside')) {
-        // Dark outer fringe — amber-brown, low intensity
+        // Dark outer fringe
         var boTex = child.material.map || null;
         child.renderOrder = 3;
         child.material = _makeLumMat(boTex, new THREE.Color(0.70, 0.40, 0.10), 0.22, 1.8, true);
