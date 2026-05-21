@@ -741,9 +741,15 @@ gltfLoader.load('need_some_space.glb', function(gltf) {
             '  gl_FragColor = vec4(mix(dark, rim, fresnel), 1.0);',
             '}'
           ].join('\n'),
-          transparent: false,
-          depthWrite:  true,
-          depthTest:   true,
+          // transparent:true puts sphere in the transparent render queue.
+          // With NormalBlending + alpha=1.0 the sphere still renders fully opaque,
+          // but because it's now in the same queue as the rings it respects
+          // renderOrder:10 and draws AFTER the rings (renderOrder:3) overwriting
+          // their additive glow inside the sphere's silhouette.
+          transparent: true,
+          blending:    THREE.NormalBlending,
+          depthWrite:  false,
+          depthTest:   false,
           side: THREE.FrontSide
         });
         child.layers.set(0);
