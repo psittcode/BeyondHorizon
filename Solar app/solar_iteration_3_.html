@@ -732,14 +732,11 @@ gltfLoader.load('need_some_space.glb', function(gltf) {
             'void main(){',
             '  float nDotV   = abs(dot(normalize(vNormal), normalize(vViewPos)));',
             '  float edge    = 1.0 - nDotV;',
-            '  float fresnel = pow(edge, 2.2);',
-            // Dark warm-brown obsidian center, crisp blue-white rim (gravitational blue-shift)
-            '  vec3 dark = vec3(0.025, 0.012, 0.004);',  // very dark warm brown
-            '  vec3 mid  = vec3(0.06,  0.07,  0.18);',   // subtle blue-grey haze mid-edge
-            '  vec3 rim  = vec3(0.50,  0.68,  1.00);',   // bright blue-white rim glow
-            '  float t   = smoothstep(0.0, 1.0, edge);',
-            '  vec3 col  = mix(mix(dark, mid, t * 0.55), rim, fresnel);',
-            '  gl_FragColor = vec4(col, 1.0);',
+            // Very tight Fresnel — blue glow only at extreme grazing angles, disappears head-on
+            '  float fresnel = pow(edge, 4.5);',
+            '  vec3 dark = vec3(0.006, 0.004, 0.002);',  // near-pure black, faint warm hint
+            '  vec3 rim  = vec3(0.12, 0.20, 0.48);',     // dim blue only — NOT white
+            '  gl_FragColor = vec4(mix(dark, rim, fresnel), 1.0);',
             '}'
           ].join('\n'),
           transparent:        false,
@@ -3106,7 +3103,7 @@ function animate(){
   // Switch renderer to BH-optimised settings when the black hole becomes visible,
   // and restore defaults when it's gone.  Only flip once per boundary crossing so
   // shaders are not rebuilt on every frame.
-  if (bhTransitionT > 0.01 && !bhRendererSettings) {
+  if (bhTransitionT > 0.06 && !bhRendererSettings) {
     bhOrigToneMapping    = renderer.toneMapping;
     bhOrigExposure       = renderer.toneMappingExposure;
     bhOrigOutputEncoding = renderer.outputEncoding;
@@ -3127,7 +3124,7 @@ function animate(){
     if (bhPointLight2) bhPointLight2.visible = true;
     if (bhPointLight3) bhPointLight3.visible = true;
     bhRendererSettings = true;
-  } else if (bhTransitionT <= 0.01 && bhRendererSettings) {
+  } else if (bhTransitionT <= 0.03 && bhRendererSettings) {
     renderer.toneMapping         = bhOrigToneMapping;
     renderer.toneMappingExposure = bhOrigExposure;
     renderer.outputEncoding      = bhOrigOutputEncoding;
