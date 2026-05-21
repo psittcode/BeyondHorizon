@@ -665,12 +665,12 @@ gltfLoader.load('need_some_space.glb', function(gltf) {
       if (n.includes('light1') || n.includes('light2') || n.includes('light3')) {
         // Reference: inner ring = near-white (overexposed), stepping out through cream → golden
         var emTex   = child.material.emissiveMap || child.material.map || null;
-        var ringCol = n.includes('light1') ? new THREE.Color(1.0, 0.96, 0.88)   // near-white
-                    : n.includes('light2') ? new THREE.Color(1.0, 0.82, 0.55)   // warm cream
-                    :                        new THREE.Color(0.92, 0.62, 0.22);  // golden amber
+        var ringCol = n.includes('light1') ? new THREE.Color(1.0, 0.97, 0.90)   // near-white
+                    : n.includes('light2') ? new THREE.Color(1.0, 0.78, 0.50)   // warm cream
+                    :                        new THREE.Color(0.88, 0.55, 0.18);  // golden amber
         var intens  = n.includes('light1') ? 1.65
-                    : n.includes('light2') ? 0.90
-                    :                        0.50;
+                    : n.includes('light2') ? 0.55   // cut to reduce inner-zone yellow buildup
+                    :                        0.32;   // cut to reduce inner-zone yellow buildup
         var lumPow  = n.includes('light1') ? 1.6 : 1.4;
         child.renderOrder = 3;
         child.material = _makeLumMat(emTex, ringCol, intens, lumPow, true);
