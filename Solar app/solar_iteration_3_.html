@@ -738,16 +738,17 @@ gltfLoader.load('need_some_space.glb', function(gltf) {
             // 1. Wide soft haze (power ~2.2) gives the dome shape — dark centre fades
             //    to blue across the whole hemisphere, matching the reference's brown-to-blue.
             // 2. Tight bright rim (power ~4.5) is the photon-sphere blue flash at the edge.
-            '  float haze    = pow(edge, 2.2);',
-            '  float rimFres = pow(edge, 4.5);',
-            // Core: very dark warm brown (dim ring-light ambient, just barely not pure black)
-            '  vec3 coreCol  = vec3(0.032, 0.016, 0.005);',
-            // Mid atmospheric haze: richer blue — clearly visible across the dome
-            '  vec3 hazeCol  = vec3(0.08, 0.20, 0.62);',
-            // Rim highlight: vivid blue-white photon ring
-            '  vec3 rimCol   = vec3(0.50, 0.70, 1.00);',
-            '  vec3 col = mix(coreCol, hazeCol, haze * 0.92);',
-            '  col = mix(col, rimCol, rimFres * 0.95);',
+            // Lower haze power → blue floods across the whole dome, not just the edge
+            '  float haze    = pow(edge, 1.5);',
+            '  float rimFres = pow(edge, 4.0);',
+            // Core: dark warm-brown, very small centre spot only
+            '  vec3 coreCol  = vec3(0.030, 0.014, 0.004);',
+            // Atmospheric haze: vivid deep blue fills most of the sphere face
+            '  vec3 hazeCol  = vec3(0.14, 0.32, 0.88);',
+            // Rim: bright blue-white photon ring
+            '  vec3 rimCol   = vec3(0.65, 0.82, 1.00);',
+            '  vec3 col = mix(coreCol, hazeCol, haze * 0.95);',
+            '  col = mix(col, rimCol, rimFres * 0.98);',
             '  gl_FragColor  = vec4(col, 1.0);',
             '}'
           ].join('\n'),
