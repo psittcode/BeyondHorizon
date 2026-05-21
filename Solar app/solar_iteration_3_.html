@@ -676,21 +676,22 @@ gltfLoader.load('need_some_space.glb', function(gltf) {
         child.material = _makeLumMat(emTex, ringCol, intens, lumPow, true);
         child.layers.set(1);
       } else if (n.includes('ring2')) {
+        // Particle ring — small bright amber specks visible in outer disc
         child.renderOrder = 3;
-        child.material.emissive          = new THREE.Color(0.65, 0.35, 0.08);
-        child.material.emissiveIntensity = 0.10;
+        child.material.emissive          = new THREE.Color(0.90, 0.62, 0.20);
+        child.material.emissiveIntensity = 0.35;
         child.layers.set(1);
       } else if (n.includes('ring')) {
-        // Restore texture detail via luminance mask with warm-neutral color — no yellow bleed
+        // Outer disc — warm golden, clearly visible with texture band detail
         var rTex = child.material.map || null;
         child.renderOrder = 3;
-        child.material = _makeLumMat(rTex, new THREE.Color(1.0, 0.88, 0.65), 0.28, 1.2, true);
+        child.material = _makeLumMat(rTex, new THREE.Color(1.0, 0.80, 0.45), 0.58, 1.1, true);
         child.layers.set(1);
       } else if (n.includes('blackoutside')) {
+        // Dark outer fringe — still visible as warm amber-brown band
         var boTex = child.material.map || null;
         child.renderOrder = 3;
-        child.material = _makeLumMat(boTex, new THREE.Color(0.55, 0.28, 0.07), 0.18, 1.2, true);
-        child.layers.set(1);
+        child.material = _makeLumMat(boTex, new THREE.Color(0.80, 0.50, 0.14), 0.35, 1.1, true);
         child.layers.set(1);
       } else if (n.includes('center')) {
         // Sphere renders LAST (renderOrder:10) so it paints over ring additive blending
