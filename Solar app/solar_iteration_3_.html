@@ -642,14 +642,16 @@ gltfLoader.load('need_some_space.glb', function(gltf) {
         //   everywhere the texture is dark, creating visible distinct ring bands
         // - Color gradient: white-yellow innermost → orange → dark amber outward
         var emTex = child.material.emissiveMap || child.material.map || null;
-        var warmCol = n.includes('light1') ? new THREE.Color(1.0, 0.95, 0.75)
-                    : n.includes('light2') ? new THREE.Color(1.0, 0.50, 0.08)
-                    :                        new THREE.Color(0.90, 0.32, 0.03);
-        var intens  = n.includes('light1') ? 1.4
-                    : n.includes('light2') ? 0.85
-                    :                        0.45;
+        // Colors matched to Sketchfab reference: light1 = hot white-cream near sphere,
+        // light2 = warm golden, light3 = deep orange-amber further out
+        var warmCol = n.includes('light1') ? new THREE.Color(1.0, 0.97, 0.88)
+                    : n.includes('light2') ? new THREE.Color(1.0, 0.72, 0.28)
+                    :                        new THREE.Color(1.0, 0.45, 0.06);
+        var intens  = n.includes('light1') ? 1.80
+                    : n.includes('light2') ? 1.05
+                    :                        0.58;
         // Power: higher = sharper ring edges, less bleed into dark areas
-        var lumPow  = n.includes('light1') ? 1.8 : 1.5;
+        var lumPow  = n.includes('light1') ? 1.6 : 1.4;
         child.renderOrder = 3;
         child.material = new THREE.ShaderMaterial({
           uniforms: {
@@ -698,20 +700,20 @@ gltfLoader.load('need_some_space.glb', function(gltf) {
       } else if (n.includes('ring')) {
         child.renderOrder = 3;
         if (child.material.map) child.material.emissiveMap = child.material.map;
-        child.material.emissive          = new THREE.Color(1.0, 0.68, 0.18);
-        child.material.emissiveIntensity = 0.28;
+        child.material.emissive          = new THREE.Color(1.0, 0.72, 0.20);  // warm gold
+        child.material.emissiveIntensity = 0.32;
         child.layers.set(1);
       } else if (n.includes('blackoutside')) {
         child.renderOrder = 3;
         if (child.material.map) child.material.emissiveMap = child.material.map;
-        child.material.emissive          = new THREE.Color(0.62, 0.34, 0.04);
-        child.material.emissiveIntensity = 0.28;
+        child.material.emissive          = new THREE.Color(0.70, 0.38, 0.06);  // darker amber
+        child.material.emissiveIntensity = 0.22;
         child.layers.set(1);
       } else if (n.includes('center')) {
-        // Opaque Fresnel occluder — transparent:false + depthWrite:true so it writes to
-        // the depth buffer and properly blocks ring meshes that pass behind the sphere.
-        // renderOrder:0 puts it in the opaque pass before all emissive rings (renderOrder:3).
-        child.renderOrder = 0;
+        // Opaque Fresnel occluder — rendered at renderOrder:-1 so it ALWAYS draws before
+        // any ring geometry. polygonOffset pushes it slightly closer to camera in depth
+        // space to eliminate Z-fighting with coplanar disc faces (the flicker bug).
+        child.renderOrder = -1;
         child.material = new THREE.ShaderMaterial({
           uniforms: {},
           vertexShader: [
@@ -730,20 +732,22 @@ gltfLoader.load('need_some_space.glb', function(gltf) {
             'void main(){',
             '  float nDotV   = abs(dot(normalize(vNormal), normalize(vViewPos)));',
             '  float edge    = 1.0 - nDotV;',
-            '  float fresnel = pow(edge, 2.5);',
-            // Deep dark void center with blue-tinted glass rim — matches Sketchfab reference
-            '  vec3 dark = vec3(0.005, 0.005, 0.010);', // near-black with slight blue tint
-            '  vec3 rim  = vec3(0.45, 0.60, 1.00);',   // bright blue-white glow at grazing angle
-            // Subtle inner blue haze: darkest at center, faint blue-grey approaching rim
-            '  vec3 mid  = vec3(0.02, 0.03, 0.08);',
+            '  float fresnel = pow(edge, 2.2);',
+            // Dark warm-brown obsidian center, crisp blue-white rim (gravitational blue-shift)
+            '  vec3 dark = vec3(0.025, 0.012, 0.004);',  // very dark warm brown
+            '  vec3 mid  = vec3(0.06,  0.07,  0.18);',   // subtle blue-grey haze mid-edge
+            '  vec3 rim  = vec3(0.50,  0.68,  1.00);',   // bright blue-white rim glow
             '  float t   = smoothstep(0.0, 1.0, edge);',
-            '  vec3 col  = mix(mix(dark, mid, t * 0.6), rim, fresnel);',
+            '  vec3 col  = mix(mix(dark, mid, t * 0.55), rim, fresnel);',
             '  gl_FragColor = vec4(col, 1.0);',
             '}'
           ].join('\n'),
-          transparent: false,
-          depthWrite:  true,
-          depthTest:   true,
+          transparent:        false,
+          depthWrite:         true,
+          depthTest:          true,
+          polygonOffset:      true,
+          polygonOffsetFactor: -2,
+          polygonOffsetUnits: -2,
           side: THREE.FrontSide
         });
         child.layers.set(0);
