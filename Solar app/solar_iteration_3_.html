@@ -665,12 +665,14 @@ gltfLoader.load('need_some_space.glb', function(gltf) {
       if (n.includes('light1') || n.includes('light2') || n.includes('light3')) {
         // Reference: inner ring = near-white (overexposed), stepping out through cream → golden
         var emTex   = child.material.emissiveMap || child.material.map || null;
-        var ringCol = n.includes('light1') ? new THREE.Color(1.0, 0.97, 0.90)   // near-white
-                    : n.includes('light2') ? new THREE.Color(1.0, 0.78, 0.50)   // warm cream
-                    :                        new THREE.Color(0.88, 0.55, 0.18);  // golden amber
-        var intens  = n.includes('light1') ? 1.65
-                    : n.includes('light2') ? 0.55   // cut to reduce inner-zone yellow buildup
-                    :                        0.32;   // cut to reduce inner-zone yellow buildup
+        // light1 = pure neutral white (1:1:1 ratio) so high intensity washes out to white
+        // light2/3 = warm tones only at their own outer radii, very low contribution
+        var ringCol = n.includes('light1') ? new THREE.Color(1.0, 0.99, 0.96)   // neutral white
+                    : n.includes('light2') ? new THREE.Color(1.0, 0.75, 0.40)   // warm gold
+                    :                        new THREE.Color(0.85, 0.50, 0.14);  // amber
+        var intens  = n.includes('light1') ? 2.20   // high: washes out to white via tonemapping
+                    : n.includes('light2') ? 0.38
+                    :                        0.20;
         var lumPow  = n.includes('light1') ? 1.6 : 1.4;
         child.renderOrder = 3;
         child.material = _makeLumMat(emTex, ringCol, intens, lumPow, true);
@@ -685,7 +687,7 @@ gltfLoader.load('need_some_space.glb', function(gltf) {
         // Outer disc — warm golden, clearly visible with texture band detail
         var rTex = child.material.map || null;
         child.renderOrder = 3;
-        child.material = _makeLumMat(rTex, new THREE.Color(1.0, 0.80, 0.45), 0.58, 1.1, true);
+        child.material = _makeLumMat(rTex, new THREE.Color(1.0, 0.78, 0.42), 0.40, 1.1, true);
         child.layers.set(1);
       } else if (n.includes('blackoutside')) {
         // Dark outer fringe — still visible as warm amber-brown band
