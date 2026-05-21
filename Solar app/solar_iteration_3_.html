@@ -683,12 +683,12 @@ gltfLoader.load('need_some_space.glb', function(gltf) {
         var emTex   = n.includes('light1') ? bhTex.light1
                     : n.includes('light2') ? bhTex.light2
                     :                        bhTex.light3;
-        var ringCol = n.includes('light1') ? new THREE.Color(1.00, 1.00, 1.00)
-                    : n.includes('light2') ? new THREE.Color(1.00, 0.36, 0.65)
-                    :                        new THREE.Color(1.00, 0.58, 0.40);
-        var intens  = n.includes('light1') ? 1.20
-                    : n.includes('light2') ? 0.80
-                    :                        0.40;
+        var ringCol = n.includes('light1') ? new THREE.Color(0.92, 0.96, 1.00)
+                    : n.includes('light2') ? new THREE.Color(1.00, 0.45, 0.70)
+                    :                        new THREE.Color(1.00, 0.55, 0.35);
+        var intens  = n.includes('light1') ? 0.90
+                    : n.includes('light2') ? 0.35
+                    :                        0.18;
         var lumPow  = 3.0;
         child.renderOrder = 3;
         child.material = _makeLumMat(emTex, ringCol, intens, lumPow, true);
@@ -700,11 +700,11 @@ gltfLoader.load('need_some_space.glb', function(gltf) {
         child.layers.set(1);
       } else if (n.includes('ring')) {
         child.renderOrder = 3;
-        child.material = _makeLumMat(bhTex.ring, new THREE.Color(0.90, 0.65, 0.25), 1.00, 1.2, true);
+        child.material = _makeLumMat(bhTex.ring, new THREE.Color(0.90, 0.65, 0.22), 1.40, 1.2, true);
         child.layers.set(1);
       } else if (n.includes('blackoutside')) {
         child.renderOrder = 3;
-        child.material = _makeLumMat(bhTex.bo, new THREE.Color(0.65, 0.38, 0.10), 0.75, 1.0, true);
+        child.material = _makeLumMat(bhTex.bo, new THREE.Color(0.60, 0.35, 0.08), 1.00, 1.0, true);
         child.layers.set(1);
       } else if (n.includes('center')) {
         // Sphere renders LAST (renderOrder:10) so it paints over ring additive blending
