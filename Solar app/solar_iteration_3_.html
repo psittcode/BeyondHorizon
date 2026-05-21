@@ -670,7 +670,7 @@ gltfLoader.load('need_some_space.glb', function(gltf) {
         var ringCol = n.includes('light1') ? new THREE.Color(1.00, 1.00, 1.00)
                     : n.includes('light2') ? new THREE.Color(1.00, 0.36, 0.65)
                     :                        new THREE.Color(1.00, 0.58, 0.40);
-        var intens  = n.includes('light1') ? 2.00
+        var intens  = n.includes('light1') ? 3.50
                     : n.includes('light2') ? 0.85
                     :                        0.30;
         var lumPow  = n.includes('light1') ? 2.5 : 2.2;
@@ -686,13 +686,12 @@ gltfLoader.load('need_some_space.glb', function(gltf) {
         // Outer disc — warm golden
         var rTex = child.material.map || null;
         child.renderOrder = 3;
-        child.material = _makeLumMat(rTex, new THREE.Color(0.92, 0.68, 0.28), 0.60, 1.4, true);
+        child.material = _makeLumMat(rTex, new THREE.Color(0.92, 0.68, 0.28), 0.85, 1.4, true);
         child.layers.set(1);
       } else if (n.includes('blackoutside')) {
-        // Dark outer fringe
         var boTex = child.material.map || null;
         child.renderOrder = 3;
-        child.material = _makeLumMat(boTex, new THREE.Color(0.72, 0.42, 0.12), 0.45, 1.4, true);
+        child.material = _makeLumMat(boTex, new THREE.Color(0.72, 0.42, 0.12), 0.62, 1.4, true);
         child.layers.set(1);
       } else if (n.includes('center')) {
         // Sphere renders LAST (renderOrder:10) so it paints over ring additive blending
