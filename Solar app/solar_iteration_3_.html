@@ -627,6 +627,35 @@ gltfLoader.load('need_some_space.glb', function(gltf) {
     bhSpin.position.copy(galacticCorePos);
     bhSpin.visible = false;
 
+    // Deep-space starfield sphere — child of bhSpin so it stays visible in BH mode.
+    // Gives the lensing pass background content to warp around the disk center.
+    var sfGeo = new THREE.SphereGeometry(bhR * 28, 32, 32);
+    var sfMat = new THREE.ShaderMaterial({
+      uniforms: {},
+      vertexShader: [
+        'varying vec3 vPos;',
+        'void main(){ vPos=position; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }'
+      ].join('\n'),
+      fragmentShader: [
+        'varying vec3 vPos;',
+        'float hash(vec3 p){ return fract(sin(dot(p,vec3(127.1,311.7,74.7)))*43758.5453); }',
+        'void main(){',
+        '  vec3 n=normalize(vPos);',
+        '  float h=hash(floor(n*90.0));',
+        '  float star=step(0.982,h);',
+        '  float b=hash(floor(n*90.0)+vec3(3.1));',
+        '  gl_FragColor=vec4(vec3(star*(0.4+b*0.6)),1.0);',
+        '}'
+      ].join('\n'),
+      side: THREE.BackSide,
+      depthWrite: false,
+      depthTest: false
+    });
+    var sfMesh = new THREE.Mesh(sfGeo, sfMat);
+    sfMesh.renderOrder = -1;
+    sfMesh.layers.set(0);
+    bhSpin.add(sfMesh);
+
     ringDefs.forEach(function(def) {
       var inner = bhR * def.iF;
       var outer = bhR * def.oF;
@@ -726,9 +755,9 @@ gltfLoader.load('need_some_space.glb', function(gltf) {
     var _lensUniforms = {
       tDiffuse:  { value: null },
       uCenter:   { value: new THREE.Vector2(0.5, 0.5) },
-      uStrength: { value: 0.018 },
-      uInnerR:   { value: 0.05 },
-      uOuterR:   { value: 0.22 },
+      uStrength: { value: 0.055 },
+      uInnerR:   { value: 0.04 },
+      uOuterR:   { value: 0.28 },
       uAspect:   { value: window.innerWidth / window.innerHeight }
     };
     bhLensingUniforms = _lensUniforms;
