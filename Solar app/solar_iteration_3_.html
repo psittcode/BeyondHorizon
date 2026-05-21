@@ -667,15 +667,16 @@ gltfLoader.load('need_some_space.glb', function(gltf) {
         var emTex   = child.material.emissiveMap || child.material.map || null;
         // light1 = pure neutral white (1:1:1 ratio) so high intensity washes out to white
         // light2/3 = warm tones only at their own outer radii, very low contribution
-        // Higher lumPow crushes mid-luminance pixels → sharp dark gaps between bands
-        // light1 neutral-white keeps inner rings from going yellow
-        var ringCol = n.includes('light1') ? new THREE.Color(1.0, 0.99, 0.95)   // neutral white
-                    : n.includes('light2') ? new THREE.Color(1.0, 0.76, 0.48)   // warm cream
-                    :                        new THREE.Color(0.90, 0.55, 0.18);  // amber
-        var intens  = n.includes('light1') ? 1.10
-                    : n.includes('light2') ? 0.65
-                    :                        0.42;
-        var lumPow  = n.includes('light1') ? 2.5 : 2.0;
+        // Combined additive sum must stay near-neutral after Reinhard tonemapping.
+        // light1: pure white anchor. light2/3: progressively warmer at lower intensity
+        // so inner zone = white, transition zone = warm cream, outer = gold.
+        var ringCol = n.includes('light1') ? new THREE.Color(1.00, 1.00, 0.98)   // pure white
+                    : n.includes('light2') ? new THREE.Color(1.00, 0.86, 0.72)   // warm ivory
+                    :                        new THREE.Color(1.00, 0.68, 0.45);   // peach-gold
+        var intens  = n.includes('light1') ? 1.00
+                    : n.includes('light2') ? 0.52
+                    :                        0.36;
+        var lumPow  = n.includes('light1') ? 2.5 : 2.2;
         child.renderOrder = 3;
         child.material = _makeLumMat(emTex, ringCol, intens, lumPow, true);
         child.layers.set(1);
