@@ -732,13 +732,23 @@ gltfLoader.load('need_some_space.glb', function(gltf) {
             'varying vec3 vNormal;',
             'varying vec3 vViewPos;',
             'void main(){',
-            '  float nDotV   = abs(dot(normalize(vNormal), normalize(vViewPos)));',
-            '  float edge    = 1.0 - nDotV;',
-            // Very tight Fresnel — faint blue ONLY at extreme grazing, invisible head-on
-            '  float fresnel = pow(edge, 5.0);',
-            '  vec3 dark = vec3(0.018, 0.010, 0.004);',
-            '  vec3 rim  = vec3(0.10, 0.16, 0.40);',
-            '  gl_FragColor = vec4(mix(dark, rim, fresnel), 1.0);',
+            '  float nDotV = abs(dot(normalize(vNormal), normalize(vViewPos)));',
+            '  float edge  = 1.0 - nDotV;',
+            // Two-layer atmosphere for 3D depth:
+            // 1. Wide soft haze (power ~2.2) gives the dome shape — dark centre fades
+            //    to blue across the whole hemisphere, matching the reference's brown-to-blue.
+            // 2. Tight bright rim (power ~4.5) is the photon-sphere blue flash at the edge.
+            '  float haze    = pow(edge, 2.2);',
+            '  float rimFres = pow(edge, 4.5);',
+            // Core: very dark warm brown (dim ring-light ambient, just barely not pure black)
+            '  vec3 coreCol  = vec3(0.032, 0.016, 0.005);',
+            // Mid atmospheric haze: dark blue-grey — visible but not overpowering
+            '  vec3 hazeCol  = vec3(0.06, 0.14, 0.42);',
+            // Rim highlight: bright blue-white photon ring glow
+            '  vec3 rimCol   = vec3(0.38, 0.58, 1.00);',
+            '  vec3 col = mix(coreCol, hazeCol, haze * 0.80);',
+            '  col = mix(col, rimCol, rimFres * 0.85);',
+            '  gl_FragColor  = vec4(col, 1.0);',
             '}'
           ].join('\n'),
           // transparent:true puts sphere in the transparent render queue.
