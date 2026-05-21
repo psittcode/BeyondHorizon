@@ -579,209 +579,124 @@ gltfLoader.load('need_some_space.glb', function(gltf) {
   BH_CLOSE_DIST = galaxyVisualRadius * 0.10;
   BH_FAR_DIST   = galaxyVisualRadius * 0.32;
 
-  const bhLoader = new THREE.GLTFLoader();
-  bhLoader.load('black_hole/scene.gltf', function(bhGltf) {
-    const bhScene = bhGltf.scene;
+  // Procedural black hole — flat RingGeometry layers + Fresnel event horizon
+  (function buildProceduralBH() {
+    var bhR = galaxyVisualRadius * 0.04;
 
-    // Scale from actual bounding box so the ring is 4% of the galaxy radius.
-    const bhBox  = new THREE.Box3().setFromObject(bhScene);
-    const bhSize = bhBox.getSize(new THREE.Vector3());
-    const bhNaturalRadius = Math.max(bhSize.x, bhSize.z) / 2;
-    const targetRadius    = galaxyVisualRadius * 0.04;
-    bhScene.scale.setScalar(targetRadius / bhNaturalRadius);
+    var ringVert = [
+      'varying float vRadius;',
+      'varying float vAngle;',
+      'void main(){',
+      '  vRadius = length(position.xy);',
+      '  vAngle  = atan(position.y, position.x);',
+      '  gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0);',
+      '}'
+    ].join('\n');
 
-    // The GLTF Sketchfab_model root matrix tilts the ring ~21.5° from horizontal.
-    // Counter-rotating around Z cancels that tilt so the ring lies in the galaxy plane.
-    bhScene.rotation.z = -Math.atan2(0.3661, 0.9306); // ≈ -0.375 rad
+    var ringFrag = [
+      'uniform vec3  uInnerCol;',
+      'uniform vec3  uOuterCol;',
+      'uniform float uInnerR, uOuterR, uIntensity;',
+      'varying float vRadius, vAngle;',
+      'float hash(vec2 p){ return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453); }',
+      'float vnoise(vec2 p){',
+      '  vec2 i=floor(p); vec2 f=fract(p); vec2 u=f*f*(3.0-2.0*f);',
+      '  return mix(mix(hash(i),hash(i+vec2(1,0)),u.x),',
+      '             mix(hash(i+vec2(0,1)),hash(i+vec2(1,1)),u.x),u.y);',
+      '}',
+      'void main(){',
+      '  float t = clamp((vRadius - uInnerR) / (uOuterR - uInnerR), 0.0, 1.0);',
+      '  vec3 col = mix(uInnerCol, uOuterCol, t);',
+      '  float radGrad = pow(1.0 - t, 1.5);',
+      '  float dust = 0.85 + 0.15 * vnoise(vec2(cos(vAngle)*vRadius*8.0, sin(vAngle)*vRadius*8.0));',
+      '  float alpha = clamp(radGrad * uIntensity * dust, 0.0, 1.0);',
+      '  gl_FragColor = vec4(col * alpha, alpha);',
+      '}'
+    ].join('\n');
 
-    // Use the GLB's own materials — the emissive textures contain the correct warm colors.
-    // Set emissiveIntensity per mesh name to restore KHR_materials_emissive_strength
-    // values that Three.js r128 does not support natively.
-    // Emissive textures are grey/greenish — null them out on light meshes so our warm
-    // Color is applied purely.  ring/blackoutside keep their map (defines the disc shape).
-    // PointLight at disc level — gives ring2 specular glitter as camera orbits.
-    // Created hidden; BH enter/exit code toggles visibility.
-    if (!bhPointLight) {
-      // Three PointLights at different disc-plane angles so ring2's glossiness=1.0
-      // material creates shifting specular highlights (diamond glitter) as camera orbits
-      bhPointLight = new THREE.PointLight(0xff8830, 2.2, BH_CLOSE_DIST * 0.9, 2);
-      bhPointLight.position.set(
-        galacticCorePos.x,
-        galacticCorePos.y,
-        galacticCorePos.z + BH_CLOSE_DIST * 0.18
-      );
-      bhPointLight.visible = false;
-      scene.add(bhPointLight);
+    // [innerFrac, outerFrac, innerRGB, outerRGB, intensity, bloomLayer]
+    var ringDefs = [
+      { iF:0.13,  oF:0.23, iC:[1.00,0.95,0.80], oC:[0.95,0.65,0.15], int:2.20, bl:1 },
+      { iF:0.225, oF:0.40, iC:[1.00,0.55,0.75], oC:[0.80,0.25,0.45], int:0.90, bl:1 },
+      { iF:0.38,  oF:0.58, iC:[0.90,0.62,0.18], oC:[0.65,0.40,0.08], int:0.60, bl:0 },
+      { iF:0.56,  oF:0.78, iC:[0.75,0.55,0.12], oC:[0.45,0.30,0.04], int:0.35, bl:0 },
+      { iF:0.76,  oF:1.02, iC:[0.20,0.12,0.04], oC:[0.04,0.02,0.01], int:0.20, bl:0 }
+    ];
 
-      bhPointLight2 = new THREE.PointLight(0xffaa44, 1.6, BH_CLOSE_DIST * 0.9, 2);
-      bhPointLight2.position.set(
-        galacticCorePos.x + BH_CLOSE_DIST * 0.18,
-        galacticCorePos.y,
-        galacticCorePos.z - BH_CLOSE_DIST * 0.06
-      );
-      bhPointLight2.visible = false;
-      scene.add(bhPointLight2);
+    var bhSpin = new THREE.Group();
+    bhSpin.position.copy(galacticCorePos);
+    bhSpin.visible = false;
 
-      bhPointLight3 = new THREE.PointLight(0xff6622, 1.4, BH_CLOSE_DIST * 0.9, 2);
-      bhPointLight3.position.set(
-        galacticCorePos.x - BH_CLOSE_DIST * 0.12,
-        galacticCorePos.y,
-        galacticCorePos.z - BH_CLOSE_DIST * 0.12
-      );
-      bhPointLight3.visible = false;
-      scene.add(bhPointLight3);
-    }
-
-    // Load textures directly by path — GLTF KHR_materials_pbrSpecularGlossiness stores
-    // textures in custom shader uniforms, not material.emissiveMap/map, so traversal
-    // always returns null. Load them ourselves so _makeLumMat gets the real texture.
-    var _bhTexLoader = new THREE.TextureLoader();
-    var _bhTexBase = 'black_hole/textures/';
-    var bhTex = {
-      light1: _bhTexLoader.load(_bhTexBase + 'black_hole_light1_emissive.png'),
-      light2: _bhTexLoader.load(_bhTexBase + 'black_hole_light2_emissive.png'),
-      light3: _bhTexLoader.load(_bhTexBase + 'black_hole_light3_emissive.png'),
-      ring:   _bhTexLoader.load(_bhTexBase + 'ring_diffuse.png'),
-      bo:     _bhTexLoader.load(_bhTexBase + 'black_hole_blackoutside_diffuse.png')
-    };
-
-    bhScene.traverse(function(child) {
-      if (!child.isMesh || !child.material) return;
-      child.material.depthWrite = false;
-      var n = child.name;
-      console.log('[BH mesh]', n, '| mat:', child.material.type);
-
-      // Luminance-mask shader. Alpha uses lum^(lumPow*2) — sharper power means dark gaps
-      // are truly transparent in AdditiveBlending instead of adding a faint warm tint.
-      var _makeLumMat = function(tex, col, intensity, lumPow, additive) {
-        return new THREE.ShaderMaterial({
-          uniforms: {
-            tEmissive: { value: tex },
-            uColor:    { value: col },
-            uIntensity:{ value: intensity },
-            uLumPow:   { value: lumPow },
-            uHasMap:   { value: tex ? 1.0 : 0.0 }
-          },
-          vertexShader: 'varying vec2 vUv;\nvoid main(){ vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }',
-          fragmentShader: [
-            'uniform sampler2D tEmissive; uniform vec3 uColor;',
-            'uniform float uIntensity, uLumPow, uHasMap; varying vec2 vUv;',
-            'void main(){',
-            '  float lum = 1.0;',
-            '  if(uHasMap > 0.5){ vec3 t = texture2D(tEmissive,vUv).rgb; lum = dot(t, vec3(0.299,0.587,0.114)); }',
-            '  float lumC = pow(lum, uLumPow);',
-            '  float lumA = pow(lum, uLumPow * 2.0);',
-            '  float a = clamp(lumA * uIntensity, 0.0, 1.0);',
-            '  gl_FragColor = vec4(uColor * lumC * uIntensity, a);',
-            '}'
-          ].join('\n'),
-          transparent: true,
-          depthWrite:  false,
-          blending:    additive ? THREE.AdditiveBlending : THREE.NormalBlending,
-          side: THREE.DoubleSide
-        });
-      };
-
-      if (n.includes('light1') || n.includes('light2') || n.includes('light3')) {
-        var emTex   = n.includes('light1') ? bhTex.light1
-                    : n.includes('light2') ? bhTex.light2
-                    :                        bhTex.light3;
-        var ringCol = n.includes('light1') ? new THREE.Color(1.00, 1.00, 1.00)
-                    : n.includes('light2') ? new THREE.Color(0.98, 0.52, 0.78)
-                    :                        new THREE.Color(0.95, 0.58, 0.18);
-        var intens  = n.includes('light1') ? 2.20
-                    : n.includes('light2') ? 0.30
-                    :                        0.18;
-        var lumPow  = n.includes('light1') ? 5.0
-                    : n.includes('light2') ? 3.2
-                    :                        3.5;
-        child.renderOrder = 3;
-        child.material = _makeLumMat(emTex, ringCol, intens, lumPow, true);
-        child.layers.set(1);
-      } else if (n.includes('ring2')) {
-        child.renderOrder = 3;
-        child.material.emissive          = new THREE.Color(0.85, 0.58, 0.18);
-        child.material.emissiveIntensity = 0.20;
-        child.layers.set(1);
-      } else if (n.includes('ring')) {
-        child.renderOrder = 3;
-        child.material = _makeLumMat(bhTex.ring, new THREE.Color(0.90, 0.65, 0.22), 1.40, 2.8, true);
-        child.layers.set(1);
-      } else if (n.includes('blackoutside')) {
-        child.renderOrder = 3;
-        child.material = _makeLumMat(bhTex.bo, new THREE.Color(0.55, 0.32, 0.08), 0.80, 1.8, true);
-        child.layers.set(1);
-      } else if (n.includes('center')) {
-        // Sphere renders LAST (renderOrder:10) so it paints over ring additive blending
-        // in the sphere's screen area. This is the only reliable way to keep the sphere
-        // dark — rings use AdditiveBlending which adds light even through depth writes.
-        // By rendering sphere after rings, it overwrites the inner glow with its own
-        // dark Fresnel, leaving only the outer ring halo visible around its edge.
-        child.renderOrder = 10;
-        child.material = new THREE.ShaderMaterial({
-          uniforms: {},
-          vertexShader: [
-            'varying vec3 vNormal;',
-            'varying vec3 vViewPos;',
-            'void main(){',
-            '  vNormal   = normalize(normalMatrix * normal);',
-            '  vec4 mvp  = modelViewMatrix * vec4(position,1.0);',
-            '  vViewPos  = -mvp.xyz;',
-            '  gl_Position = projectionMatrix * mvp;',
-            '}'
-          ].join('\n'),
-          fragmentShader: [
-            'varying vec3 vNormal;',
-            'varying vec3 vViewPos;',
-            'void main(){',
-            '  float nDotV = abs(dot(normalize(vNormal), normalize(vViewPos)));',
-            '  float edge  = 1.0 - nDotV;',
-            // Two-layer atmosphere for 3D depth:
-            // 1. Wide soft haze (power ~2.2) gives the dome shape — dark centre fades
-            //    to blue across the whole hemisphere, matching the reference's brown-to-blue.
-            // 2. Tight bright rim (power ~4.5) is the photon-sphere blue flash at the edge.
-            // Lower haze power → blue floods across the whole dome, not just the edge
-            '  float haze    = pow(edge, 1.5);',
-            '  float rimFres = pow(edge, 4.0);',
-            // Core: dark warm-brown, very small centre spot only
-            '  vec3 coreCol  = vec3(0.030, 0.014, 0.004);',
-            // Atmospheric haze: vivid deep blue fills most of the sphere face
-            '  vec3 hazeCol  = vec3(0.14, 0.32, 0.88);',
-            // Rim: bright blue-white photon ring
-            '  vec3 rimCol   = vec3(0.65, 0.82, 1.00);',
-            '  vec3 col = mix(coreCol, hazeCol, haze * 0.95);',
-            '  col = mix(col, rimCol, rimFres * 0.98);',
-            '  gl_FragColor  = vec4(col, 1.0);',
-            '}'
-          ].join('\n'),
-          // transparent:true puts sphere in the transparent render queue.
-          // With NormalBlending + alpha=1.0 the sphere still renders fully opaque,
-          // but because it's now in the same queue as the rings it respects
-          // renderOrder:10 and draws AFTER the rings (renderOrder:3) overwriting
-          // their additive glow inside the sphere's silhouette.
-          transparent: true,
-          blending:    THREE.NormalBlending,
-          depthWrite:  false,
-          depthTest:   false,
-          side: THREE.FrontSide
-        });
-        child.layers.set(0);
-      } else {
-        child.renderOrder = 3;
-        child.layers.set(0);
-      }
-      child.material.needsUpdate = true;
+    ringDefs.forEach(function(def) {
+      var inner = bhR * def.iF;
+      var outer = bhR * def.oF;
+      var geo   = new THREE.RingGeometry(inner, outer, 128, 8);
+      var mat   = new THREE.ShaderMaterial({
+        uniforms: {
+          uInnerCol: { value: new THREE.Color(def.iC[0], def.iC[1], def.iC[2]) },
+          uOuterCol: { value: new THREE.Color(def.oC[0], def.oC[1], def.oC[2]) },
+          uInnerR:   { value: inner },
+          uOuterR:   { value: outer },
+          uIntensity:{ value: def.int }
+        },
+        vertexShader:   ringVert,
+        fragmentShader: ringFrag,
+        transparent: true,
+        depthWrite:  false,
+        depthTest:   false,
+        blending:    THREE.AdditiveBlending,
+        side: THREE.DoubleSide
+      });
+      var mesh = new THREE.Mesh(geo, mat);
+      mesh.rotation.x = -Math.PI / 2;
+      mesh.renderOrder = 3;
+      mesh.layers.set(def.bl);
+      bhSpin.add(mesh);
     });
 
-    // bloomComposer: camera sees only layer 1 (light1+light2) → bloom texture
+    // Event horizon — Fresnel sphere renders last (renderOrder 20) to overwrite ring additive glow
+    var evGeo = new THREE.SphereGeometry(bhR * 0.12, 64, 64);
+    var evMat = new THREE.ShaderMaterial({
+      uniforms: {},
+      vertexShader: [
+        'varying vec3 vNormal; varying vec3 vViewPos;',
+        'void main(){',
+        '  vNormal  = normalize(normalMatrix * normal);',
+        '  vec4 mvp = modelViewMatrix * vec4(position,1.0);',
+        '  vViewPos = -mvp.xyz;',
+        '  gl_Position = projectionMatrix * mvp;',
+        '}'
+      ].join('\n'),
+      fragmentShader: [
+        'varying vec3 vNormal; varying vec3 vViewPos;',
+        'void main(){',
+        '  float nDotV = abs(dot(normalize(vNormal), normalize(vViewPos)));',
+        '  float edge  = 1.0 - nDotV;',
+        '  float haze  = pow(edge, 1.5);',
+        '  float rim   = pow(edge, 4.0);',
+        '  vec3 col = mix(vec3(0.025,0.012,0.003), vec3(0.12,0.28,0.85), haze * 0.95);',
+        '  col = mix(col, vec3(0.60,0.80,1.00), rim * 0.98);',
+        '  gl_FragColor = vec4(col, 1.0);',
+        '}'
+      ].join('\n'),
+      transparent: true,
+      blending:    THREE.NormalBlending,
+      depthWrite:  false,
+      depthTest:   false,
+      side: THREE.FrontSide
+    });
+    var evMesh = new THREE.Mesh(evGeo, evMat);
+    evMesh.renderOrder = 20;
+    evMesh.layers.set(0);
+    bhSpin.add(evMesh);
+
+    // bloomComposer: layer-1 meshes only → bloom texture
     bloomComposer = new THREE.EffectComposer(renderer);
     bloomComposer.renderToScreen = false;
     bloomComposer.addPass(new THREE.RenderPass(scene, camera));
     bloomComposer.addPass(new THREE.UnrealBloomPass(
       new THREE.Vector2(window.innerWidth, window.innerHeight),
-      1.5,   // strength
-      0.4,   // radius
-      0.1    // threshold
+      1.2, 0.30, 0.10
     ));
 
     // finalComposer: full scene + additive bloom blend + gravitational lensing
@@ -803,7 +718,7 @@ gltfLoader.load('need_some_space.glb', function(gltf) {
     _blendPass.needsSwap = true;
     finalComposer.addPass(_blendPass);
 
-    // Gravitational lensing pass: screen-space UV warp bends background around BH
+    // Gravitational lensing pass
     var _lensUniforms = {
       tDiffuse:  { value: null },
       uCenter:   { value: new THREE.Vector2(0.5, 0.5) },
@@ -835,18 +750,9 @@ gltfLoader.load('need_some_space.glb', function(gltf) {
       ].join('\n')
     })));
 
-    // Wrapper group spins around world Y; bhScene sits inside with the corrective
-    // Z tilt so the ring stays flat in the galaxy plane while rotating.
-    const bhSpin = new THREE.Group();
-    bhSpin.position.copy(galacticCorePos);
-    bhSpin.visible = false;
-    bhSpin.add(bhScene);
     scene.add(bhSpin);
-
     blackHoleModel = bhSpin;
-  }, undefined, function(err) {
-    console.error('Black hole GLB load error:', err);
-  });
+  })();
 
   console.log('Milky Way GLB loaded successfully');
 }, undefined, function(error) {
