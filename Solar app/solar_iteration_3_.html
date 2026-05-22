@@ -584,105 +584,73 @@ gltfLoader.load('need_some_space.glb', function(gltf) {
   (function buildProceduralBH() {
     var bhR = galaxyVisualRadius * 0.04;
 
-    var ringVert = [
+    // DISK — complete rewrite. One flat mesh, zero noise, zero directional streak functions.
+    // Previous approach: 52 separate rings with vnoise() created angular bright patches
+    // that appeared as directional streaks when viewed at any angle.
+    // New approach: single RingGeometry, pure radial + smooth sinusoidal functions only.
+
+    var diskVert = [
       'varying float vRadius;',
       'varying float vAngle;',
       'void main(){',
       '  vRadius = length(position.xy);',
       '  vAngle  = atan(position.y, position.x);',
-      '  gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0);',
+      '  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);',
       '}'
     ].join('\n');
 
-    var ringFrag = [
-      'uniform vec3  uInnerCol;',
-      'uniform vec3  uOuterCol;',
-      'uniform float uInnerR, uOuterR, uIntensity;',
+    var diskFrag = [
+      'uniform float uInnerR, uOuterR;',
       'varying float vRadius, vAngle;',
-      'float hash(vec2 p){ return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453); }',
-      'float vnoise(vec2 p){',
-      '  vec2 i=floor(p); vec2 f=fract(p); vec2 u=f*f*(3.0-2.0*f);',
-      '  return mix(mix(hash(i),hash(i+vec2(1,0)),u.x),',
-      '             mix(hash(i+vec2(0,1)),hash(i+vec2(1,1)),u.x),u.y);',
-      '}',
       'void main(){',
       '  float t = clamp((vRadius - uInnerR) / (uOuterR - uInnerR), 0.0, 1.0);',
-      '  vec3 col = mix(uInnerCol, uOuterCol, t);',
-      '  float radGrad = pow(1.0 - t, 3.2);',
-      '  float logR = log(vRadius / max(uInnerR, 0.001));',
-      '  float subBand = 0.45 + 0.55 * sin(logR * 5.5);',
-      '  subBand = pow(clamp(subBand, 0.0, 1.0), 0.50);',
-      '  float ang = vAngle * 5.0;',
-      '  float streak1 = 0.32 + 0.68 * vnoise(vec2(ang, t * 1.0));',
-      '  float streak2 = 0.52 + 0.48 * vnoise(vec2(ang * 2.3 + 1.8, t * 2.0));',
-      '  float streak3 = 0.76 + 0.24 * vnoise(vec2(ang * 0.7 + 5.0, t * 0.7));',
-      '  float dust = streak1 * streak2 * streak3;',
-      '  float doppler = 0.48 + 0.52 * sin(vAngle + 1.5708);',
-      '  float alpha = clamp(radGrad * uIntensity * subBand * dust * doppler, 0.0, 1.0);',
-      '  gl_FragColor = vec4(col * alpha, alpha);',
+      // Color gradient — white-pink inner → orange → amber → dark amber → chocolate brown outer
+      '  vec3 col;',
+      '  if(t < 0.05){ float u=t/0.05; col=mix(vec3(1.00,0.94,1.00),vec3(1.00,0.72,0.28),u); }',
+      '  else if(t < 0.18){ float u=(t-0.05)/0.13; col=mix(vec3(1.00,0.72,0.28),vec3(1.00,0.50,0.06),u); }',
+      '  else if(t < 0.40){ float u=(t-0.18)/0.22; col=mix(vec3(1.00,0.50,0.06),vec3(0.72,0.25,0.03),u); }',
+      '  else if(t < 0.68){ float u=(t-0.40)/0.28; col=mix(vec3(0.72,0.25,0.03),vec3(0.35,0.13,0.02),u); }',
+      '  else{ float u=(t-0.68)/0.32; col=mix(vec3(0.35,0.13,0.02),vec3(0.16,0.06,0.01),u); }',
+      // Base brightness: steep radial falloff, inner extremely bright, outer dim
+      '  float bright = pow(max(1.0-t, 0.0), 1.6) * 4.0;',
+      // Photon ring super-boost: 22× brightness at inner edge, fades linearly to 1× at t=0.05
+      '  float pBoost = 1.0 + max(0.0, (0.05-t)/0.05) * 22.0;',
+      // Ring banding: purely radial log-sine — zero angular component, zero streak risk
+      '  float logR = log(max(vRadius / max(uInnerR, 0.001), 1.001));',
+      '  float bands = 0.42 + 0.58 * sin(logR * 8.5);',
+      // Doppler beaming: pure cosine of angle — perfectly smooth, absolutely zero spikes
+      '  float doppler = 0.52 + 0.48 * cos(vAngle);',
+      '  float alpha = clamp(bright * bands * doppler * pBoost, 0.0, 1.0);',
+      '  gl_FragColor = vec4(col, alpha);',
       '}'
     ].join('\n');
-
-    // Generate 52 thin rings with log-uniform spacing from photon-ring edge to 8×bhR.
-    // Fill ratio tapers from 82% (inner) to 68% (outer) for tightly packed fine ring structure.
-    // Per-ring brightness variation creates the "pulsing layered" look of real accretion disks.
-    var ringDefs = [];
-    (function(){
-      var nR=52, r0=0.148, r1=8.0, u;
-      var fac=Math.exp(Math.log(r1/r0)/nR);
-      var r=r0;
-      for(var ri=0;ri<nR;ri++){
-        var t=ri/(nR-1);
-        var rN=r*fac;
-        var fill=0.82-0.14*t;
-        var rS=r+(rN-r)*fill;
-        // Per-ring random brightness variation for layered "pulsing" look
-        var rv=0.45+0.90*Math.abs(Math.sin(ri*237.1+0.3));
-        var ic,oc,inten,bl;
-        if(t<0.08){ic=[1.0,0.88,0.80];oc=[1.0,0.70,0.12];inten=10.0*rv;bl=0;}
-        else if(t<0.20){u=(t-0.08)/0.12;ic=[1.0,0.72,0.14];oc=[1.0,0.54,0.06];inten=(8.0-u*2.5)*rv;bl=0;}
-        else if(t<0.35){u=(t-0.20)/0.15;ic=[1.0-0.22*u,0.62-0.22*u,0.08-0.04*u];oc=[0.88-0.26*u,0.44-0.16*u,0.04-0.02*u];inten=(4.8-u*1.6)*rv;bl=0;}
-        else if(t<0.52){u=(t-0.35)/0.17;ic=[0.74-0.26*u,0.36-0.14*u,0.04];oc=[0.54-0.22*u,0.22-0.10*u,0.02];inten=(2.8-u*0.9)*rv;bl=0;}
-        else if(t<0.68){u=(t-0.52)/0.16;ic=[0.44-0.18*u,0.18-0.08*u,0.02];oc=[0.30-0.14*u,0.12-0.06*u,0.01];inten=(1.6-u*0.45)*rv;bl=0;}
-        else if(t<0.82){u=(t-0.68)/0.14;ic=[0.32-0.16*u,0.10-0.05*u,0.02];oc=[0.22-0.12*u,0.07-0.03*u,0.01];inten=(0.90-u*0.28)*rv;bl=0;}
-        else{u=(t-0.82)/0.18;ic=[0.20-0.15*u,0.06-0.04*u,0.01];oc=[0.12-0.10*u,0.04-0.03*u,0.01];inten=(0.50-u*0.28)*rv;bl=0;}
-        ringDefs.push({iF:r,oF:rS,iC:ic,oC:oc,int:inten,bl:bl});
-        r=rN;
-      }
-    })();
 
     var bhSpin = new THREE.Group();
     bhSpin.position.copy(galacticCorePos);
     bhSpin.visible = false;
-    bhSpin.rotation.x = 0.20; // slight 11° tilt from horizontal — disk appears nearly flat (like Saturn's rings)
 
-
-    ringDefs.forEach(function(def) {
-      var inner = bhR * def.iF;
-      var outer = bhR * def.oF;
-      var geo   = new THREE.RingGeometry(inner, outer, 128, 8);
-      var mat   = new THREE.ShaderMaterial({
-        uniforms: {
-          uInnerCol: { value: new THREE.Color(def.iC[0], def.iC[1], def.iC[2]) },
-          uOuterCol: { value: new THREE.Color(def.oC[0], def.oC[1], def.oC[2]) },
-          uInnerR:   { value: inner },
-          uOuterR:   { value: outer },
-          uIntensity:{ value: def.int }
-        },
-        vertexShader:   ringVert,
-        fragmentShader: ringFrag,
-        transparent: true,
-        depthWrite:  false,
-        depthTest:   false,
-        blending:    THREE.AdditiveBlending,
-        side: THREE.DoubleSide
-      });
-      var mesh = new THREE.Mesh(geo, mat);
-      mesh.rotation.x = -Math.PI / 2;
-      mesh.renderOrder = 3;
-      mesh.layers.set(def.bl);
-      bhSpin.add(mesh);
+    // Single flat disk — 512 angular segments, 1 radial segment.
+    // 1 radial segment = geometrically impossible to appear as a torus.
+    // This is a 2D plane with zero vertical thickness.
+    var diskGeo = new THREE.RingGeometry(bhR * 0.130, bhR * 9.5, 512, 1);
+    var diskMat = new THREE.ShaderMaterial({
+      uniforms: {
+        uInnerR: { value: bhR * 0.130 },
+        uOuterR: { value: bhR * 9.5 }
+      },
+      vertexShader:   diskVert,
+      fragmentShader: diskFrag,
+      transparent: true,
+      depthWrite:  false,
+      depthTest:   false,
+      blending:    THREE.AdditiveBlending,
+      side: THREE.DoubleSide
     });
+    var diskMesh = new THREE.Mesh(diskGeo, diskMat);
+    diskMesh.rotation.x = -Math.PI / 2;  // flat in world XZ plane (horizontal)
+    diskMesh.renderOrder = 3;
+    diskMesh.layers.set(0);
+    bhSpin.add(diskMesh);
 
     // Event horizon — pure black sphere. No Fresnel/reflections: a black hole emits nothing.
     // The lensing shader's shadow mask reinforces the hard black cutoff in screen space.
@@ -698,29 +666,7 @@ gltfLoader.load('need_some_space.glb', function(gltf) {
     ehMesh.layers.set(0);
     bhSpin.add(ehMesh);
 
-    // Photon ring — razor-thin; blue-white at peak brightness, warm gold at outer edge
-    var prGeo = new THREE.RingGeometry(bhR * 0.124, bhR * 0.148, 256, 2);
-    var prMat = new THREE.ShaderMaterial({
-      uniforms: {
-        uInnerCol: { value: new THREE.Color(1.00, 0.92, 1.00) },
-        uOuterCol: { value: new THREE.Color(1.00, 0.68, 0.18) },
-        uInnerR:   { value: bhR * 0.124 },
-        uOuterR:   { value: bhR * 0.148 },
-        uIntensity:{ value: 22.0 }
-      },
-      vertexShader:   ringVert,
-      fragmentShader: ringFrag,
-      transparent: true,
-      depthWrite:  false,
-      depthTest:   false,
-      blending:    THREE.AdditiveBlending,
-      side: THREE.DoubleSide
-    });
-    var prMesh = new THREE.Mesh(prGeo, prMat);
-    prMesh.rotation.x = -Math.PI / 2;
-    prMesh.renderOrder = 21; // renders after event horizon circle (20) so glow shines at edge
-    prMesh.layers.set(1);
-    bhSpin.add(prMesh);
+    // Photon ring handled by pBoost in diskFrag — no separate mesh needed.
 
     // finalComposer: full scene render + gravitational lensing only.
     // Bloom/UnrealBloomPass completely removed — it produced cross-spike artifacts
