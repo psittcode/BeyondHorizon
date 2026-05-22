@@ -604,20 +604,21 @@ gltfLoader.load('need_some_space.glb', function(gltf) {
       'varying float vRadius, vAngle;',
       'void main(){',
       '  float t = clamp((vRadius - uInnerR) / (uOuterR - uInnerR), 0.0, 1.0);',
-      // Color gradient — white-pink inner → orange → amber → dark amber → chocolate brown outer
+      // Color gradient — pure white core → pink → gold → orange → dark amber → near-black outer
       '  vec3 col;',
-      '  if(t < 0.05){ float u=t/0.05; col=mix(vec3(1.00,0.94,1.00),vec3(1.00,0.72,0.28),u); }',
-      '  else if(t < 0.18){ float u=(t-0.05)/0.13; col=mix(vec3(1.00,0.72,0.28),vec3(1.00,0.50,0.06),u); }',
-      '  else if(t < 0.40){ float u=(t-0.18)/0.22; col=mix(vec3(1.00,0.50,0.06),vec3(0.72,0.25,0.03),u); }',
-      '  else if(t < 0.68){ float u=(t-0.40)/0.28; col=mix(vec3(0.72,0.25,0.03),vec3(0.35,0.13,0.02),u); }',
-      '  else{ float u=(t-0.68)/0.32; col=mix(vec3(0.35,0.13,0.02),vec3(0.16,0.06,0.01),u); }',
-      // Base brightness: steep radial falloff, inner extremely bright, outer dim
-      '  float bright = pow(max(1.0-t, 0.0), 1.6) * 4.0;',
-      // Photon ring super-boost: 22× brightness at inner edge, fades linearly to 1× at t=0.05
-      '  float pBoost = 1.0 + max(0.0, (0.05-t)/0.05) * 22.0;',
-      // Ring banding: purely radial log-sine — zero angular component, zero streak risk
+      '  if(t < 0.02){ float u=t/0.02; col=mix(vec3(1.00,1.00,1.00),vec3(1.00,0.85,0.90),u); }',
+      '  else if(t < 0.06){ float u=(t-0.02)/0.04; col=mix(vec3(1.00,0.85,0.90),vec3(1.00,0.68,0.20),u); }',
+      '  else if(t < 0.18){ float u=(t-0.06)/0.12; col=mix(vec3(1.00,0.68,0.20),vec3(0.95,0.40,0.04),u); }',
+      '  else if(t < 0.42){ float u=(t-0.18)/0.24; col=mix(vec3(0.95,0.40,0.04),vec3(0.55,0.18,0.02),u); }',
+      '  else if(t < 0.68){ float u=(t-0.42)/0.26; col=mix(vec3(0.55,0.18,0.02),vec3(0.22,0.07,0.01),u); }',
+      '  else{ float u=(t-0.68)/0.32; col=mix(vec3(0.22,0.07,0.01),vec3(0.06,0.02,0.00),u); }',
+      // Base brightness: steep radial falloff — inner searing, outer dark
+      '  float bright = pow(max(1.0-t, 0.0), 1.5) * 4.5;',
+      // Photon ring super-boost: 35× at inner edge, fades to 1× at t=0.08
+      '  float pBoost = 1.0 + max(0.0, (0.08-t)/0.08) * 35.0;',
+      // Ring banding: two superimposed log-sine waves, min value 0.20 — never zero, no hard black gaps
       '  float logR = log(max(vRadius / max(uInnerR, 0.001), 1.001));',
-      '  float bands = 0.42 + 0.58 * sin(logR * 8.5);',
+      '  float bands = 0.60 + 0.25*sin(logR*5.5) + 0.15*sin(logR*13.0);',
       // Doppler beaming: pure cosine of angle — perfectly smooth, absolutely zero spikes
       '  float doppler = 0.52 + 0.48 * cos(vAngle);',
       '  float alpha = clamp(bright * bands * doppler * pBoost, 0.0, 1.0);',
@@ -654,7 +655,7 @@ gltfLoader.load('need_some_space.glb', function(gltf) {
 
     // Event horizon — pure black sphere. No Fresnel/reflections: a black hole emits nothing.
     // The lensing shader's shadow mask reinforces the hard black cutoff in screen space.
-    bhEHRadius = bhR * 0.124; // store for dynamic lensing computation
+    bhEHRadius = bhR * 0.135; // store for dynamic lensing computation — slightly larger than disk inner edge (0.130) to cover white dot
     var ehGeo = new THREE.SphereGeometry(bhEHRadius, 64, 64);
     var ehMat = new THREE.MeshBasicMaterial({
       color: 0x000000,
@@ -678,9 +679,9 @@ gltfLoader.load('need_some_space.glb', function(gltf) {
     var _lensUniforms = {
       tDiffuse:  { value: null },
       uCenter:   { value: new THREE.Vector2(0.5, 0.5) },
-      uStrength: { value: 0.18 },
+      uStrength: { value: 0.08 },
       uInnerR:   { value: 0.03 },
-      uOuterR:   { value: 0.30 },
+      uOuterR:   { value: 0.12 },
       uShadowR:  { value: 0.06 },
       uAspect:   { value: window.innerWidth / window.innerHeight }
     };
@@ -706,16 +707,17 @@ gltfLoader.load('need_some_space.glb', function(gltf) {
         '    uv-=dir*warp; uv=clamp(uv,0.001,0.999);',
         '  }',
         '  vec4 col=texture2D(tDiffuse,uv);',
-        // Einstein arc: sample bright photon ring light bent over the shadow boundary
-        '  float arcW=smoothstep(uShadowR*2.0,uShadowR*1.06,dist)*smoothstep(uShadowR*0.95,uShadowR*1.22,dist);',
+        // Einstein arc: thin bright ring just outside shadow boundary — lensed back-side disk light
+        '  float arcW=smoothstep(uShadowR*1.55,uShadowR*1.03,dist)*smoothstep(uShadowR*0.98,uShadowR*1.18,dist);',
         '  if(arcW>0.001){',
         '    vec2 mDir=-d/max(dist,0.001);',
-        '    vec2 arcUv1=uCenter+mDir*(uShadowR*1.05)/vec2(uAspect,1.0);',
-        '    vec2 arcUv2=uCenter+mDir*(uShadowR*1.40)/vec2(uAspect,1.0);',
+        // Sample disk light from behind BH (1.5x–2.5x shadow radius on opposite side), not from the pBoost zone
+        '    vec2 arcUv1=uCenter+mDir*(uShadowR*1.5)/vec2(uAspect,1.0);',
+        '    vec2 arcUv2=uCenter+mDir*(uShadowR*2.5)/vec2(uAspect,1.0);',
         '    arcUv1=clamp(arcUv1,0.001,0.999);',
         '    arcUv2=clamp(arcUv2,0.001,0.999);',
-        '    vec4 arcSample=texture2D(tDiffuse,arcUv1)*0.70+texture2D(tDiffuse,arcUv2)*0.30;',
-        '    col+=arcSample*arcW*6.0;',
+        '    vec4 arcSample=texture2D(tDiffuse,arcUv1)*0.65+texture2D(tDiffuse,arcUv2)*0.35;',
+        '    col+=arcSample*arcW*3.5;',
         '  }',
         '  gl_FragColor=col;',
         '}'
@@ -3378,6 +3380,7 @@ function animate(){
         var _shadowR = bhEHRadius / (_camToBH * _halfTanFov * 2.0);
         bhLensingUniforms.uShadowR.value = Math.max(_shadowR, 0.015);
         bhLensingUniforms.uInnerR.value  = Math.max(_shadowR * 0.82, 0.012);
+        bhLensingUniforms.uOuterR.value  = Math.max(_shadowR * 1.8, 0.08);
       }
       _bhScreenPos.project(camera);
       bhLensingUniforms.uCenter.value.set(
