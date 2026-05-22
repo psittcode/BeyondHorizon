@@ -623,24 +623,29 @@ gltfLoader.load('need_some_space.glb', function(gltf) {
       '}'
     ].join('\n');
 
-    // Generate 34 thin rings with log-uniform spacing from photon-ring edge to 5.5×bhR.
-    // Each ring occupies 72% of its slot; the 28% gap creates visible dark lanes.
+    // Generate 52 thin rings with log-uniform spacing from photon-ring edge to 8×bhR.
+    // Fill ratio tapers from 82% (inner) to 68% (outer) for tightly packed fine ring structure.
+    // Per-ring brightness variation creates the "pulsing layered" look of real accretion disks.
     var ringDefs = [];
     (function(){
-      var nR=34, r0=0.148, r1=5.5, u;
+      var nR=52, r0=0.148, r1=8.0, u;
       var fac=Math.exp(Math.log(r1/r0)/nR);
       var r=r0;
       for(var ri=0;ri<nR;ri++){
         var t=ri/(nR-1);
-        var rN=r*fac, rS=r+(rN-r)*0.72;
+        var rN=r*fac;
+        var fill=0.82-0.14*t;
+        var rS=r+(rN-r)*fill;
+        // Per-ring random brightness variation for layered "pulsing" look
+        var rv=0.45+0.90*Math.abs(Math.sin(ri*237.1+0.3));
         var ic,oc,inten,bl;
-        if(t<0.08){ic=[1.0,1.0,0.95];oc=[1.0,0.88,0.30];inten=7.0;bl=1;}
-        else if(t<0.20){u=(t-0.08)/0.12;ic=[1.0,0.88,0.22];oc=[1.0,0.72,0.10];inten=5.2-u*1.8;bl=1;}
-        else if(t<0.34){u=(t-0.20)/0.14;ic=[0.96-0.14*u,0.74-0.20*u,0.10-0.05*u];oc=[0.86-0.18*u,0.54-0.16*u,0.06-0.03*u];inten=3.2-u*1.2;bl=(t<0.26?1:0);}
-        else if(t<0.50){u=(t-0.34)/0.16;ic=[0.82-0.28*u,0.46-0.18*u,0.04];oc=[0.60-0.24*u,0.30-0.12*u,0.02];inten=1.8-u*0.7;bl=0;}
-        else if(t<0.65){u=(t-0.50)/0.15;ic=[0.48-0.20*u,0.22-0.10*u,0.02];oc=[0.32-0.14*u,0.14-0.06*u,0.01];inten=1.0-u*0.35;bl=0;}
-        else if(t<0.80){u=(t-0.65)/0.15;ic=[0.34-0.18*u,0.12-0.06*u,0.02];oc=[0.22-0.12*u,0.08-0.04*u,0.01];inten=0.60-u*0.22;bl=0;}
-        else{u=(t-0.80)/0.20;ic=[0.24-0.18*u,0.08-0.06*u,0.01];oc=[0.14-0.12*u,0.05-0.04*u,0.01];inten=0.35-u*0.22;bl=0;}
+        if(t<0.08){ic=[1.0,0.95,0.85];oc=[1.0,0.78,0.16];inten=4.5*rv;bl=1;}
+        else if(t<0.20){u=(t-0.08)/0.12;ic=[1.0,0.78,0.14];oc=[1.0,0.60,0.07];inten=(3.4-u*0.8)*rv;bl=1;}
+        else if(t<0.35){u=(t-0.20)/0.15;ic=[1.0-0.20*u,0.66-0.24*u,0.07-0.04*u];oc=[0.86-0.24*u,0.46-0.18*u,0.04-0.02*u];inten=(2.4-u*0.8)*rv;bl=(t<0.27?1:0);}
+        else if(t<0.52){u=(t-0.35)/0.17;ic=[0.76-0.28*u,0.36-0.14*u,0.04];oc=[0.52-0.20*u,0.22-0.10*u,0.02];inten=(1.4-u*0.45)*rv;bl=0;}
+        else if(t<0.68){u=(t-0.52)/0.16;ic=[0.42-0.16*u,0.16-0.07*u,0.02];oc=[0.28-0.12*u,0.10-0.05*u,0.01];inten=(0.80-u*0.22)*rv;bl=0;}
+        else if(t<0.82){u=(t-0.68)/0.14;ic=[0.32-0.16*u,0.10-0.05*u,0.02];oc=[0.20-0.10*u,0.07-0.03*u,0.01];inten=(0.50-u*0.16)*rv;bl=0;}
+        else{u=(t-0.82)/0.18;ic=[0.20-0.15*u,0.06-0.04*u,0.01];oc=[0.12-0.10*u,0.04-0.03*u,0.01];inten=(0.30-u*0.18)*rv;bl=0;}
         ringDefs.push({iF:r,oF:rS,iC:ic,oC:oc,int:inten,bl:bl});
         r=rN;
       }
@@ -649,7 +654,7 @@ gltfLoader.load('need_some_space.glb', function(gltf) {
     var bhSpin = new THREE.Group();
     bhSpin.position.copy(galacticCorePos);
     bhSpin.visible = false;
-    bhSpin.rotation.x = 1.1; // tilt disk ~63° from horizontal → clear ellipse from above-camera position
+    bhSpin.rotation.x = 0.20; // slight 11° tilt from horizontal — disk appears nearly flat (like Saturn's rings)
 
 
     ringDefs.forEach(function(def) {
@@ -718,11 +723,11 @@ gltfLoader.load('need_some_space.glb', function(gltf) {
     var prGeo = new THREE.RingGeometry(bhR * 0.124, bhR * 0.148, 256, 2);
     var prMat = new THREE.ShaderMaterial({
       uniforms: {
-        uInnerCol: { value: new THREE.Color(0.55, 0.78, 1.00) },
-        uOuterCol: { value: new THREE.Color(0.95, 0.88, 0.40) },
+        uInnerCol: { value: new THREE.Color(0.28, 0.55, 1.00) },
+        uOuterCol: { value: new THREE.Color(0.90, 0.82, 0.35) },
         uInnerR:   { value: bhR * 0.124 },
         uOuterR:   { value: bhR * 0.148 },
-        uIntensity:{ value: 9.0 }
+        uIntensity:{ value: 12.0 }
       },
       vertexShader:   ringVert,
       fragmentShader: ringFrag,
@@ -744,7 +749,7 @@ gltfLoader.load('need_some_space.glb', function(gltf) {
     bloomComposer.addPass(new THREE.RenderPass(scene, camera));
     bloomComposer.addPass(new THREE.UnrealBloomPass(
       new THREE.Vector2(window.innerWidth, window.innerHeight),
-      1.0, 0.65, 0.0
+      0.30, 0.90, 0.55
     ));
 
     // finalComposer: full scene + additive bloom blend + gravitational lensing
@@ -789,7 +794,8 @@ gltfLoader.load('need_some_space.glb', function(gltf) {
         '  vec2 uv=vUv;',
         '  vec2 d=(uv-uCenter)*vec2(uAspect,1.0);',
         '  float dist=length(d);',
-        '  if(dist<uShadowR*0.88){ gl_FragColor=vec4(0.0,0.0,0.0,1.0); return; }',
+        // Hard shadow mask at 95% of shadow radius — crisp edge, no bloom bleed
+        '  if(dist<uShadowR*0.95){ gl_FragColor=vec4(0.0,0.0,0.0,1.0); return; }',
         '  if(dist>uInnerR && dist<uOuterR){',
         '    float t=smoothstep(uOuterR,uInnerR,dist);',
         '    float warp=uStrength*t*t/max(dist,0.001);',
@@ -797,16 +803,23 @@ gltfLoader.load('need_some_space.glb', function(gltf) {
         '    uv-=dir*warp; uv=clamp(uv,0.001,0.999);',
         '  }',
         '  vec4 col=texture2D(tDiffuse,uv);',
-        '  float arcW=smoothstep(uShadowR*2.4,uShadowR*1.04,dist)*smoothstep(uShadowR*0.90,uShadowR*1.18,dist);',
+        // Smooth isotropic radial ambient glow — purely mathematical, zero spike risk
+        '  float glowR=dist/max(uShadowR,0.001)-1.0;',
+        '  if(glowR>0.0){',
+        '    float glow=0.40*exp(-glowR*2.6);',
+        '    col.rgb+=vec3(0.90,0.42,0.04)*glow;',
+        '  }',
+        // Einstein arc: sample inner disk light bent over the event horizon pole
+        '  float arcW=smoothstep(uShadowR*2.2,uShadowR*1.06,dist)*smoothstep(uShadowR*0.95,uShadowR*1.20,dist);',
         '  if(arcW>0.001){',
         '    vec2 mDir=-d/max(dist,0.001);',
-        '    vec2 arcUv1=uCenter+mDir*(uShadowR*1.08)/vec2(uAspect,1.0);',
-        '    vec2 arcUv2=uCenter+mDir*(uShadowR*1.55)/vec2(uAspect,1.0);',
-        '    vec2 arcUv3=uCenter+mDir*(uShadowR*2.10)/vec2(uAspect,1.0);',
+        '    vec2 arcUv1=uCenter+mDir*(uShadowR*1.10)/vec2(uAspect,1.0);',
+        '    vec2 arcUv2=uCenter+mDir*(uShadowR*1.60)/vec2(uAspect,1.0);',
+        '    vec2 arcUv3=uCenter+mDir*(uShadowR*2.15)/vec2(uAspect,1.0);',
         '    arcUv1=clamp(arcUv1,0.001,0.999);',
         '    arcUv2=clamp(arcUv2,0.001,0.999);',
         '    arcUv3=clamp(arcUv3,0.001,0.999);',
-        '    vec4 arcSample=(texture2D(tDiffuse,arcUv1)*0.5+texture2D(tDiffuse,arcUv2)*0.35+texture2D(tDiffuse,arcUv3)*0.15);',
+        '    vec4 arcSample=texture2D(tDiffuse,arcUv1)*0.55+texture2D(tDiffuse,arcUv2)*0.30+texture2D(tDiffuse,arcUv3)*0.15;',
         '    col+=arcSample*arcW*4.5;',
         '  }',
         '  gl_FragColor=col;',
