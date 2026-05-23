@@ -722,16 +722,8 @@ gltfLoader.load('need_some_space.glb', function(gltf) {
       _sfGeo.setAttribute('color',    new THREE.BufferAttribute(_sfCol, 3));
       bhStarfield = new THREE.Points(
         _sfGeo,
-        new THREE.PointsMaterial({
-          size: 1.8,
-          sizeAttenuation: false,
-          vertexColors: true,
-          depthTest:  false,
-          depthWrite: false
-        })
+        new THREE.PointsMaterial({ size: 1.8, sizeAttenuation: false, vertexColors: true })
       );
-      // Render as backdrop — disk + lensing pass paint over the stars
-      bhStarfield.renderOrder = -10;
       bhStarfield.visible = false;
       scene.add(bhStarfield);
     })();
@@ -3063,11 +3055,11 @@ function animate(){
     if (bhPointLight)  bhPointLight.visible  = true;
     if (bhPointLight2) bhPointLight2.visible = true;
     if (bhPointLight3) bhPointLight3.visible = true;
-    // Hide the 8K Milky Way skybox — its bright galactic band shows as a stray
-    // diagonal streak across the scene when looking at the core. Use the uniform
-    // procedural starfield instead so the lensing shader warps random stars only.
-    if (galaxySkybox) galaxySkybox.visible = false;
-    if (bhStarfield)  bhStarfield.visible  = true;
+    // Dim the real 8K skybox so lensing shader warps the actual starfield texture
+    if (galaxySkybox && galaxySkybox.material) {
+      galaxySkybox.visible = true;
+      galaxySkybox.material.color.setScalar(0.35);
+    }
     bhRendererSettings = true;
   } else if (bhTransitionT <= 0.03 && bhRendererSettings) {
     renderer.toneMapping         = bhOrigToneMapping;
@@ -3081,8 +3073,9 @@ function animate(){
       _bhSavedVisibility.forEach(function(wasVisible, obj) { obj.visible = wasVisible; });
       _bhSavedVisibility = null;
     }
-    // Hide procedural starfield — galaxySkybox visibility is restored via _bhSavedVisibility above
+    // Hide procedural starfield, restore full-brightness 8K skybox
     if (bhStarfield) bhStarfield.visible = false;
+    if (galaxySkybox && galaxySkybox.material) galaxySkybox.material.color.setScalar(1.0);
     bhRendererSettings = false;
   }
   // ── End black hole transition ─────────────────────────────────────────────
