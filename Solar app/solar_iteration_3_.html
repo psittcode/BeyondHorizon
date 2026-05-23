@@ -619,20 +619,16 @@ gltfLoader.load('need_some_space.glb', function(gltf) {
       '  float pBoost = 1.0 + 14.0 * pr;',
       '  col = mix(col, vec3(1.0,0.92,0.68), pr * 0.60);',
       '  float bright = pow(max(1.0-t, 0.0), 1.8) * 1.8;',
-      // Static concentric ring texture
+      // Radial texture (static reference pattern)
       '  float logR = log(max(vRadius / max(uInnerR, 0.001), 1.001));',
       '  float b1 = 0.5 + 0.5*sin(logR*6.0);',
       '  float b2 = 0.5 + 0.5*sin(logR*15.0 + 1.0);',
-      '  float b3 = 0.5 + 0.5*sin(logR*35.0 + 0.5);',
-      '  float b4 = 0.5 + 0.5*sin(logR*75.0 + 1.8);',
-      '  float bands = 0.20 + 0.40*b1 + 0.22*b2 + 0.12*b3 + 0.06*b4;',
-      // Keplerian azimuthal flow — integer-n cos(n*vAngle) terms are seam-free (complete full cycles)
-      // Inner disk orbits faster; combined features create smooth left-to-right water-like sweep
-      '  float orbSpeed = 0.55 / max(pow(vRadius / max(uInnerR, 0.001), 1.5), 0.10);',
-      '  float swirl = 0.68',
-      '    + 0.17 * cos(1.0*vAngle - uTime * orbSpeed)',
-      '    + 0.09 * cos(3.0*vAngle - uTime * orbSpeed * 1.5)',
-      '    + 0.06 * cos(5.0*vAngle - uTime * orbSpeed * 2.2);',
+      '  float bands = 0.40 + 0.38*b1 + 0.22*b2;',
+      // Keplerian azimuthal sweep — 2 bright blobs orbiting, integer n=2,4 guarantees no seam
+      // orbSpeed is high so inner edge visibly sweeps; outer edge slower (physically correct)
+      '  float orbSpeed = 2.5 / max(pow(vRadius / max(uInnerR, 0.001), 1.5), 0.10);',
+      '  float sweep = cos(2.0*vAngle - uTime * orbSpeed);',
+      '  float swirl = 0.50 + 0.38*sweep + 0.12*sweep*sweep;',
       '  float alpha = clamp(bright * bands * swirl * pBoost, 0.0, 1.0);',
       '  gl_FragColor = vec4(col, alpha);',
       '}'
@@ -3036,7 +3032,7 @@ function animate(){
       blackHoleModel.visible = bhTransitionT > 0.05;
     }
     if (bhDiskMesh && bhTransitionT > 0) {
-      bhDiskMesh.material.uniforms.uTime.value += deltaMs * 0.001;
+      bhDiskMesh.material.uniforms.uTime.value += deltaMs * 0.0025;
     }
   }
 
