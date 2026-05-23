@@ -622,8 +622,7 @@ gltfLoader.load('need_some_space.glb', function(gltf) {
       '  return v;',
       '}',
       'void main(){',
-      '  float t    = clamp((vRadius - uInnerR) / (uOuterR - uInnerR), 0.0, 1.0);',
-      '  float logR = log(max(vRadius / max(uInnerR, 0.001), 1.001));',
+      '  float t = clamp((vRadius - uInnerR) / (uOuterR - uInnerR), 0.0, 1.0);',
       // Cloud noise — uLayerY offset gives each of the 5 stacked disks a
       // different slice of the noise field (visible edge-on as turbulent
       // thickness rather than 5 identical 2D patterns).
@@ -632,35 +631,29 @@ gltfLoader.load('need_some_space.glb', function(gltf) {
       '  vec2  pCloud = pBase + vec2(uLayerY * 0.6, uLayerY * 0.4);',
       '  float cloud  = fbm4(pCloud);',
       '  float grain  = vnoise(pCloud * 11.0);',
-      // === Multiple ripple effects — stacked "paper" layers ===
-      // 3 concentric sin waves on logR. Rebalanced weights (0.30 / 0.35 / 0.35)
-      // shift dominance toward the higher-frequency ripples — more peaks per
-      // radius means more potential white-strip positions visible.
-      // layerPhase bumped 0.65 -> 1.20 rad so the 5 stacked disks' strips fan
-      // out across distinct radii instead of smearing into one fuzzy band.
-      '  float layerPhase = uLayerY * 1.20;',
-      '  float ripple1 = sin(logR * 5.0  - uTime * 0.10 + layerPhase);',
-      '  float ripple2 = sin(logR * 11.0 - uTime * 0.15 + layerPhase * 0.8 + 1.3);',
-      '  float ripple3 = sin(logR * 19.0 - uTime * 0.20 + layerPhase * 1.2 + 2.7);',
-      '  float rippleN = 0.5 + 0.5 * (0.30*ripple1 + 0.35*ripple2 + 0.35*ripple3);',
-      // === Reddish-orange -> deep red gradient ===
-      // Single colour family (no white / pink / brown cascade) but the hue
-      // shifts from bright reddish-orange at the inner edge to deep red at
-      // the outer edge — reddening intensifies with distance from the centre.
+      // === Step 1: paint the whole disk orange ===
+      // Single colour family that intensifies in red toward the outer disk.
+      // No more sparse "ripple peak" white patches that read as tiger fur.
       '  vec3 colInner = vec3(1.00, 0.48, 0.10);',
       '  vec3 colOuter = vec3(0.78, 0.12, 0.02);',
       '  vec3 col = mix(colInner, colOuter, smoothstep(0.0, 0.92, t));',
-      // Brightness modulated by cloud + ripples (varies brightness, not hue)
-      '  col *= (0.65 + 0.40 * cloud);',
-      '  col *= (0.75 + 0.30 * rippleN);',
-      // === White strips on ripple peaks ===
-      // Threshold widened (0.55,0.88 -> 0.42,0.72) so more ripple peaks pick up
-      // white. t-fade extended (0.30,0.85 -> 0.50,0.95) so strips reach further
-      // into the outer disk. Blend pushed 0.85 -> 0.92 so the strips read clearly
-      // against the now-redder background.
-      '  float strips = smoothstep(0.42, 0.72, rippleN) * (0.45 + 0.55 * cloud);',
-      '  strips *= 1.0 - smoothstep(0.50, 0.95, t);',
-      '  col = mix(col, vec3(1.00, 0.94, 0.80), strips * 0.92);',
+      '  col *= (0.70 + 0.30 * cloud);',
+      // === Step 2: stack many thin white concentric lines on top ===
+      // ~100 thin lines across the radial extent of the disk (lineSpacing
+      // chosen so (uOuterR - uInnerR) / lineSpacing ≈ 100). All 5 stacked
+      // disks share the same line positions (additive blending reinforces
+      // each line, making them crisp) plus a tiny per-layer phase offset
+      // (uLayerY * 0.10 * spacing) so adjacent disks contribute slight depth
+      // — the "papers stacked" feel.
+      '  float lineSpacing = (uOuterR - uInnerR) / 100.0;',
+      '  float linePhase   = uLayerY * 0.10 * lineSpacing;',
+      '  float lineFrac    = fract((vRadius - uInnerR - linePhase) / lineSpacing);',
+      '  float lineDist    = min(lineFrac, 1.0 - lineFrac);',
+      // Gaussian peak — sharper K gives thinner lines. K=250 → FWHM ≈ 10 % of spacing.
+      '  float lineIntensity = exp(-lineDist * lineDist * 250.0);',
+      // Fade out near the very outer edge where the disk dims anyway
+      '  lineIntensity *= 1.0 - smoothstep(0.92, 1.00, t);',
+      '  col = mix(col, vec3(0.99, 0.94, 0.80), lineIntensity * 0.85);',
       // Inner Planckian boost (alpha boost only — no colour change so the
       // pure-orange look is preserved all the way to the photon ring).
       '  float innerDist = max(0.0, vRadius - uInnerR);',
@@ -669,13 +662,14 @@ gltfLoader.load('need_some_space.glb', function(gltf) {
       '  float pBoost = 1.0 + 10.0 * pr;',
       // Fine dust grain
       '  col *= (0.92 + 0.16 * grain);',
-      // === Alpha — radial falloff × cloud × ripple × pBoost ===
-      // Ripples affect alpha so the wave structure is visible as bright/dim
-      // bands, contributing the "paper layers" feel along with the white strips.
-      '  float bright      = pow(max(1.0-t, 0.0), 1.0) * 1.5;',
-      '  float alphaCloud  = 0.40 + 0.60 * cloud;',
-      '  float alphaRipple = 0.70 + 0.30 * rippleN;',
-      '  float alpha = clamp(bright * alphaCloud * alphaRipple * pBoost, 0.0, 1.0);',
+      // === Alpha — radial falloff × cloud × pBoost ===
+      // No more ripple modulation in alpha — the bright/dim band alternation
+      // it produced was contributing to the tiger-fur look. The orange base
+      // is now alpha-uniform across radii (modulo cloud turbulence) and the
+      // white lines layer on top of that uniform orange.
+      '  float bright     = pow(max(1.0-t, 0.0), 1.0) * 1.5;',
+      '  float alphaCloud = 0.40 + 0.60 * cloud;',
+      '  float alpha = clamp(bright * alphaCloud * pBoost, 0.0, 1.0);',
       '  alpha *= uAlphaMul;',
       '  gl_FragColor = vec4(col, alpha);',
       '}'
