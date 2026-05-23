@@ -477,6 +477,7 @@ let finalComposer         = null;
 let bhLensingUniforms     = null;
 let bhEHRadius            = 0;   // event horizon sphere world-space radius (for dynamic lensing)
 let bhStarfield           = null; // procedural starfield for BH mode (no galactic band)
+let bhDiskMesh            = null; // reference to disk mesh for uTime animation
 const _bhScreenPos        = new THREE.Vector3();
 let _bhSavedVisibility    = null;
 
@@ -601,11 +602,10 @@ gltfLoader.load('need_some_space.glb', function(gltf) {
     ].join('\n');
 
     var diskFrag = [
-      'uniform float uInnerR, uOuterR;',
+      'uniform float uInnerR, uOuterR, uTime;',
       'varying float vRadius, vAngle;',
       'void main(){',
       '  float t = clamp((vRadius - uInnerR) / (uOuterR - uInnerR), 0.0, 1.0);',
-      // Color: brilliant white inner → pink-white → gold → orange → dark amber → near-black outer
       '  vec3 col;',
       '  if(t < 0.04){ float u=t/0.04; col=mix(vec3(1.00,1.00,1.00),vec3(1.00,0.90,0.95),u); }',
       '  else if(t < 0.12){ float u=(t-0.04)/0.08; col=mix(vec3(1.00,0.90,0.95),vec3(1.00,0.70,0.18),u); }',
@@ -613,24 +613,23 @@ gltfLoader.load('need_some_space.glb', function(gltf) {
       '  else if(t < 0.52){ float u=(t-0.28)/0.24; col=mix(vec3(0.95,0.42,0.05),vec3(0.60,0.18,0.02),u); }',
       '  else if(t < 0.76){ float u=(t-0.52)/0.24; col=mix(vec3(0.60,0.18,0.02),vec3(0.22,0.07,0.01),u); }',
       '  else{ float u=(t-0.76)/0.24; col=mix(vec3(0.22,0.07,0.01),vec3(0.05,0.01,0.00),u); }',
-      // Photon ring: wider warm glow — blends into the disk, not a harsh white outline
       '  float innerDist = max(0.0, vRadius - uInnerR);',
       '  float sigma = uInnerR * 0.10;',
       '  float pr = exp(-(innerDist*innerDist) / (2.0*sigma*sigma));',
       '  float pBoost = 1.0 + 14.0 * pr;',
-      // Blend toward warm amber-white so the ring glows, not burns
       '  col = mix(col, vec3(1.0,0.92,0.68), pr * 0.60);',
-      // Moderate radial falloff — outer disk stays visible with clear ring structure
       '  float bright = pow(max(1.0-t, 0.0), 1.8) * 1.8;',
-      // 4-frequency log-sine banding — ~50 concentric rings, min 0.15
+      // Animated bands: radial inflow (matter accretes inward) + slight spiral turbulence
       '  float logR = log(max(vRadius / max(uInnerR, 0.001), 1.001));',
-      '  float b1 = 0.5 + 0.5*sin(logR*6.0);',
-      '  float b2 = 0.5 + 0.5*sin(logR*15.0 + 1.0);',
-      '  float b3 = 0.5 + 0.5*sin(logR*35.0 + 0.5);',
-      '  float b4 = 0.5 + 0.5*sin(logR*75.0 + 1.8);',
+      '  float inflow = uTime * 1.5;',
+      '  float b1 = 0.5 + 0.5*sin(logR*6.0  - inflow       + vAngle*0.20);',
+      '  float b2 = 0.5 + 0.5*sin(logR*15.0 - inflow*1.60  + vAngle*0.40 + 1.0);',
+      '  float b3 = 0.5 + 0.5*sin(logR*35.0 - inflow*2.20  + vAngle*0.70 + 0.5);',
+      '  float b4 = 0.5 + 0.5*sin(logR*75.0 - inflow*3.00  + vAngle*1.10 + 1.8);',
       '  float bands = 0.15 + 0.42*b1 + 0.25*b2 + 0.12*b3 + 0.06*b4;',
-      // Doppler beaming — low contrast to prevent warp from projecting bright spot as stray line
-      '  float doppler = 0.85 + 0.15 * cos(vAngle);',
+      // Keplerian differential rotation: inner orbits faster — eliminates static bright spot / stray line
+      '  float orbSpeed = 0.50 / max(pow(vRadius / max(uInnerR,0.001), 1.5), 0.10);',
+      '  float doppler = 0.82 + 0.18 * cos(vAngle - uTime * orbSpeed);',
       '  float alpha = clamp(bright * bands * doppler * pBoost, 0.0, 1.0);',
       '  gl_FragColor = vec4(col, alpha);',
       '}'
@@ -647,7 +646,8 @@ gltfLoader.load('need_some_space.glb', function(gltf) {
     var diskMat = new THREE.ShaderMaterial({
       uniforms: {
         uInnerR: { value: bhR * 0.92 },
-        uOuterR: { value: bhR * 10.0 }
+        uOuterR: { value: bhR * 10.0 },
+        uTime:   { value: 0.0 }
       },
       vertexShader:   diskVert,
       fragmentShader: diskFrag,
@@ -664,6 +664,7 @@ gltfLoader.load('need_some_space.glb', function(gltf) {
     diskMesh.renderOrder = 25;
     diskMesh.layers.set(0);
     bhSpin.add(diskMesh);
+    bhDiskMesh = diskMesh;
 
     // Soft orange glow — camera-facing sprite with radial gradient (sphere would be invisible
     // because the camera is always inside the glow radius in BH mode, culling all front faces)
@@ -3030,8 +3031,9 @@ function animate(){
   if (BH_CLOSE_DIST > 0) {
     if (blackHoleModel) {
       blackHoleModel.visible = bhTransitionT > 0.05;
-      // No rotation — disk is rotationally symmetric; rotating the group causes the
-      // shadow mask center (projected galacticCorePos) and the disk to drift apart
+    }
+    if (bhDiskMesh && bhTransitionT > 0) {
+      bhDiskMesh.material.uniforms.uTime.value += deltaMs * 0.001;
     }
   }
 
