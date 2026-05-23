@@ -624,13 +624,15 @@ gltfLoader.load('need_some_space.glb', function(gltf) {
       '  float b1 = 0.5 + 0.5*sin(logR*6.0);',
       '  float b2 = 0.5 + 0.5*sin(logR*15.0 + 1.0);',
       '  float bands = 0.40 + 0.38*b1 + 0.22*b2;',
-      // Inner disk (small t) is kept azimuthally uniform so the lensed photon ring above
-      // the BH is also uniform — this eliminates the stray bright arc.
-      // Orbital variation only appears in the outer disk (t > 0.05).
-      '  float s3 = 0.5 + 0.5*cos(3.0*vAngle - uTime * 1.3);',
-      '  float s1 = 0.5 + 0.5*cos(1.0*vAngle - uTime * 0.7 + 1.1);',
-      '  float orbMask = smoothstep(0.05, 0.30, t);',
-      '  float swirl = 0.55 + (0.30*s3 + 0.15*s1) * orbMask;',
+      // Horizontal waves in world-X (derived from position without extra varying).
+      // Y-symmetric in local disk space: near side and far side have identical brightness
+      // at each X, so the lensing warp produces a uniform photon arc — no stray line.
+      // Floor 0.65 keeps all radial colour layers visible at all times.
+      '  float xNorm = vRadius * cos(vAngle) / max(uOuterR, 0.001);',
+      '  float fh1 = 0.5 + 0.5*sin(xNorm * 7.0  - uTime * 1.30);',
+      '  float fh2 = 0.5 + 0.5*sin(xNorm * 13.0 - uTime * 1.95 + 0.9);',
+      '  float fh3 = 0.5 + 0.5*sin(xNorm * 20.0 - uTime * 2.60 + 2.1);',
+      '  float swirl = 0.65 + 0.20*fh1 + 0.10*fh2 + 0.05*fh3;',
       '  float alpha = clamp(bright * bands * swirl * pBoost, 0.0, 1.0);',
       '  gl_FragColor = vec4(col, alpha);',
       '}'
