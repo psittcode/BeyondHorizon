@@ -665,11 +665,13 @@ gltfLoader.load('need_some_space.glb', function(gltf) {
       // White-hot strips: at radii where the radial bands peak, the plasma is
       // hot enough to read as pale white. Multiplied by cloud so the strips
       // appear as curving filaments rather than perfect rings — blends with the
-      // turbulence already on the disk. Faded out for t > 0.20 so the outer,
-      // cooler part of the disk keeps its red/brown gradient.
-      '  float whiteMix = smoothstep(0.55, 0.95, bands) * (0.40 + 0.60*cloud);',
-      '  whiteMix *= 1.0 - smoothstep(0.20, 0.65, t);',
-      '  col = mix(col, vec3(0.97, 0.93, 0.84), whiteMix * 0.65);',
+      // turbulence already on the disk. Lowered the bands gate (0.55→0.40) so
+      // more of the ring structure picks up white, raised the blend (0.65→0.88)
+      // to make the strips read clearly, and extended the t-fade (0.65→0.78)
+      // so the white reaches further out without erasing the cool outer gradient.
+      '  float whiteMix = smoothstep(0.40, 0.82, bands) * (0.45 + 0.55*cloud);',
+      '  whiteMix *= 1.0 - smoothstep(0.25, 0.78, t);',
+      '  col = mix(col, vec3(0.98, 0.95, 0.86), whiteMix * 0.88);',
       // Inner photon ring (t<0.05) stays uniform — orbital + granular only
       // modulate the outer disk so the bright Planckian ring stays unbroken.
       '  float fade = smoothstep(0.04, 0.18, t);',
@@ -751,7 +753,9 @@ gltfLoader.load('need_some_space.glb', function(gltf) {
     // Event horizon radius used for dynamic shadow calculation.
     // No sphere mesh: the lensing shader shadow mask IS the event horizon — eliminates
     // any frame-to-frame desync between a mesh position and the screen-space mask.
-    bhEHRadius = bhR * 0.85;
+    // Bumped 0.85 → 1.00 to enlarge the central dark void; photon ring and halo
+    // scale with bhEHRadius so they grow proportionally too.
+    bhEHRadius = bhR * 1.00;
 
     // Procedural BH starfield — uniform random points on a sphere, no galactic band.
     // Shown during BH mode instead of the 8K Milky Way texture (which has a bright
