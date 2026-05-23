@@ -662,6 +662,14 @@ gltfLoader.load('need_some_space.glb', function(gltf) {
       '  float cloud  = fbm4(pCloud);',
       '  float grain  = vnoise(pCloud * 9.3);',
       '  float granular = 0.35 + 0.50*cloud + 0.18*grain;',
+      // White-hot strips: at radii where the radial bands peak, the plasma is
+      // hot enough to read as pale white. Multiplied by cloud so the strips
+      // appear as curving filaments rather than perfect rings — blends with the
+      // turbulence already on the disk. Faded out for t > 0.20 so the outer,
+      // cooler part of the disk keeps its red/brown gradient.
+      '  float whiteMix = smoothstep(0.55, 0.95, bands) * (0.40 + 0.60*cloud);',
+      '  whiteMix *= 1.0 - smoothstep(0.20, 0.65, t);',
+      '  col = mix(col, vec3(0.97, 0.93, 0.84), whiteMix * 0.65);',
       // Inner photon ring (t<0.05) stays uniform — orbital + granular only
       // modulate the outer disk so the bright Planckian ring stays unbroken.
       '  float fade = smoothstep(0.04, 0.18, t);',
