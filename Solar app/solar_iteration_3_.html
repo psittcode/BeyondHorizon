@@ -604,29 +604,32 @@ gltfLoader.load('need_some_space.glb', function(gltf) {
       'varying float vRadius, vAngle;',
       'void main(){',
       '  float t = clamp((vRadius - uInnerR) / (uOuterR - uInnerR), 0.0, 1.0);',
-      // Color: pure white photon ring → pink-white → gold → orange → dark amber → near-black
+      // Color: brilliant white inner → pink-white → gold → orange → dark amber → near-black outer
       '  vec3 col;',
-      '  if(t < 0.03){ float u=t/0.03; col=mix(vec3(1.00,1.00,1.00),vec3(1.00,0.88,0.94),u); }',
-      '  else if(t < 0.10){ float u=(t-0.03)/0.07; col=mix(vec3(1.00,0.88,0.94),vec3(1.00,0.68,0.15),u); }',
-      '  else if(t < 0.25){ float u=(t-0.10)/0.15; col=mix(vec3(1.00,0.68,0.15),vec3(0.95,0.40,0.04),u); }',
-      '  else if(t < 0.50){ float u=(t-0.25)/0.25; col=mix(vec3(0.95,0.40,0.04),vec3(0.55,0.16,0.01),u); }',
-      '  else if(t < 0.75){ float u=(t-0.50)/0.25; col=mix(vec3(0.55,0.16,0.01),vec3(0.20,0.06,0.01),u); }',
-      '  else{ float u=(t-0.75)/0.25; col=mix(vec3(0.20,0.06,0.01),vec3(0.04,0.01,0.00),u); }',
-      // Steep radial falloff — outer disk very dim to prevent ambient bleed
-      '  float bright = pow(max(1.0-t, 0.0), 2.5) * 2.5;',
-      // Photon ring: tight Gaussian at inner edge — razor-thin searing white wire
+      '  if(t < 0.04){ float u=t/0.04; col=mix(vec3(1.00,1.00,1.00),vec3(1.00,0.90,0.95),u); }',
+      '  else if(t < 0.12){ float u=(t-0.04)/0.08; col=mix(vec3(1.00,0.90,0.95),vec3(1.00,0.70,0.18),u); }',
+      '  else if(t < 0.28){ float u=(t-0.12)/0.16; col=mix(vec3(1.00,0.70,0.18),vec3(0.95,0.42,0.05),u); }',
+      '  else if(t < 0.52){ float u=(t-0.28)/0.24; col=mix(vec3(0.95,0.42,0.05),vec3(0.60,0.18,0.02),u); }',
+      '  else if(t < 0.76){ float u=(t-0.52)/0.24; col=mix(vec3(0.60,0.18,0.02),vec3(0.22,0.07,0.01),u); }',
+      '  else{ float u=(t-0.76)/0.24; col=mix(vec3(0.22,0.07,0.01),vec3(0.05,0.01,0.00),u); }',
+      // Photon ring: very tight Gaussian — razor-thin paper-white wire at inner edge
       '  float innerDist = max(0.0, vRadius - uInnerR);',
-      '  float sigma = uInnerR * 0.10;',
-      '  float pBoost = 1.0 + 60.0 * exp(-(innerDist*innerDist) / (2.0*sigma*sigma));',
-      // 4-frequency log-sine banding — ~20 concentric rings, min 0.15 (never black-gaps)
+      '  float sigma = uInnerR * 0.05;',
+      '  float pr = exp(-(innerDist*innerDist) / (2.0*sigma*sigma));',
+      '  float pBoost = 1.0 + 80.0 * pr;',
+      // Blend disk color toward brilliant white at photon ring zone
+      '  col = mix(col, vec3(1.0,1.0,1.0), pr * 0.85);',
+      // Moderate radial falloff — outer disk stays visible with clear ring structure
+      '  float bright = pow(max(1.0-t, 0.0), 1.8) * 1.8;',
+      // 4-frequency log-sine banding — ~50 concentric rings, min 0.15
       '  float logR = log(max(vRadius / max(uInnerR, 0.001), 1.001));',
       '  float b1 = 0.5 + 0.5*sin(logR*6.0);',
       '  float b2 = 0.5 + 0.5*sin(logR*15.0 + 1.0);',
       '  float b3 = 0.5 + 0.5*sin(logR*35.0 + 0.5);',
       '  float b4 = 0.5 + 0.5*sin(logR*75.0 + 1.8);',
       '  float bands = 0.15 + 0.42*b1 + 0.25*b2 + 0.12*b3 + 0.06*b4;',
-      // Doppler beaming — strong asymmetry: approaching side 3.3× brighter than receding
-      '  float doppler = max(0.0, 0.30 + 0.70 * cos(vAngle));',
+      // Doppler beaming — min 0.30: dark side always visible, no half-ring streak artifact
+      '  float doppler = 0.65 + 0.35 * cos(vAngle);',
       '  float alpha = clamp(bright * bands * doppler * pBoost, 0.0, 1.0);',
       '  gl_FragColor = vec4(col, alpha);',
       '}'
@@ -639,11 +642,11 @@ gltfLoader.load('need_some_space.glb', function(gltf) {
     // Single flat disk — 512 angular segments, 1 radial segment.
     // 1 radial segment = geometrically impossible to appear as a torus.
     // This is a 2D plane with zero vertical thickness.
-    var diskGeo = new THREE.RingGeometry(bhR * 1.20, bhR * 8.0, 512, 1);
+    var diskGeo = new THREE.RingGeometry(bhR * 0.92, bhR * 10.0, 512, 1);
     var diskMat = new THREE.ShaderMaterial({
       uniforms: {
-        uInnerR: { value: bhR * 1.20 },
-        uOuterR: { value: bhR * 8.0 }
+        uInnerR: { value: bhR * 0.92 },
+        uOuterR: { value: bhR * 10.0 }
       },
       vertexShader:   diskVert,
       fragmentShader: diskFrag,
@@ -687,7 +690,7 @@ gltfLoader.load('need_some_space.glb', function(gltf) {
     var _lensUniforms = {
       tDiffuse:  { value: null },
       uCenter:   { value: new THREE.Vector2(0.5, 0.5) },
-      uStrength: { value: 0.35 },
+      uStrength: { value: 0.50 },
       uInnerR:   { value: 0.03 },
       uOuterR:   { value: 0.12 },
       uShadowR:  { value: 0.06 },
@@ -717,11 +720,8 @@ gltfLoader.load('need_some_space.glb', function(gltf) {
         '    uv-=dir*warpMag; uv=clamp(uv,0.001,0.999);',
         '  }',
         '  vec4 col=texture2D(tDiffuse,uv);',
-        // Einstein arc — STRICTLY upper hemisphere (aboveCenter=0 for y≤uCenter.y, eliminates lower streak)
-        '  float aboveCenter=smoothstep(0.0,uShadowR*1.5,vUv.y-uCenter.y);',
-        // Thin bright ring just outside shadow boundary — lensed back-disk light over north pole
+        // Einstein ring — full 360° around shadow boundary (lensed back-side disk light)
         '  float arcW=smoothstep(uShadowR*1.35,uShadowR*1.00,dist)*smoothstep(uShadowR*0.97,uShadowR*1.10,dist);',
-        '  arcW*=aboveCenter;',
         '  if(arcW>0.001){',
         '    vec2 mDir=-d/max(dist,0.001);',
         '    vec2 arcUv=uCenter+mDir*(uShadowR*2.0)/vec2(uAspect,1.0);',
@@ -3083,6 +3083,8 @@ function animate(){
     if (bhPointLight)  bhPointLight.visible  = true;
     if (bhPointLight2) bhPointLight2.visible = true;
     if (bhPointLight3) bhPointLight3.visible = true;
+    // Dim skybox to suppress bright galactic-band streak while preserving stars
+    if (galaxySkybox && galaxySkybox.material) galaxySkybox.material.color.setScalar(0.20);
     bhRendererSettings = true;
   } else if (bhTransitionT <= 0.03 && bhRendererSettings) {
     renderer.toneMapping         = bhOrigToneMapping;
@@ -3096,6 +3098,8 @@ function animate(){
       _bhSavedVisibility.forEach(function(wasVisible, obj) { obj.visible = wasVisible; });
       _bhSavedVisibility = null;
     }
+    // Restore skybox full brightness
+    if (galaxySkybox && galaxySkybox.material) galaxySkybox.material.color.setScalar(1.0);
     bhRendererSettings = false;
   }
   // ── End black hole transition ─────────────────────────────────────────────
