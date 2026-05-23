@@ -665,6 +665,14 @@ gltfLoader.load('need_some_space.glb', function(gltf) {
     diskMesh.layers.set(0);
     bhSpin.add(diskMesh);
 
+    // Soft orange atmospheric glow — wide volumetric sphere around disk
+    var bhGlowMesh = new THREE.Mesh(
+      new THREE.SphereGeometry(bhR * 6, 32, 32),
+      new THREE.MeshBasicMaterial({ color: 0xff6600, transparent: true, opacity: 0.12, depthWrite: false, blending: THREE.AdditiveBlending })
+    );
+    bhGlowMesh.renderOrder = 10;
+    bhSpin.add(bhGlowMesh);
+
     // Event horizon radius used for dynamic shadow calculation.
     // No sphere mesh: the lensing shader shadow mask IS the event horizon — eliminates
     // any frame-to-frame desync between a mesh position and the screen-space mask.
@@ -724,28 +732,23 @@ gltfLoader.load('need_some_space.glb', function(gltf) {
         'void main(){',
         '  vec2 d=(vUv-uCenter)*vec2(uAspect,1.0);',
         '  float dist=length(d);',
-        // Event horizon: dark mirror — sample disk glow from radially outward direction
-        '  if(dist<uShadowR*0.97){',
-        '    vec2 refDir=d/max(dist,0.001)/vec2(uAspect,1.0);',
-        '    vec2 refUv=clamp(uCenter+refDir*uShadowR*1.3,0.001,0.999);',
-        '    gl_FragColor=vec4(texture2D(tDiffuse,refUv).rgb*0.05,1.0);',
-        '    return;',
-        '  }',
-        // Gravitational warp — wide zone (2.5×shadowR) for visible space distortion
+        // Event horizon: pure black (no reflection to avoid seam artifacts)
+        '  if(dist<uShadowR*0.97){ gl_FragColor=vec4(0.0,0.0,0.0,1.0); return; }',
+        // Gravitational warp — smooth exponential decay, NO hard outer boundary (prevents seam line)
         '  vec2 uv=vUv;',
-        '  if(dist>uShadowR&&dist<uShadowR*2.5){',
-        '    float tw=smoothstep(uShadowR*2.5,uShadowR,dist);',
-        '    float warpMag=uStrength*tw*tw*uShadowR;',
+        '  float warpMag=uStrength*uShadowR*exp(-pow((dist/uShadowR-1.0)*2.2,2.0));',
+        '  if(warpMag>0.0001){',
         '    vec2 dir=d/max(dist,0.001); dir.x/=uAspect;',
         '    uv-=dir*warpMag; uv=clamp(uv,0.001,0.999);',
         '  }',
         '  vec4 col=texture2D(tDiffuse,uv);',
-        // Photon ring — razor-thin Gaussian ring tracing the photon sphere (1.0×shadowR)
-        // Biased brighter above shadow center (d.y>0) to simulate disk lensed over north pole
-        '  float prD=(dist-uShadowR)/(uShadowR*0.018);',
+        // Photon ring — soft Gaussian, wider sigma, warm amber glow, strong upper-hemisphere bias
+        '  float prD=(dist-uShadowR)/(uShadowR*0.055);',
         '  float prRing=exp(-prD*prD);',
+        '  float haloD=(dist-uShadowR)/(uShadowR*0.22);',
+        '  float halo=exp(-haloD*haloD)*0.35;',
         '  float yUp=clamp(d.y/max(dist,0.001)*0.5+0.5,0.0,1.0);',
-        '  col.rgb+=vec3(1.0,0.97,0.88)*prRing*(6.0+6.0*yUp);',
+        '  col.rgb+=vec3(1.0,0.85,0.45)*(prRing+halo)*(4.0+14.0*yUp);',
         '  gl_FragColor=col;',
         '}'
       ].join('\n')
@@ -1428,9 +1431,55 @@ const moon = new THREE.Mesh(
 moon.position.set(1.5, 0, 0);
 moonGroup.add(moon);
 
-// Orbit lines removed — all THREE.Line primitives deleted to prevent stray line artifacts
+// 🪐 ORBIT LINES
 const orbitLines = [];
+meshes.forEach(m => {
+  const points = [];
+  for (let i = 0; i <= 128; i++) {
+    const angle = (i / 128) * Math.PI * 2;
+    points.push(new THREE.Vector3(
+      Math.cos(angle) * m.userData.dist,
+      0,
+      Math.sin(angle) * m.userData.dist
+    ));
+  }
+  const orbit = new THREE.Line(
+    new THREE.BufferGeometry().setFromPoints(points),
+    new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.15 })
+  );
+  scene.add(orbit);
+  orbitLines.push(orbit);
+});
+
+// 🌕 Moon orbit line
+const moonOrbitPoints = [];
+for (let i = 0; i <= 128; i++) {
+  const angle = (i / 128) * Math.PI * 2;
+  moonOrbitPoints.push(new THREE.Vector3(Math.cos(angle) * 1.5, 0, Math.sin(angle) * 1.5));
+}
+const moonOrbitLine = new THREE.Line(
+  new THREE.BufferGeometry().setFromPoints(moonOrbitPoints),
+  new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.15 })
+);
+moonGroup.add(moonOrbitLine);
+orbitLines.push(moonOrbitLine);
+
+// 🪐 Jupiter moon orbit lines
 const jupiterMoonOrbitLines = [];
+[2.1, 3.3, 5.25, 9.24].forEach(dist => {
+  const pts = [];
+  for (let i = 0; i <= 128; i++) {
+    const a = (i / 128) * Math.PI * 2;
+    pts.push(new THREE.Vector3(Math.cos(a) * dist, 0, Math.sin(a) * dist));
+  }
+  const orbitLine = new THREE.Line(
+    new THREE.BufferGeometry().setFromPoints(pts),
+    new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.15 })
+  );
+  scene.add(orbitLine);
+  orbitLines.push(orbitLine);
+  jupiterMoonOrbitLines.push(orbitLine);
+});
 
 let orbitsVisible = true;
 document.getElementById("toggleOrbits").addEventListener("click", () => {
@@ -2040,8 +2089,10 @@ galPlane.rotation.x = -Math.PI / 2;
 galacticGroup.add(galPlane);
 
 // Grid on the galactic plane for spatial reference
-// galGrid GridHelper removed (line primitive deleted)
-const galGrid = { visible: false }; // stub — keeps toggle handler from erroring
+const galGrid = new THREE.GridHelper(640, 16, 0x4499cc, 0x1a3366);
+galGrid.material.opacity = 0.55;
+galGrid.material.transparent = true;
+galacticGroup.add(galGrid);
 
 // Galactic centre (Sagittarius A*)
 const galCentre = new THREE.Mesh(
@@ -2116,7 +2167,12 @@ const galEarthTrailPos = new Float32Array(GAL_EARTH_TRAIL_MAX * 3);
 const galEarthTrailGeo = new THREE.BufferGeometry();
 galEarthTrailGeo.setAttribute('position', new THREE.BufferAttribute(galEarthTrailPos, 3));
 galEarthTrailGeo.setDrawRange(0, 0);
-const galEarthTrail = { visible: false }; // stub — line primitive removed
+const galEarthTrail = new THREE.Line(
+  galEarthTrailGeo,
+  new THREE.LineBasicMaterial({ color: 0x33ccff, transparent: true, opacity: 0.8 })
+);
+galEarthTrail.visible = false;
+galacticGroup.add(galEarthTrail);
 
 // Sun trail — tracks the solar system's corkscrew galactic orbit path around Sag A*
 const GAL_SUN_TRAIL_MAX = 20000;
@@ -2124,7 +2180,12 @@ const galSunTrailPos = new Float32Array(GAL_SUN_TRAIL_MAX * 3);
 const galSunTrailGeo = new THREE.BufferGeometry();
 galSunTrailGeo.setAttribute('position', new THREE.BufferAttribute(galSunTrailPos, 3));
 galSunTrailGeo.setDrawRange(0, 0);
-const galSunTrail = { visible: false }; // stub — line primitive removed
+const galSunTrail = new THREE.Line(
+  galSunTrailGeo,
+  new THREE.LineBasicMaterial({ color: 0xffcc44, transparent: true, opacity: 0.6 })
+);
+galSunTrail.visible = false;
+galacticGroup.add(galSunTrail);
 
 // ── Galactic view state ────────────────────────────────────────
 let galacticViewActive  = false;
@@ -2972,8 +3033,11 @@ function animate(){
     if (bhPointLight)  bhPointLight.visible  = true;
     if (bhPointLight2) bhPointLight2.visible = true;
     if (bhPointLight3) bhPointLight3.visible = true;
-    // Show procedural starfield (no galactic band) instead of 8K skybox
-    if (bhStarfield) bhStarfield.visible = true;
+    // Dim the real 8K skybox so lensing shader warps the actual starfield texture
+    if (galaxySkybox && galaxySkybox.material) {
+      galaxySkybox.visible = true;
+      galaxySkybox.material.color.setScalar(0.35);
+    }
     bhRendererSettings = true;
   } else if (bhTransitionT <= 0.03 && bhRendererSettings) {
     renderer.toneMapping         = bhOrigToneMapping;
@@ -3076,6 +3140,9 @@ function animate(){
       }
     });
 
+    jupiterMoonOrbitLines.forEach(line => {
+      line.position.copy(jupiterWorldPos);
+    });
   }
 
 // Galactic view — advance solar system + Earth dot along corkscrew path
@@ -3288,6 +3355,11 @@ function animate(){
         (_bhScreenPos.x + 1.0) * 0.5,
         (_bhScreenPos.y + 1.0) * 0.5
       );
+    }
+    // Lock orbit pivot to BH center — prevents sphere from jumping on fast mouse movement
+    if (galacticCorePos) {
+      controls.target.copy(galacticCorePos);
+      controls.update();
     }
     finalComposer.render();
   } else {
