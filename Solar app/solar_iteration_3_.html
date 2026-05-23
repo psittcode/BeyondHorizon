@@ -619,18 +619,21 @@ gltfLoader.load('need_some_space.glb', function(gltf) {
       '  float pBoost = 1.0 + 14.0 * pr;',
       '  col = mix(col, vec3(1.0,0.92,0.68), pr * 0.60);',
       '  float bright = pow(max(1.0-t, 0.0), 1.8) * 1.8;',
-      // Animated bands: radial inflow (matter accretes inward) + slight spiral turbulence
+      // Static concentric ring texture
       '  float logR = log(max(vRadius / max(uInnerR, 0.001), 1.001));',
-      '  float inflow = uTime * 1.5;',
-      '  float b1 = 0.5 + 0.5*sin(logR*6.0  - inflow       + vAngle*0.20);',
-      '  float b2 = 0.5 + 0.5*sin(logR*15.0 - inflow*1.60  + vAngle*0.40 + 1.0);',
-      '  float b3 = 0.5 + 0.5*sin(logR*35.0 - inflow*2.20  + vAngle*0.70 + 0.5);',
-      '  float b4 = 0.5 + 0.5*sin(logR*75.0 - inflow*3.00  + vAngle*1.10 + 1.8);',
-      '  float bands = 0.15 + 0.42*b1 + 0.25*b2 + 0.12*b3 + 0.06*b4;',
-      // Keplerian differential rotation: inner orbits faster — eliminates static bright spot / stray line
-      '  float orbSpeed = 0.50 / max(pow(vRadius / max(uInnerR,0.001), 1.5), 0.10);',
-      '  float doppler = 0.82 + 0.18 * cos(vAngle - uTime * orbSpeed);',
-      '  float alpha = clamp(bright * bands * doppler * pBoost, 0.0, 1.0);',
+      '  float b1 = 0.5 + 0.5*sin(logR*6.0);',
+      '  float b2 = 0.5 + 0.5*sin(logR*15.0 + 1.0);',
+      '  float b3 = 0.5 + 0.5*sin(logR*35.0 + 0.5);',
+      '  float b4 = 0.5 + 0.5*sin(logR*75.0 + 1.8);',
+      '  float bands = 0.20 + 0.40*b1 + 0.22*b2 + 0.12*b3 + 0.06*b4;',
+      // Keplerian azimuthal flow — integer-n cos(n*vAngle) terms are seam-free (complete full cycles)
+      // Inner disk orbits faster; combined features create smooth left-to-right water-like sweep
+      '  float orbSpeed = 0.55 / max(pow(vRadius / max(uInnerR, 0.001), 1.5), 0.10);',
+      '  float swirl = 0.68',
+      '    + 0.17 * cos(1.0*vAngle - uTime * orbSpeed)',
+      '    + 0.09 * cos(3.0*vAngle - uTime * orbSpeed * 1.5)',
+      '    + 0.06 * cos(5.0*vAngle - uTime * orbSpeed * 2.2);',
+      '  float alpha = clamp(bright * bands * swirl * pBoost, 0.0, 1.0);',
       '  gl_FragColor = vec4(col, alpha);',
       '}'
     ].join('\n');
@@ -673,10 +676,10 @@ gltfLoader.load('need_some_space.glb', function(gltf) {
       _gc.width = _gc.height = 256;
       var _gx = _gc.getContext('2d');
       var _gr = _gx.createRadialGradient(128,128,0,128,128,128);
-      _gr.addColorStop(0,    'rgba(255,130,15,0.38)');
-      _gr.addColorStop(0.35, 'rgba(240,70,3,0.16)');
-      _gr.addColorStop(0.65, 'rgba(180,30,0,0.05)');
-      _gr.addColorStop(1.0,  'rgba(120,10,0,0)');
+      _gr.addColorStop(0,    'rgba(255,120,10,0.25)');
+      _gr.addColorStop(0.40, 'rgba(220,60,2,0.10)');
+      _gr.addColorStop(0.70, 'rgba(160,25,0,0.03)');
+      _gr.addColorStop(1.0,  'rgba(100,8,0,0)');
       _gx.fillStyle = _gr;
       _gx.fillRect(0, 0, 256, 256);
       var _gSprite = new THREE.Sprite(new THREE.SpriteMaterial({
@@ -686,7 +689,7 @@ gltfLoader.load('need_some_space.glb', function(gltf) {
         depthWrite: false,
         depthTest: false
       }));
-      _gSprite.scale.set(bhR * 10, bhR * 10, 1);
+      _gSprite.scale.set(bhR * 7, bhR * 7, 1);
       _gSprite.renderOrder = 15;
       bhSpin.add(_gSprite);
     })();
@@ -754,7 +757,7 @@ gltfLoader.load('need_some_space.glb', function(gltf) {
         '  if(dist<uShadowR*0.97){ gl_FragColor=vec4(0.0,0.0,0.0,1.0); return; }',
         // Gravitational warp — smooth Gaussian, no hard threshold (eliminates seam-line artifacts)
         '  vec2 uv=vUv;',
-        '  float warpMag=uStrength*uShadowR*exp(-pow((dist/uShadowR-1.0)*2.2,2.0));',
+        '  float warpMag=uStrength*uShadowR*exp(-pow((dist/uShadowR-1.0)*1.1,2.0));',
         '  vec2 dir=d/max(dist,0.001); dir.x/=uAspect;',
         '  uv-=dir*warpMag; uv=clamp(uv,0.001,0.999);',
         '  vec4 col=texture2D(tDiffuse,uv);',
