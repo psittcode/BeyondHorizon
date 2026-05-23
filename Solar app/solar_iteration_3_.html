@@ -604,7 +604,7 @@ gltfLoader.load('need_some_space.glb', function(gltf) {
     var diskFrag = [
       'uniform float uInnerR, uOuterR, uTime, uAlphaMul, uLayerY;',
       'varying float vRadius, vAngle;',
-      // --- 2D value noise + 5-octave FBM for cloud-like turbulence ---
+      // --- 2D value noise + 4-octave FBM for cloud-like turbulence ---
       'float hash21(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }',
       'float vnoise(vec2 p){',
       '  vec2 i = floor(p);',
@@ -613,64 +613,67 @@ gltfLoader.load('need_some_space.glb', function(gltf) {
       '  return mix(mix(hash21(i+vec2(0.0,0.0)), hash21(i+vec2(1.0,0.0)), u.x),',
       '             mix(hash21(i+vec2(0.0,1.0)), hash21(i+vec2(1.0,1.0)), u.x), u.y);',
       '}',
-      'float fbm5(vec2 p){',
+      'float fbm4(vec2 p){',
       '  float v = 0.0;',
-      '  v += 0.516 * vnoise(p);',
-      '  v += 0.258 * vnoise(p * 2.03);',
-      '  v += 0.129 * vnoise(p * 4.07);',
-      '  v += 0.065 * vnoise(p * 8.13);',
-      '  v += 0.032 * vnoise(p * 16.31);',
+      '  v += 0.533 * vnoise(p);',
+      '  v += 0.267 * vnoise(p * 2.03);',
+      '  v += 0.133 * vnoise(p * 4.07);',
+      '  v += 0.067 * vnoise(p * 8.13);',
       '  return v;',
       '}',
       'void main(){',
-      '  float t = clamp((vRadius - uInnerR) / (uOuterR - uInnerR), 0.0, 1.0);',
-      // Co-rotating polar frame. uLayerY offset gives each stacked disk layer a
-      // different slice of the noise field, so the edge-on cross-section reads
-      // as turbulent thickness instead of 5 identical patterns stacked.
+      '  float t    = clamp((vRadius - uInnerR) / (uOuterR - uInnerR), 0.0, 1.0);',
+      '  float logR = log(max(vRadius / max(uInnerR, 0.001), 1.001));',
+      // Cloud noise — uLayerY offset gives each of the 5 stacked disks a
+      // different slice of the noise field (visible edge-on as turbulent
+      // thickness rather than 5 identical 2D patterns).
       '  float rotAng = vAngle - uTime * 0.18;',
       '  vec2  pBase  = vec2(vRadius*cos(rotAng), vRadius*sin(rotAng)) / max(uInnerR * 0.55, 0.001);',
       '  vec2  pCloud = pBase + vec2(uLayerY * 0.6, uLayerY * 0.4);',
-      // Primary turbulence + larger-scale cream-patch structure + fine dust grain.
-      // Two noise samples at different scales replace the old radial-band tiger
-      // fur — colour and brightness vary by turbulence, not by clean rings.
-      '  float cloud = fbm5(pCloud);',
-      '  float swirl = fbm5(pCloud * 0.42 + vec2(13.0, 7.0));',
-      '  float grain = vnoise(pCloud * 14.0);',
-      // Colour gradient — t (radius) PERTURBED by noise so the colour boundaries
-      // curve and swirl instead of forming concentric stripes. Wider colour zones
-      // (0.06, 0.18, 0.40, 0.65, 0.85) further smooth out the old hard transitions.
-      '  float tCol = clamp(t + (cloud - 0.5) * 0.18 + (swirl - 0.5) * 0.10, 0.0, 1.0);',
-      '  vec3 col;',
-      '  if(tCol < 0.06){ float u=tCol/0.06; col=mix(vec3(1.00,0.98,0.92),vec3(1.00,0.92,0.70),u); }',
-      '  else if(tCol < 0.18){ float u=(tCol-0.06)/0.12; col=mix(vec3(1.00,0.92,0.70),vec3(1.00,0.70,0.18),u); }',
-      '  else if(tCol < 0.40){ float u=(tCol-0.18)/0.22; col=mix(vec3(1.00,0.70,0.18),vec3(0.92,0.40,0.05),u); }',
-      '  else if(tCol < 0.65){ float u=(tCol-0.40)/0.25; col=mix(vec3(0.92,0.40,0.05),vec3(0.55,0.18,0.02),u); }',
-      '  else if(tCol < 0.85){ float u=(tCol-0.65)/0.20; col=mix(vec3(0.55,0.18,0.02),vec3(0.20,0.06,0.01),u); }',
-      '  else{ float u=(tCol-0.85)/0.15; col=mix(vec3(0.20,0.06,0.01),vec3(0.05,0.01,0.00),u); }',
-      // Cream / milk-in-coffee patches — driven by the larger-scale swirl noise
-      // (NOT by radial bands), so they appear as irregular curving patches that
-      // flow with the cloud turbulence, like cream poured into coffee. Modulated
-      // by cloud so smaller-scale detail breaks the patches further.
-      '  float milk = smoothstep(0.50, 0.82, swirl) * (0.40 + 0.60*cloud);',
-      '  milk *= 1.0 - smoothstep(0.35, 0.90, t);',
-      '  col = mix(col, vec3(0.99, 0.96, 0.86), milk * 0.85);',
-      // Inner Planckian boost — keeps the bright photon-ring edge
+      '  float cloud  = fbm4(pCloud);',
+      '  float grain  = vnoise(pCloud * 11.0);',
+      // === Multiple ripple effects — stacked "paper" layers ===
+      // 3 concentric sin waves on logR with different frequencies (5, 11, 19),
+      // PLUS a per-layer phase offset (uLayerY * 0.65). Adjacent disk layers
+      // ripple at slightly different radii (~13 % radial offset per layer), so
+      // when the 5 layers blend additively we see multiple ripple sets at once
+      // rather than one reinforced ring set — the "individual papers stacked"
+      // look. Slow uTime drift makes the rings breathe.
+      '  float layerPhase = uLayerY * 0.65;',
+      '  float ripple1 = sin(logR * 5.0  - uTime * 0.10 + layerPhase);',
+      '  float ripple2 = sin(logR * 11.0 - uTime * 0.15 + layerPhase * 0.8 + 1.3);',
+      '  float ripple3 = sin(logR * 19.0 - uTime * 0.20 + layerPhase * 1.2 + 2.7);',
+      '  float rippleN = 0.5 + 0.5 * (0.50*ripple1 + 0.30*ripple2 + 0.20*ripple3);',
+      // === Pure orange base ===
+      // Single base hue, brightness modulated by cloud and ripples. No more
+      // multi-colour gradient cascade (white→pink→orange→red→brown) — that was
+      // the source of the tiger-fur stripes.
+      '  vec3 col = vec3(1.00, 0.55, 0.12);',
+      '  col *= (0.60 + 0.40 * cloud);',
+      '  col *= (0.75 + 0.30 * rippleN);',
+      // Slight reddening toward the outer disk — still warm orange, just deeper
+      '  col = mix(col, col * vec3(0.85, 0.70, 0.55), smoothstep(0.4, 0.95, t) * 0.5);',
+      // === White strips on ripple peaks ===
+      // Strips line up with the ripple wave crests but are broken up by the
+      // cloud noise so they read as wavy stripes rather than clean rings.
+      '  float strips = smoothstep(0.55, 0.88, rippleN) * (0.40 + 0.60 * cloud);',
+      '  strips *= 1.0 - smoothstep(0.30, 0.85, t);',
+      '  col = mix(col, vec3(0.99, 0.96, 0.86), strips * 0.85);',
+      // Inner Planckian boost (alpha boost only — no colour change so the
+      // pure-orange look is preserved all the way to the photon ring).
       '  float innerDist = max(0.0, vRadius - uInnerR);',
       '  float sigma = uInnerR * 0.10;',
       '  float pr = exp(-(innerDist*innerDist) / (2.0*sigma*sigma));',
       '  float pBoost = 1.0 + 10.0 * pr;',
-      '  col = mix(col, vec3(1.0,0.92,0.68), pr * 0.60);',
-      // Fine dust grain — ±12 % brightness for visible detail at any zoom
-      '  col *= (0.88 + 0.24 * grain);',
-      // Brightness — slow radial falloff, cloud carries the texture
-      '  float bright = pow(max(1.0-t, 0.0), 1.0) * 1.5;',
-      // Faint hint of radial structure (much weaker than the old tiger-fur banding)
-      '  float logR = log(max(vRadius / max(uInnerR, 0.001), 1.001));',
-      '  float softRing = 0.85 + 0.10*sin(logR*3.5) + 0.05*sin(logR*7.0 + 1.0);',
-      // Alpha modulation driven primarily by cloud noise — turbulent, soft edges.
-      // No more multi-frequency radial bands or sharp spiral arms in alpha.
-      '  float alphaCloud = 0.40 + 0.60*cloud;',
-      '  float alpha = clamp(bright * alphaCloud * softRing * pBoost, 0.0, 1.0);',
+      // Fine dust grain
+      '  col *= (0.92 + 0.16 * grain);',
+      // === Alpha — radial falloff × cloud × ripple × pBoost ===
+      // Ripples affect alpha so the wave structure is visible as bright/dim
+      // bands, contributing the "paper layers" feel along with the white strips.
+      '  float bright      = pow(max(1.0-t, 0.0), 1.0) * 1.5;',
+      '  float alphaCloud  = 0.40 + 0.60 * cloud;',
+      '  float alphaRipple = 0.70 + 0.30 * rippleN;',
+      '  float alpha = clamp(bright * alphaCloud * alphaRipple * pBoost, 0.0, 1.0);',
       '  alpha *= uAlphaMul;',
       '  gl_FragColor = vec4(col, alpha);',
       '}'
@@ -805,18 +808,24 @@ gltfLoader.load('need_some_space.glb', function(gltf) {
         'void main(){',
         '  vec2 d=(vUv-uCenter)*vec2(uAspect,1.0);',
         '  float dist=length(d);',
-        // Event horizon: solid black
-        '  if(dist<uShadowR*0.97){ gl_FragColor=vec4(0.0,0.0,0.0,1.0); return; }',
+        // Shadow extended from 0.97 to 1.18 — black takes up more of the
+        // visible BH. Photon ring and halo move outward to the new shadow
+        // edge (peaked at uShadowR*1.18), and the halo sigma is narrowed
+        // (0.28 -> 0.19) so the outer fade ends at roughly the same screen
+        // radius as before — i.e. the overall "sphere" stays the same size,
+        // just the dark void inside it grows.
+        '  float shadowR = uShadowR * 1.18;',
+        '  if(dist < shadowR){ gl_FragColor=vec4(0.0,0.0,0.0,1.0); return; }',
         // Gravitational warp — smooth Gaussian, no hard threshold (eliminates seam-line artifacts)
         '  vec2 uv=vUv;',
         '  float warpMag=uStrength*uShadowR*exp(-pow((dist/uShadowR-1.0)*1.1,2.0));',
         '  vec2 dir=d/max(dist,0.001); dir.x/=uAspect;',
         '  uv-=dir*warpMag; uv=clamp(uv,0.001,0.999);',
         '  vec4 col=texture2D(tDiffuse,uv);',
-        // Photon ring + warm halo — soft bloom around shadow edge
-        '  float prD=(dist-uShadowR)/(uShadowR*0.06);',
+        // Photon ring + warm halo at the new shadow edge
+        '  float prD=(dist-shadowR)/(uShadowR*0.04);',
         '  float prRing=exp(-prD*prD);',
-        '  float haloD=(dist-uShadowR)/(uShadowR*0.28);',
+        '  float haloD=(dist-shadowR)/(uShadowR*0.19);',
         '  float halo=exp(-haloD*haloD)*0.28;',
         '  col.rgb+=vec3(1.0,0.78,0.35)*(prRing+halo)*4.5;',
         '  gl_FragColor=col;',
