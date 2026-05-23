@@ -477,7 +477,7 @@ let finalComposer         = null;
 let bhLensingUniforms     = null;
 let bhEHRadius            = 0;   // event horizon sphere world-space radius (for dynamic lensing)
 let bhStarfield           = null; // procedural starfield for BH mode (no galactic band)
-let bhDiskMesh            = null; // reference to disk mesh for uTime animation
+let bhDiskMaterials       = null; // materials of each stacked disk layer, for uTime animation
 const _bhScreenPos        = new THREE.Vector3();
 let _bhSavedVisibility    = null;
 
@@ -602,7 +602,7 @@ gltfLoader.load('need_some_space.glb', function(gltf) {
     ].join('\n');
 
     var diskFrag = [
-      'uniform float uInnerR, uOuterR, uTime;',
+      'uniform float uInnerR, uOuterR, uTime, uAlphaMul;',
       'varying float vRadius, vAngle;',
       'void main(){',
       '  float t = clamp((vRadius - uInnerR) / (uOuterR - uInnerR), 0.0, 1.0);',
@@ -631,14 +631,25 @@ gltfLoader.load('need_some_space.glb', function(gltf) {
       // across the atan2 ±π seam, so sin(N*vAngle) is continuous everywhere and
       // produces no stray seam-line. logR term gives spiral pitch so arms wind
       // inward like real accretion disks. -uTime rotates them around the BH.
-      // Inner photon ring (t<0.05) is left uniform — orbital arms only modulate
-      // the outer disk so the bright Planckian ring stays clean and unbroken.
       '  float arm1 = 0.5 + 0.5*sin(vAngle*2.0 + logR*1.5 - uTime*0.50);',
       '  float arm2 = 0.5 + 0.5*sin(vAngle*3.0 + logR*2.5 - uTime*0.75);',
       '  float arm3 = 0.5 + 0.5*sin(vAngle*5.0 - logR*1.8 - uTime*1.10);',
       '  float armMix = 0.55 + 0.20*arm1 + 0.15*arm2 + 0.10*arm3;',
-      '  float orbit  = mix(1.0, armMix, smoothstep(0.04, 0.18, t));',
-      '  float alpha = clamp(bright * bands * orbit * pBoost, 0.0, 1.0);',
+      // Saturn-ring-like granular texture — high-frequency variations that
+      // co-rotate (uTime term inside the angle) so the orbital motion is visible
+      // as moving "chunks". Integer N (47,89,131) keeps it seam-continuous.
+      '  float gA = vAngle - uTime*0.55;',
+      '  float gran1 = 0.5 + 0.5*sin(gA*47.0  + logR*22.0);',
+      '  float gran2 = 0.5 + 0.5*sin(gA*89.0  - logR*38.0 + 1.3);',
+      '  float gran3 = 0.5 + 0.5*sin(gA*131.0 + logR*61.0 + 2.7);',
+      '  float granular = 0.50 + 0.22*gran1 + 0.16*gran2 + 0.12*gran3;',
+      // Inner photon ring (t<0.05) stays uniform — orbital + granular only
+      // modulate the outer disk so the bright Planckian ring stays unbroken.
+      '  float fade = smoothstep(0.04, 0.18, t);',
+      '  float orbit   = mix(1.0, armMix,   fade);',
+      '  float texture_ = mix(1.0, granular, fade);',
+      '  float alpha = clamp(bright * bands * orbit * texture_ * pBoost, 0.0, 1.0);',
+      '  alpha *= uAlphaMul;',
       '  gl_FragColor = vec4(col, alpha);',
       '}'
     ].join('\n');
@@ -647,32 +658,43 @@ gltfLoader.load('need_some_space.glb', function(gltf) {
     bhSpin.position.copy(galacticCorePos);
     bhSpin.visible = false;
 
-    // Single flat disk — 512 angular segments, 1 radial segment.
-    // 1 radial segment = geometrically impossible to appear as a torus.
-    // This is a 2D plane with zero vertical thickness.
+    // === Stacked thin disks form 3D thickness ===
+    // 5 RingGeometry layers at slight world-Y offsets. Edge-on viewing (camera
+    // at or near the galactic plane) no longer collapses the disk to a single
+    // line — the stack shows a Gaussian-profile thickness from any angle.
+    // Each layer has its own ShaderMaterial sharing diskGeo (cheap), with a
+    // uAlphaMul that dims outer layers so the cross-section looks volumetric.
     var diskGeo = new THREE.RingGeometry(bhR * 0.92, bhR * 10.0, 512, 1);
-    var diskMat = new THREE.ShaderMaterial({
-      uniforms: {
-        uInnerR: { value: bhR * 0.92 },
-        uOuterR: { value: bhR * 10.0 },
-        uTime:   { value: 0.0 }
-      },
-      vertexShader:   diskVert,
-      fragmentShader: diskFrag,
-      transparent: true,
-      depthWrite:  false,
-      depthTest:   false,
-      blending:    THREE.AdditiveBlending,
-      side: THREE.DoubleSide
-    });
-    var diskMesh = new THREE.Mesh(diskGeo, diskMat);
-    diskMesh.rotation.x = -Math.PI / 2;  // flat in world XZ plane (horizontal)
-    // renderOrder 25 > EH sphere (20): disk renders on top, lensing shadow mask blacks out the center.
-    // This ensures the full disk ring is visible all around the sphere — no equator clipping.
-    diskMesh.renderOrder = 25;
-    diskMesh.layers.set(0);
-    bhSpin.add(diskMesh);
-    bhDiskMesh = diskMesh;
+    bhDiskMaterials = [];
+    var diskLayerCount   = 5;
+    var diskLayerSpacing = bhR * 0.030;  // vertical gap between adjacent layers
+    for (var di = 0; di < diskLayerCount; di++) {
+      var slot = di - (diskLayerCount - 1) * 0.5;   // -2, -1, 0, 1, 2
+      var yOff = slot * diskLayerSpacing;
+      var alphaMul = Math.exp(-Math.pow(slot / 1.6, 2.0)) * 0.55;
+      var layerMat = new THREE.ShaderMaterial({
+        uniforms: {
+          uInnerR:   { value: bhR * 0.92 },
+          uOuterR:   { value: bhR * 10.0 },
+          uTime:     { value: 0.0 },
+          uAlphaMul: { value: alphaMul }
+        },
+        vertexShader:   diskVert,
+        fragmentShader: diskFrag,
+        transparent: true,
+        depthWrite:  false,
+        depthTest:   false,
+        blending:    THREE.AdditiveBlending,
+        side: THREE.DoubleSide
+      });
+      var layerMesh = new THREE.Mesh(diskGeo, layerMat);
+      layerMesh.rotation.x = -Math.PI / 2;   // flat in world XZ plane
+      layerMesh.position.y = yOff;
+      layerMesh.renderOrder = 25;
+      layerMesh.layers.set(0);
+      bhSpin.add(layerMesh);
+      bhDiskMaterials.push(layerMat);
+    }
 
     // Soft orange glow — camera-facing sprite with radial gradient (sphere would be invisible
     // because the camera is always inside the glow radius in BH mode, culling all front faces)
@@ -3028,8 +3050,11 @@ function animate(){
     if (blackHoleModel) {
       blackHoleModel.visible = bhTransitionT > 0.05;
     }
-    if (bhDiskMesh && bhTransitionT > 0) {
-      bhDiskMesh.material.uniforms.uTime.value += deltaMs * 0.0025;
+    if (bhDiskMaterials && bhTransitionT > 0) {
+      var _dt = deltaMs * 0.0025;
+      for (var _di = 0; _di < bhDiskMaterials.length; _di++) {
+        bhDiskMaterials[_di].uniforms.uTime.value += _dt;
+      }
     }
   }
 
