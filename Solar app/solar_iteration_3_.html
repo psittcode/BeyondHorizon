@@ -729,9 +729,12 @@ gltfLoader.load('need_some_space.glb', function(gltf) {
       '  else if (t < 0.85) { col = mix(vec3(0.80,0.40,0.27), vec3(0.67,0.47,0.40), smoothstep(0.68, 0.85, t)); }',
       '  else if (t < 0.95) { col = mix(vec3(0.67,0.47,0.40), vec3(0.73,0.67,0.80), smoothstep(0.85, 0.95, t)); }',
       '  else               { col = mix(vec3(0.73,0.67,0.80), vec3(0.93,0.93,1.00), smoothstep(0.95, 1.00, t)); }',
-      // Static colour brightness variation (no rotation -> no shadow stripes)
-      '  col *= (0.85 + 0.20 * cloudS);',
-      '  col *= (0.92 + 0.16 * grainColor);',
+      // Removed: cloudS-based colour brightness modulation. Even without
+      // rotation its scale-1.4 features formed large patches that read as
+      // arc-shaped shadow stripes on the annular disk geometry. Only the
+      // small-scale grainColor (scale 8) survives, dropped to ±4 % so it
+      // adds subtle texture without forming visible shadow patches.
+      '  col *= (0.96 + 0.08 * grainColor);',
       // === Inner Planckian boost — applied to colour (not alpha) so the
       // per-ring opacity hash (0.30-0.90) doesn't saturate inside the cap
       // at the inner edge where pBoost would otherwise blow alpha to 1.
