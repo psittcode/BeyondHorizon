@@ -2332,16 +2332,30 @@ galGrid.material.opacity = 0.55;
 galGrid.material.transparent = true;
 galacticGroup.add(galGrid);
 
-// Galactic centre (Sagittarius A*)
-const galCentre = new THREE.Mesh(
-  new THREE.SphereGeometry(10, 16, 16),
-  new THREE.MeshBasicMaterial({ color: 0xff8800 })
-);
-galacticGroup.add(galCentre);
-galacticGroup.add(new THREE.Mesh(
-  new THREE.SphereGeometry(28, 16, 16),
-  new THREE.MeshBasicMaterial({ color: 0xff6600, transparent: true, opacity: 0.12 })
-));
+// Galactic centre (Sagittarius A*) — canvas glow sprite matching the Milky Way page
+(function() {
+  const _cc = document.createElement('canvas');
+  _cc.width = _cc.height = 256;
+  const _cx = _cc.getContext('2d');
+  const _cg = _cx.createRadialGradient(128, 128, 0, 128, 128, 128);
+  _cg.addColorStop(0.00, 'rgba(255, 252, 240, 1.00)');
+  _cg.addColorStop(0.20, 'rgba(255, 240, 210, 0.95)');
+  _cg.addColorStop(0.45, 'rgba(255, 210, 160, 0.75)');
+  _cg.addColorStop(0.75, 'rgba(230, 160, 100, 0.40)');
+  _cg.addColorStop(1.00, 'rgba(180, 90, 40, 0.00)');
+  _cx.fillStyle = _cg;
+  _cx.fillRect(0, 0, 256, 256);
+  const galCentreSprite = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: new THREE.CanvasTexture(_cc),
+    transparent: true,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    depthTest: false
+  }));
+  galCentreSprite.scale.set(70, 70, 1);
+  galCentreSprite.renderOrder = 4;
+  galacticGroup.add(galCentreSprite);
+})();
 
 // Galactic orbit ring, corkscrew path, and radius arm removed (line primitives deleted)
 const galArmGeo = new THREE.BufferGeometry().setFromPoints([
