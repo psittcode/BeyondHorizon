@@ -607,15 +607,8 @@ gltfLoader.load('need_some_space.glb', function(gltf) {
   const ogBtn = document.getElementById('otherGalaxiesBtn');
   if (ogBtn) ogBtn.style.display = 'block';
 
-  // --- BeauGa.png flat galaxy disc ---
-  const beauGaTex = new THREE.TextureLoader().load('BeauGa.png');
-  // BeauGa.png is 1920×1080. CircleGeometry maps UV equally in U and V, but U spans
-  // 960px from center while V only spans 540px — producing a 1.78:1 stretch.
-  // Correct by zooming U in to the centre 1080×1080 square of the image.
-  beauGaTex.wrapS = THREE.ClampToEdgeWrapping;
-  beauGaTex.wrapT = THREE.ClampToEdgeWrapping;
-  beauGaTex.repeat.set(1080 / 1920, 1.0);
-  beauGaTex.offset.set((1.0 - 1080 / 1920) / 2.0, 0);
+  // --- galaxyDiamond1 fix1.png flat galaxy disc (4096×4096 square, no UV correction needed) ---
+  const beauGaTex = new THREE.TextureLoader().load('galaxyDiamond1 fix1.png');
   const beauGaMat = new THREE.MeshBasicMaterial({
     map: beauGaTex,
     transparent: true,
