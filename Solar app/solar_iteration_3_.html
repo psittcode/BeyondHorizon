@@ -2335,6 +2335,7 @@ galGrid.material.transparent = true;
 galacticGroup.add(galGrid);
 
 // Galactic centre (Sagittarius A*) — canvas glow sprite matching the Milky Way page
+let galCentreSprite = null;
 (function() {
   const _cc = document.createElement('canvas');
   _cc.width = _cc.height = 256;
@@ -2347,7 +2348,7 @@ galacticGroup.add(galGrid);
   _cg.addColorStop(1.00, 'rgba(180, 90, 40, 0.00)');
   _cx.fillStyle = _cg;
   _cx.fillRect(0, 0, 256, 256);
-  const galCentreSprite = new THREE.Sprite(new THREE.SpriteMaterial({
+  galCentreSprite = new THREE.Sprite(new THREE.SpriteMaterial({
     map: new THREE.CanvasTexture(_cc),
     transparent: true,
     blending: THREE.AdditiveBlending,
@@ -2586,6 +2587,7 @@ function exitGalacticView() {
     blackHoleModel.visible = false;
   }
   if (beauGaDisc) { beauGaDisc.material.opacity = 1.0; beauGaDisc.material.needsUpdate = true; }
+  if (galCentreSprite) { galCentreSprite.material.opacity = 1.0; }
   if (bhStarfield) bhStarfield.visible = false;
 
   _restoreGalaxyScale();
@@ -2629,6 +2631,7 @@ function flyToSolarSystem() {
       blackHoleModel.visible = false;
     }
     if (beauGaDisc) { beauGaDisc.material.opacity = 1.0; beauGaDisc.material.needsUpdate = true; }
+    if (galCentreSprite) { galCentreSprite.material.opacity = 1.0; }
     if (bhStarfield) bhStarfield.visible = false;
     _restoreGalaxyScale();
     galacticViewActive = false;
@@ -3397,7 +3400,10 @@ function animate(){
     ));
     galBHTransitionT += (_galRaw - galBHTransitionT) * 0.05;
 
-    const _galF = 400 / galaxyVisualRadius;
+    // Scale so disk outer radius = 12 galactic-view units — small enough that
+    // camera is always outside it, avoiding the "two arcs" look of viewing from inside.
+    // bhR = galaxyVisualRadius*0.04, disk outer = bhR*10 = galaxyVisualRadius*0.4
+    const _galF = 12.0 / (galaxyVisualRadius * 0.4);
     blackHoleModel.position.set(0, 0, 0);
     blackHoleModel.scale.setScalar(_galF);
     blackHoleModel.visible = galBHTransitionT > 0.04;
@@ -3411,7 +3417,11 @@ function animate(){
       }
     }
 
-    // Fade galaxy disc out as BH fills the view
+    // Fade centre glow orb and galaxy disc out as BH takes over
+    if (galCentreSprite) {
+      galCentreSprite.material.opacity = Math.max(0.0, 1.0 - galBHTransitionT * 3.0);
+      galCentreSprite.material.needsUpdate = true;
+    }
     if (beauGaDisc) {
       beauGaDisc.material.opacity = Math.max(0.0, 1.0 - galBHTransitionT * 2.5);
       beauGaDisc.material.needsUpdate = true;
@@ -3422,6 +3432,10 @@ function animate(){
   } else if (!galacticViewActive && galBHTransitionT > 0) {
     // Fade out when leaving galactic view (animate loop catches the cleanup frame)
     galBHTransitionT = 0;
+  }
+  // Restore glow orb opacity when not transitioning (e.g. after pulling back)
+  if (galacticViewActive && galBHTransitionT < 0.01 && galCentreSprite) {
+    galCentreSprite.material.opacity = 1.0;
   }
   // ── End galactic view BH transition ───────────────────────────────────────
 
