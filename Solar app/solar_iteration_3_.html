@@ -2440,6 +2440,7 @@ galacticGroup.add(galSunTrail);
 // ── Galactic view state ────────────────────────────────────────
 let galacticViewActive  = false;
 let galBHTransitionT    = 0;   // 0 = no BH, 1 = full BH environment (galactic view only)
+let galBHOrigAlphaMuls  = null; // saved uAlphaMul values so we can restore on exit
 let galSavedCamPos      = null;
 let galSavedCamTarget   = null;
 let galSavedCamUp       = null;
@@ -2576,6 +2577,10 @@ function exitGalacticView() {
 
   // Reset galactic BH state — restores BH model to its Milky Way page position/scale
   galBHTransitionT = 0;
+  if (galBHOrigAlphaMuls && bhDiskMaterials) {
+    bhDiskMaterials.forEach(function(m, i) { m.uniforms.uAlphaMul.value = galBHOrigAlphaMuls[i]; });
+    galBHOrigAlphaMuls = null;
+  }
   if (blackHoleModel && galacticCorePos) {
     blackHoleModel.position.copy(galacticCorePos);
     blackHoleModel.scale.set(1, 1, 1);
@@ -2620,6 +2625,10 @@ function flyToSolarSystem() {
     lockedObject = null;
     galEarthZoomedIn = false;
     galBHTransitionT = 0;
+    if (galBHOrigAlphaMuls && bhDiskMaterials) {
+      bhDiskMaterials.forEach(function(m, i) { m.uniforms.uAlphaMul.value = galBHOrigAlphaMuls[i]; });
+      galBHOrigAlphaMuls = null;
+    }
     if (blackHoleModel && galacticCorePos) {
       blackHoleModel.position.copy(galacticCorePos);
       blackHoleModel.scale.set(1, 1, 1);
@@ -3406,11 +3415,24 @@ function animate(){
     blackHoleModel.visible = galBHTransitionT > 0.04;
 
     if (bhDiskMaterials && blackHoleModel.visible) {
+      // Save original alphaMul values once so we can restore them on exit
+      if (!galBHOrigAlphaMuls) {
+        galBHOrigAlphaMuls = bhDiskMaterials.map(function(m) { return m.uniforms.uAlphaMul.value; });
+      }
       const _gdt = deltaMs * 0.0005;
       const _gZoomOut = 1.0 - galBHTransitionT;
+      // The disk outer radius in galactic-view units (matches _galF computation above)
+      const _diskOuter = 20.0;
+      // Only show the flat ring meshes once camera is inside the disk — from outside
+      // they appear as left/right arcs (two black holes). The orange glow Sprite is
+      // always camera-facing so it always looks like one centred object.
+      const _ringAlpha = (_galCamDist < _diskOuter)
+        ? Math.min(1.0, (_diskOuter - _galCamDist) / (_diskOuter * 0.5))
+        : 0.0;
       for (var _gdi = 0; _gdi < bhDiskMaterials.length; _gdi++) {
         bhDiskMaterials[_gdi].uniforms.uTime.value    += _gdt;
         bhDiskMaterials[_gdi].uniforms.uZoomOut.value  = _gZoomOut;
+        bhDiskMaterials[_gdi].uniforms.uAlphaMul.value = galBHOrigAlphaMuls[_gdi] * _ringAlpha;
       }
     }
 
