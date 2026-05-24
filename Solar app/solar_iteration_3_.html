@@ -665,12 +665,12 @@ gltfLoader.load('need_some_space.glb', function(gltf) {
       // Arc patchiness — brightness varies along each ring's arc via cloud
       // (NOT uniform all the way around the ring).
       '  ringMaskHard *= 0.40 + 0.60 * cloud;',
-      // === Bleed regions — rings merge in high-cloud patches ===
-      // Where cloud > ~0.55 the inter-ring gaps get filled in (up to 0.35
-      // minimum mask), so the rings visually bleed into each other in those
-      // patches and stay discrete elsewhere. Breaks the uniform look.
-      '  float bleedFactor = smoothstep(0.55, 0.85, cloud);',
-      '  ringMaskHard = max(ringMaskHard, bleedFactor * 0.35);',
+      // === Uniform bleed — gaps fill across the whole disk ===
+      // ringMaskHard floor of 0.35 applied unconditionally. Rings are now
+      // brighter ridges on top of a continuous luminous base rather than
+      // discrete filaments with empty gaps. No cloud gating, so no arc-
+      // shaped bleed patches that read as stripes.
+      '  ringMaskHard = max(ringMaskHard, 0.35);',
       // === Soft haze base — diffuse glow behind rings (max alpha ~0.06) ===
       // Ensures ringMask never drops below this faint base level inside the
       // disk, giving the elliptical area a subtle ambient luminosity.
