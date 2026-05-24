@@ -559,6 +559,17 @@ gltfLoader.load('need_some_space.glb', function(gltf) {
   galaxyPivot.add(milkyWayModel);
   milkyWayModel.position.copy(_prevModelWorldPos).sub(galacticCorePos);
 
+  // Also parent the solar-system marker under galaxyPivot so its world
+  // position orbits the galactic centre along with the disc spin —
+  // the solar system visibly travels around the galaxy at Uranus's rate.
+  // Marker was at world (0,0,0); make its pivot-relative position so that
+  // its world position remains (0,0,0) initially, then it orbits as pivot rotates.
+  const _ssWorldPos = new THREE.Vector3();
+  solarSystemMarker.getWorldPosition(_ssWorldPos);
+  if (solarSystemMarker.parent) solarSystemMarker.parent.remove(solarSystemMarker);
+  galaxyPivot.add(solarSystemMarker);
+  solarSystemMarker.position.copy(_ssWorldPos).sub(galacticCorePos);
+
   // === Galactic-core white glow sprite ===
   // A bright luminous spot at the galactic centre, visible from far zoom
   // in the Milky Way view. As the camera approaches and the detailed BH
@@ -3205,13 +3216,12 @@ function animate(){
   if (bhStarfield) bhStarfield.position.copy(camera.position);
   solarSystemMarker.visible = !bhRendererSettings && outsideSkybox && !galacticViewActive;
 
-  // Galaxy spin — both the need_some_space GLB and the BeauGa purple
-  // disc rotate around the WORLD Y axis (horizontal spin in their own
-  // plane). For beauGaDisc rotateOnWorldAxis is required because the
-  // disc already has rotation.x = -π/2 and a plain rotation.y would
-  // tilt the disc out of horizontal due to Euler XYZ order.
-  // 0.00012 rad/ms = ~52 s per revolution.
-  var _galaxySpin = deltaMs * 0.00012;
+  // Galaxy spin — rate locked to Uranus's orbital speed (0.000000395
+  // rad/frame at 60fps in the planet simulation). Same simulation
+  // `speed` slider drives both, so when the user speeds up the planets
+  // the galaxy spin speeds up identically. The solarSystemMarker is
+  // parented under galaxyPivot so its position orbits along too.
+  var _galaxySpin = 0.000000395 * speed * deltaScale;
   if (galaxyPivot) galaxyPivot.rotation.y += _galaxySpin;
   if (beauGaDisc)  beauGaDisc.rotateOnWorldAxis(_galaxyAxis, _galaxySpin);
 
