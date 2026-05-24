@@ -478,6 +478,7 @@ let bhLensingUniforms     = null;
 let bhEHRadius            = 0;   // event horizon sphere world-space radius (for dynamic lensing)
 let bhStarfield           = null; // procedural starfield for BH mode (no galactic band)
 let bhDiskMaterials       = null; // materials of each stacked disk layer, for uTime animation
+let galacticGlowSprite    = null; // bright white glow at the galactic core, visible at far zoom before BH detail kicks in
 const _bhScreenPos        = new THREE.Vector3();
 let _bhSavedVisibility    = null;
 
@@ -541,6 +542,38 @@ gltfLoader.load('need_some_space.glb', function(gltf) {
     0
   );
   galaxyVisualRadius = galaxyRadius;
+
+  // === Galactic-core white glow sprite ===
+  // A bright luminous spot at the galactic centre, visible from far zoom
+  // in the Milky Way view. As the camera approaches and the detailed BH
+  // model fades in, this glow fades out so the BH render takes over.
+  (function() {
+    const _gc = document.createElement('canvas');
+    _gc.width = _gc.height = 256;
+    const _gx = _gc.getContext('2d');
+    const _gd = _gx.createRadialGradient(128, 128, 0, 128, 128, 128);
+    _gd.addColorStop(0.00, 'rgba(255, 252, 240, 1.00)');
+    _gd.addColorStop(0.15, 'rgba(255, 240, 210, 0.90)');
+    _gd.addColorStop(0.40, 'rgba(255, 205, 150, 0.45)');
+    _gd.addColorStop(0.70, 'rgba(220, 140, 80, 0.12)');
+    _gd.addColorStop(1.00, 'rgba(180, 90, 40, 0.00)');
+    _gx.fillStyle = _gd;
+    _gx.fillRect(0, 0, 256, 256);
+    galacticGlowSprite = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: new THREE.CanvasTexture(_gc),
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      depthTest: false
+    }));
+    const _glowSize = galaxyRadius * 0.06;
+    galacticGlowSprite.scale.set(_glowSize, _glowSize, 1);
+    galacticGlowSprite.position.copy(galacticCorePos);
+    galacticGlowSprite.renderOrder = 4; // above galaxy disc and model
+    galacticGlowSprite.visible = false;
+    scene.add(galacticGlowSprite);
+  })();
+
   // Reveal the Milky Way navigation buttons now that the model is ready
   const mwBtn = document.getElementById('milkyWayBtn');
   if (mwBtn) mwBtn.style.display = 'block';
@@ -3146,6 +3179,16 @@ function animate(){
   galaxySkybox.position.copy(camera.position);
   if (bhStarfield) bhStarfield.position.copy(camera.position);
   solarSystemMarker.visible = !bhRendererSettings && outsideSkybox && !galacticViewActive;
+
+  // === Galactic-core glow visibility & fade ===
+  // Visible in the normal Milky Way galaxy view, fades out as the
+  // bhTransitionT rises (i.e. as the user zooms in and the detailed
+  // black-hole render starts taking over).
+  if (galacticGlowSprite) {
+    const showGlow = !bhRendererSettings && outsideSkybox && !galacticViewActive && !spaceshipViewActive;
+    galacticGlowSprite.visible = showGlow && bhTransitionT < 0.95;
+    galacticGlowSprite.material.opacity = Math.max(0.0, 1.0 - bhTransitionT * 1.2);
+  }
   const _ssBtn = document.getElementById('solarSystemBtn');
   if (_ssBtn) _ssBtn.style.display = outsideSkybox ? 'block' : 'none';
 
