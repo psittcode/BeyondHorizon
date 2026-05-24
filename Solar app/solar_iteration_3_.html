@@ -3402,57 +3402,49 @@ function animate(){
   // ── End black hole transition ─────────────────────────────────────────────
 
   // ── Galactic view — black hole zoom-in ────────────────────────────────────
-  // Mirror the Milky Way BH transition: disk outer radius = 20 galactic units,
-  // GAL_BH_CLOSE = 6 → camera is inside the disk at full zoom, same immersive
-  // experience as the Milky Way view. No quaternion rotation — keep disk flat
-  // in XZ just like the Milky Way BH; close-range immersion handles the look.
+  // Strategy: keep blackHoleModel INVISIBLE while camera is outside the disk
+  // outer radius (20 galactic units). From outside, the flat XZ ring geometry
+  // looks like two side arcs. Only show the full BH once the camera is inside
+  // the disk — then you see the rings surrounding you, same as Milky Way view.
+  // galCentreSprite (billboard) serves as the approach indicator before entry.
   if (galacticViewActive && galaxyVisualRadius > 0 && blackHoleModel) {
     const _galCamDist = camera.position.length();
+    const _diskOuter  = 20.0; // BH disk outer radius in galactic-view world units
+    const _insideDisk = _galCamDist < _diskOuter;
+
+    // Transition only ramps once camera is inside the disk (6–20 unit range)
     const _galRaw = 1.0 - Math.max(0.0, Math.min(1.0,
-      (_galCamDist - GAL_BH_CLOSE) / (GAL_BH_FAR - GAL_BH_CLOSE)
+      (_galCamDist - GAL_BH_CLOSE) / (_diskOuter - GAL_BH_CLOSE)
     ));
     galBHTransitionT += (_galRaw - galBHTransitionT) * 0.05;
 
-    // Scale: target disk outer radius = 20 galactic-view units.
-    // bhR * 10 = galaxyVisualRadius * 0.4, so _galF = 20 / (galaxyVisualRadius * 0.4)
+    // Scale and centre the BH model at galactic origin
     const _galF = 20.0 / (galaxyVisualRadius * 0.4);
     blackHoleModel.position.set(0, 0, 0);
     blackHoleModel.scale.setScalar(_galF);
     blackHoleModel.quaternion.identity();
-    blackHoleModel.visible = galBHTransitionT > 0.04;
+    // Parent-level hide: when false ALL children are skipped by the renderer.
+    // This is the only reliable way to suppress the ring arcs from outside.
+    blackHoleModel.visible = _insideDisk && galBHTransitionT > 0.04;
 
-    if (blackHoleModel.visible) {
-      // Save original uAlphaMul values once so we can restore them on exit
-      if (!galBHOrigAlphaMuls && bhDiskMaterials) {
-        galBHOrigAlphaMuls = bhDiskMaterials.map(function(m) { return m.uniforms.uAlphaMul.value; });
-      }
+    if (bhDiskMaterials && blackHoleModel.visible) {
       const _gdt = deltaMs * 0.0005;
       const _gZoomOut = 1.0 - galBHTransitionT;
-      // Disk outer radius in galactic-view world units
-      const _diskOuter = 20.0;
-      // Camera outside disk → hide ring Mesh children (they look like two arcs from above).
-      // Camera inside disk → show rings for immersive BH experience.
-      // The Sprite child is always camera-facing so it always reads as one centred glow.
-      const _ringsVisible = _galCamDist < _diskOuter;
-      blackHoleModel.children.forEach(function(child) {
-        if (child.isSprite) { child.visible = true; return; }
-        child.visible = _ringsVisible;
-      });
-      if (bhDiskMaterials) {
-        for (var _gdi = 0; _gdi < bhDiskMaterials.length; _gdi++) {
-          bhDiskMaterials[_gdi].uniforms.uTime.value    += _gdt;
-          bhDiskMaterials[_gdi].uniforms.uZoomOut.value  = _gZoomOut;
-          // Restore original alphaMul so the shader looks correct when rings ARE visible
-          if (galBHOrigAlphaMuls) {
-            bhDiskMaterials[_gdi].uniforms.uAlphaMul.value = galBHOrigAlphaMuls[_gdi];
-          }
+      for (var _gdi = 0; _gdi < bhDiskMaterials.length; _gdi++) {
+        bhDiskMaterials[_gdi].uniforms.uTime.value    += _gdt;
+        bhDiskMaterials[_gdi].uniforms.uZoomOut.value  = _gZoomOut;
+        if (galBHOrigAlphaMuls) {
+          bhDiskMaterials[_gdi].uniforms.uAlphaMul.value = galBHOrigAlphaMuls[_gdi];
         }
       }
     }
 
-    // Fade centre glow orb and galaxy disc out as BH takes over
+    // galCentreSprite: full opacity while outside disk, fade as camera enters
     if (galCentreSprite) {
-      galCentreSprite.material.opacity = Math.max(0.0, 1.0 - galBHTransitionT * 3.0);
+      const _cOp = _insideDisk
+        ? Math.max(0.0, _galCamDist / _diskOuter)
+        : 1.0;
+      galCentreSprite.material.opacity = _cOp;
       galCentreSprite.material.needsUpdate = true;
     }
     if (beauGaDisc) {
@@ -3463,7 +3455,7 @@ function animate(){
   } else if (!galacticViewActive && galBHTransitionT > 0) {
     galBHTransitionT = 0;
   }
-  if (galacticViewActive && galBHTransitionT < 0.01 && galCentreSprite) {
+  if (galacticViewActive && !blackHoleModel.visible && galCentreSprite && galBHTransitionT < 0.01) {
     galCentreSprite.material.opacity = 1.0;
   }
   // ── End galactic view BH transition ───────────────────────────────────────
