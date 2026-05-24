@@ -871,6 +871,46 @@ gltfLoader.load('need_some_space.glb', function(gltf) {
     // scale with bhEHRadius so they expand proportionally.
     bhEHRadius = bhR * 1.20;
 
+    // === Solid black event-horizon sphere (for inline-galaxy mode) ===
+    // The original BH skybox mode drew the dark central shadow procedurally
+    // in the lensing post-process. Inline-galaxy mode doesn\'t run that
+    // pass, so add an actual mesh to give the BH its visible dark centre.
+    // Radius matches the lensing shadow size (bhR * 1.20). RenderOrder 22
+    // sits between the background (0) and the disk layers (25).
+    (function() {
+      var _ehGeo = new THREE.SphereGeometry(bhR * 1.20, 32, 32);
+      var _ehMat = new THREE.MeshBasicMaterial({
+        color: 0x000000,
+        side: THREE.FrontSide,
+        depthWrite: true,
+        depthTest: true
+      });
+      var _ehMesh = new THREE.Mesh(_ehGeo, _ehMat);
+      _ehMesh.renderOrder = 22;
+      bhSpin.add(_ehMesh);
+    })();
+    // Thin warm photon-ring band just outside the EH sphere — small additive
+    // ring sprite that fakes the bright halo without needing the lensing pass.
+    (function() {
+      var _prGeo = new THREE.RingGeometry(bhR * 1.20, bhR * 1.40, 128, 1);
+      var _prCanvas = document.createElement('canvas');
+      _prCanvas.width = _prCanvas.height = 2;
+      // Simple — we don\'t need a texture; rely on a uniform-colour material
+      var _prMat = new THREE.MeshBasicMaterial({
+        color: 0xffb060,
+        transparent: true,
+        opacity: 0.85,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        depthTest: false,
+        side: THREE.DoubleSide
+      });
+      var _prMesh = new THREE.Mesh(_prGeo, _prMat);
+      _prMesh.rotation.x = -Math.PI / 2;
+      _prMesh.renderOrder = 23;
+      bhSpin.add(_prMesh);
+    })();
+
     // Procedural BH starfield — uniform random points on a sphere, no galactic band.
     // Shown during BH mode instead of the 8K Milky Way texture (which has a bright
     // galactic band that appears as a diagonal streak when the camera faces the core).
