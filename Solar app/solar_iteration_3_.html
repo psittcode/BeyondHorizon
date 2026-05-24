@@ -622,7 +622,8 @@ gltfLoader.load('need_some_space.glb', function(gltf) {
       '  return v;',
       '}',
       'void main(){',
-      '  float t = clamp((vRadius - uInnerR) / (uOuterR - uInnerR), 0.0, 1.0);',
+      '  float t    = clamp((vRadius - uInnerR) / (uOuterR - uInnerR), 0.0, 1.0);',
+      '  float logR = log(max(vRadius / max(uInnerR, 0.001), 1.001));',
       // Cloud noise — uLayerY offset gives each of the 5 stacked disks a
       // different slice of the noise field (visible edge-on as turbulent
       // thickness rather than 5 identical 2D patterns).
@@ -631,60 +632,56 @@ gltfLoader.load('need_some_space.glb', function(gltf) {
       '  vec2  pCloud = pBase + vec2(uLayerY * 0.6, uLayerY * 0.4);',
       '  float cloud  = fbm4(pCloud);',
       '  float grain  = vnoise(pCloud * 11.0);',
-      // === Step 1: paint the whole disk orange ===
-      // Single colour family that intensifies in red toward the outer disk.
-      '  vec3 colInner = vec3(1.00, 0.48, 0.10);',
-      '  vec3 colOuter = vec3(0.78, 0.12, 0.02);',
-      '  vec3 col = mix(colInner, colOuter, smoothstep(0.0, 0.92, t));',
-      '  col *= (0.70 + 0.30 * cloud);',
-      // === Step 2: stack multiple white line layers on top ===
-      // Three line sets at different log-radius scales (coarse / medium / fine)
-      // summed additively so the result reads as overlapping contour layers
-      // rather than a single marker-drawn ring set. Using logR means uniform
-      // spacing in log-radius — equivalently, the spacing GROWS exponentially
-      // with distance from the centre (inner lines tight, outer lines spread).
-      // Wider Gaussians (low K = 30 / 60 / 120) keep the line edges soft so
-      // they blend into the orange rather than looking marker-drawn.
-      '  float logR = log(max(vRadius / max(uInnerR, 0.001), 1.001));',
-      // Coarse layer — ~15 lines across the log-radius range, thickest, softest
-      '  float spc1 = 0.16;',
-      '  float frac1 = fract(logR / spc1 + uLayerY * 0.04);',
-      '  float dist1 = min(frac1, 1.0 - frac1);',
-      '  float line1 = exp(-dist1 * dist1 * 30.0);',
-      // Medium layer — ~40 lines, interleaved between the coarse set
-      '  float spc2 = 0.06;',
-      '  float frac2 = fract(logR / spc2 + uLayerY * 0.06 + 0.3);',
-      '  float dist2 = min(frac2, 1.0 - frac2);',
-      '  float line2 = exp(-dist2 * dist2 * 60.0);',
-      // Fine layer — ~80 lines, finest detail filling between
-      '  float spc3 = 0.03;',
-      '  float frac3 = fract(logR / spc3 + uLayerY * 0.08 + 0.7);',
-      '  float dist3 = min(frac3, 1.0 - frac3);',
-      '  float line3 = exp(-dist3 * dist3 * 120.0);',
-      // Additive combine — multiple layers reinforce, clamped so peaks plateau
-      '  float lineIntensity = clamp(line1*0.55 + line2*0.40 + line3*0.30, 0.0, 1.0);',
-      // Cloud modulation so the lines curve and break with the turbulence
-      '  lineIntensity *= 0.40 + 0.60 * cloud;',
-      // Brightness fades as we go outward — lines dim with distance from centre
-      '  lineIntensity *= 1.0 - smoothstep(0.0, 0.92, t) * 0.85;',
-      // Warm cream (slightly less than pure white) so lines blend with the warm disk
-      '  col = mix(col, vec3(0.99, 0.93, 0.72), lineIntensity * 0.75);',
-      // Inner Planckian boost (alpha boost only — no colour change so the
-      // pure-orange look is preserved all the way to the photon ring).
-      '  float innerDist = max(0.0, vRadius - uInnerR);',
-      '  float sigma = uInnerR * 0.10;',
-      '  float pr = exp(-(innerDist*innerDist) / (2.0*sigma*sigma));',
-      '  float pBoost = 1.0 + 10.0 * pr;',
-      // Fine dust grain
+      // === Discrete ring bands ===
+      // ~10 thin concentric rings via logR spacing. Each ring is narrow
+      // (about 30 % of one spacing) and the gap between rings is wider
+      // (~70 %) — true dark space between filaments, not a darker shade.
+      // Tiny per-layer phase keeps each of the 5 stacked disks at a slight
+      // offset so the rings have depth.
+      '  float ringSpacing = 0.24;',
+      '  float ringPhase   = uLayerY * 0.04;',
+      '  float ringFrac    = fract(logR / ringSpacing + ringPhase);',
+      '  float ringDist    = min(ringFrac, 1.0 - ringFrac);',
+      // ringMaskHard = 1 at ring peak, falls to 0 at ringDist = 0.15
+      '  float ringMaskHard = smoothstep(0.15, 0.0, ringDist);',
+      // Cloud modulation so rings curve and break naturally, never reading
+      // as perfectly clean circles
+      '  ringMaskHard *= 0.55 + 0.45 * cloud;',
+      // === Outer fog transition ===
+      // For t > 0.65 the rings dissolve smoothly into a diffuse fog layer.
+      // fogMix=0 -> pure ring-gated alpha; fogMix=1 -> pure cloud-driven fog.
+      '  float fogMix   = smoothstep(0.65, 0.92, t);',
+      '  float fogAlpha = 0.25 + 0.40 * cloud;',
+      '  float effMask  = mix(ringMaskHard, fogAlpha, fogMix);',
+      // === Colour gradient — hot inner to cool outer ===
+      // Inner: white-yellow -> yellow-orange (hot plasma)
+      // Mid:   orange -> burnt orange (cooler)
+      // Outer: dusty rose / salmon (cooler still)
+      // Far:   muted rose -> lavender -> pale purple-white (nebula haze)
+      '  vec3 col;',
+      '  if      (t < 0.15) { col = mix(vec3(1.00,0.96,0.80), vec3(1.00,0.67,0.00), smoothstep(0.00, 0.15, t)); }',
+      '  else if (t < 0.32) { col = mix(vec3(1.00,0.67,0.00), vec3(1.00,0.40,0.00), smoothstep(0.15, 0.32, t)); }',
+      '  else if (t < 0.50) { col = mix(vec3(1.00,0.40,0.00), vec3(0.80,0.20,0.00), smoothstep(0.32, 0.50, t)); }',
+      '  else if (t < 0.68) { col = mix(vec3(0.80,0.20,0.00), vec3(0.80,0.40,0.27), smoothstep(0.50, 0.68, t)); }',
+      '  else if (t < 0.85) { col = mix(vec3(0.80,0.40,0.27), vec3(0.67,0.47,0.40), smoothstep(0.68, 0.85, t)); }',
+      '  else if (t < 0.95) { col = mix(vec3(0.67,0.47,0.40), vec3(0.73,0.67,0.80), smoothstep(0.85, 0.95, t)); }',
+      '  else               { col = mix(vec3(0.73,0.67,0.80), vec3(0.93,0.93,1.00), smoothstep(0.95, 1.00, t)); }',
+      // Cloud + grain — subtle brightness variation, no hue change
+      '  col *= (0.85 + 0.20 * cloud);',
       '  col *= (0.92 + 0.16 * grain);',
-      // === Alpha — gradual outward fade ===
-      // Steeper radial falloff exponent (1.0 -> 1.4) so the disk dims more
-      // visibly toward the outer edge — overall brightness gradient supports
-      // the line-brightness fade, giving the disk a soft outer rim instead
-      // of a hard cutoff.
-      '  float bright     = pow(max(1.0-t, 0.0), 1.4) * 1.7;',
-      '  float alphaCloud = 0.40 + 0.60 * cloud;',
-      '  float alpha = clamp(bright * alphaCloud * pBoost, 0.0, 1.0);',
+      // === Inner Planckian boost (alpha only — preserves the colour gradient) ===
+      '  float innerDist = max(0.0, vRadius - uInnerR);',
+      '  float sigma     = uInnerR * 0.10;',
+      '  float pr        = exp(-(innerDist*innerDist) / (2.0*sigma*sigma));',
+      '  float pBoost    = 1.0 + 6.0 * pr;',
+      // === Alpha — radial falloff × ring mask × pBoost ===
+      // Brightness fades exponentially with t (steeper outward fade so outer
+      // rings dim into the lavender haze). Alpha is capped at 0.70 per layer
+      // so each ring stays semi-transparent — you can see the background
+      // through the gaps, and overlapping rings blend rather than saturating.
+      '  float bright = pow(max(1.0-t, 0.0), 1.3) * 1.6;',
+      '  float alpha  = clamp(effMask * bright * pBoost, 0.0, 1.0);',
+      '  alpha = min(alpha, 0.70);',
       '  alpha *= uAlphaMul;',
       '  gl_FragColor = vec4(col, alpha);',
       '}'
