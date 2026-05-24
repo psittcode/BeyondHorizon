@@ -602,7 +602,7 @@ gltfLoader.load('need_some_space.glb', function(gltf) {
     ].join('\n');
 
     var diskFrag = [
-      'uniform float uInnerR, uOuterR, uTime, uAlphaMul, uLayerY;',
+      'uniform float uInnerR, uOuterR, uTime, uAlphaMul, uLayerY, uZoomOut;',
       'varying float vRadius, vAngle;',
       // --- 2D value noise + 4-octave FBM for cloud-like turbulence ---
       'float hash21(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }',
@@ -641,15 +641,15 @@ gltfLoader.load('need_some_space.glb', function(gltf) {
       // averaging independent samples to a smooth mean. Grain stays
       // visible from any viewing angle including straight above / below.
       '  vec2 pStatic = vec2(vRadius*cos(vAngle), vRadius*sin(vAngle)) / max(uInnerR * 0.55, 0.001);',
-      '  float grainXL  = vnoise(pStatic * 2.0);',   // huge — visible at any zoom
-      '  float grainBig = vnoise(pStatic * 6.0);',   // large
-      '  float grainMid = vnoise(pStatic * 14.0);',  // medium
-      // High-frequency rotating octaves — fine boiling detail at close zoom.
-      '  float grainHi1 = vnoise(pCloud * 32.0);',
-      '  float grainHi2 = vnoise(pCloud * 75.0);',
-      // All scales blended (weights sum to 1.0). Large static octaves
-      // dominate so the grain reads at any camera distance.
-      '  float grainHi  = 0.30*grainXL + 0.22*grainBig + 0.18*grainMid + 0.16*grainHi1 + 0.14*grainHi2;',
+      // Six grain octaves spanning massive (visible at any zoom-out) to fine
+      // (visible at close zoom). Sum of weights = 1.0.
+      '  float grainHuge = vnoise(pStatic * 1.0);',  // massive — registers even at far zoom
+      '  float grainXL   = vnoise(pStatic * 2.0);',  // huge
+      '  float grainBig  = vnoise(pStatic * 6.0);',  // large
+      '  float grainMid  = vnoise(pStatic * 14.0);', // medium
+      '  float grainHi1  = vnoise(pCloud * 32.0);',
+      '  float grainHi2  = vnoise(pCloud * 75.0);',
+      '  float grainHi   = 0.22*grainHuge + 0.22*grainXL + 0.18*grainBig + 0.16*grainMid + 0.12*grainHi1 + 0.10*grainHi2;',
       // === Dual ring sets — ~80 rings with non-uniform clustering ===
       // Two ring sets at spacings 0.030 and 0.044 in logR (was 0.14 / 0.20).
       // Set 1 -> ~80 rings, set 2 -> ~55 rings. They drift in and out of
@@ -685,11 +685,14 @@ gltfLoader.load('need_some_space.glb', function(gltf) {
       // Arc patchiness — narrowed (0.40+0.60 -> 0.60+0.40) so the dim end
       // of the cloud range doesn't drop rings below the bleed floor.
       '  ringMaskHard *= 0.60 + 0.40 * cloud;',
-      // Grain strength ramps with radial position — outer disk is much
-      // more broken up (matches real accretion physics: cooler, clumpier
-      // outer regions). At the inner edge grain only modulates ~35%; at
-      // the outer disk grain modulates 75% of ring brightness.
+      // Grain strength ramps with radial position AND camera zoom-out.
+      // - radial ramp: inner 0.35 -> outer 0.75 (real disks: cooler clumpier
+      //   outer regions).
+      // - zoom-out ramp: uZoomOut blends the strength toward 0.85 ceiling
+      //   so the further the camera is, the more broken-up everything looks,
+      //   mimicking atmospheric haze building up over distance.
       '  float grainStrength = mix(0.35, 0.75, smoothstep(0.0, 0.85, t));',
+      '  grainStrength = mix(grainStrength, 0.85, uZoomOut * 0.5);',
       '  ringMaskHard *= (1.0 - grainStrength) + grainStrength * grainHi;',
       // === Bleed floor fades with radial position ===
       // At outer disk the grain strength is high (0.75) so ring brightness
@@ -770,7 +773,8 @@ gltfLoader.load('need_some_space.glb', function(gltf) {
           uOuterR:   { value: bhR * 10.0 },
           uTime:     { value: 0.0 },
           uAlphaMul: { value: alphaMul },
-          uLayerY:   { value: slot }
+          uLayerY:   { value: slot },
+          uZoomOut:  { value: 0.0 }
         },
         vertexShader:   diskVert,
         fragmentShader: diskFrag,
@@ -3155,8 +3159,12 @@ function animate(){
       // Was 0.0025 = ~10 s/revolution — far too fast. 0.0005 = ~50 s/revolution,
       // a slow plasma flow that reads as orbital motion without being dizzying.
       var _dt = deltaMs * 0.0005;
+      // bhTransitionT: 1 when fully zoomed in (close to BH_CLOSE_DIST),
+      // 0 when zoomed out (near BH_FAR_DIST). Invert -> grain boost factor.
+      var _zoomOut = 1.0 - bhTransitionT;
       for (var _di = 0; _di < bhDiskMaterials.length; _di++) {
         bhDiskMaterials[_di].uniforms.uTime.value += _dt;
+        bhDiskMaterials[_di].uniforms.uZoomOut.value = _zoomOut;
       }
     }
   }
