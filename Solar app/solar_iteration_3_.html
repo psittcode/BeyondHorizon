@@ -2355,6 +2355,46 @@ let galCentreSprite = null;
   galacticGroup.add(galCentreSprite);
 })();
 
+// Galactic-view black hole sprite — 2D canvas image (dark event horizon + orange
+// accretion ring) rendered as a billboard Sprite. Always faces the camera so it
+// always looks like ONE centred black hole regardless of view angle. Replaces the
+// flat ring geometry (which reads as two side arcs when viewed from above).
+let galBHSprite = null;
+(function() {
+  const _c = document.createElement('canvas');
+  _c.width = _c.height = 512;
+  const _cx = _c.getContext('2d');
+  // 1. Orange accretion ring (drawn first, then covered by dark centre)
+  const _rg = _cx.createRadialGradient(256,256,100, 256,256,256);
+  _rg.addColorStop(0.00, 'rgba(255,140,20,0.00)');
+  _rg.addColorStop(0.18, 'rgba(255,160,40,1.00)');
+  _rg.addColorStop(0.38, 'rgba(255,90,10,0.80)');
+  _rg.addColorStop(0.62, 'rgba(200,45,5,0.45)');
+  _rg.addColorStop(0.84, 'rgba(140,18,2,0.18)');
+  _rg.addColorStop(1.00, 'rgba(80,5,0,0.00)');
+  _cx.fillStyle = _rg;
+  _cx.fillRect(0, 0, 512, 512);
+  // 2. Dark event horizon overlaid on top (opaque black disk at centre)
+  const _eg = _cx.createRadialGradient(256,256,0, 256,256,115);
+  _eg.addColorStop(0.00, 'rgba(0,0,0,1.00)');
+  _eg.addColorStop(0.80, 'rgba(0,0,0,0.98)');
+  _eg.addColorStop(1.00, 'rgba(0,0,0,0.00)');
+  _cx.fillStyle = _eg;
+  _cx.fillRect(0, 0, 512, 512);
+  galBHSprite = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: new THREE.CanvasTexture(_c),
+    transparent: true,
+    blending: THREE.NormalBlending,
+    depthWrite: false,
+    depthTest: false,
+    opacity: 0
+  }));
+  galBHSprite.scale.set(30, 30, 1);
+  galBHSprite.renderOrder = 18;
+  galBHSprite.visible = false;
+  scene.add(galBHSprite);
+})();
+
 // Galactic orbit ring, corkscrew path, and radius arm removed (line primitives deleted)
 const galArmGeo = new THREE.BufferGeometry().setFromPoints([
   new THREE.Vector3(0, 0, 0), new THREE.Vector3(GAL_R, 0, 0)
@@ -2577,6 +2617,7 @@ function exitGalacticView() {
 
   // Reset galactic BH state — restores BH model to its Milky Way page position/scale
   galBHTransitionT = 0;
+  if (galBHSprite) { galBHSprite.visible = false; galBHSprite.material.opacity = 0; }
   if (blackHoleModel) {
     // Restore ring mesh visibility and alphaMul values for the Milky Way view
     blackHoleModel.children.forEach(function(child) { child.visible = true; });
@@ -2644,6 +2685,7 @@ function flyToSolarSystem() {
     }
     if (beauGaDisc) { beauGaDisc.material.opacity = 1.0; beauGaDisc.material.needsUpdate = true; }
     if (galCentreSprite) { galCentreSprite.material.opacity = 1.0; }
+    if (galBHSprite) { galBHSprite.visible = false; galBHSprite.material.opacity = 0; }
     if (bhStarfield) bhStarfield.visible = false;
     _restoreGalaxyScale();
     galacticViewActive = false;
@@ -3402,49 +3444,32 @@ function animate(){
   // ── End black hole transition ─────────────────────────────────────────────
 
   // ── Galactic view — black hole zoom-in ────────────────────────────────────
-  // Strategy: keep blackHoleModel INVISIBLE while camera is outside the disk
-  // outer radius (20 galactic units). From outside, the flat XZ ring geometry
-  // looks like two side arcs. Only show the full BH once the camera is inside
-  // the disk — then you see the rings surrounding you, same as Milky Way view.
-  // galCentreSprite (billboard) serves as the approach indicator before entry.
-  if (galacticViewActive && galaxyVisualRadius > 0 && blackHoleModel) {
+  // Uses galBHSprite: a 2D canvas billboard (dark disk + orange ring) that
+  // always faces the camera → always reads as ONE centred black hole.
+  // The flat ring geometry (blackHoleModel) stays hidden in galactic view.
+  if (galacticViewActive && galaxyVisualRadius > 0) {
     const _galCamDist = camera.position.length();
-    const _diskOuter  = 20.0; // BH disk outer radius in galactic-view world units
-    const _insideDisk = _galCamDist < _diskOuter;
-
-    // Transition only ramps once camera is inside the disk (6–20 unit range)
     const _galRaw = 1.0 - Math.max(0.0, Math.min(1.0,
-      (_galCamDist - GAL_BH_CLOSE) / (_diskOuter - GAL_BH_CLOSE)
+      (_galCamDist - GAL_BH_CLOSE) / (GAL_BH_FAR - GAL_BH_CLOSE)
     ));
     galBHTransitionT += (_galRaw - galBHTransitionT) * 0.05;
 
-    // Scale and centre the BH model at galactic origin
-    const _galF = 20.0 / (galaxyVisualRadius * 0.4);
-    blackHoleModel.position.set(0, 0, 0);
-    blackHoleModel.scale.setScalar(_galF);
-    blackHoleModel.quaternion.identity();
-    // Parent-level hide: when false ALL children are skipped by the renderer.
-    // This is the only reliable way to suppress the ring arcs from outside.
-    blackHoleModel.visible = _insideDisk && galBHTransitionT > 0.04;
-
-    if (bhDiskMaterials && blackHoleModel.visible) {
-      const _gdt = deltaMs * 0.0005;
-      const _gZoomOut = 1.0 - galBHTransitionT;
-      for (var _gdi = 0; _gdi < bhDiskMaterials.length; _gdi++) {
-        bhDiskMaterials[_gdi].uniforms.uTime.value    += _gdt;
-        bhDiskMaterials[_gdi].uniforms.uZoomOut.value  = _gZoomOut;
-        if (galBHOrigAlphaMuls) {
-          bhDiskMaterials[_gdi].uniforms.uAlphaMul.value = galBHOrigAlphaMuls[_gdi];
-        }
-      }
+    // Flat ring model: always hidden in galactic view (it looks like two arcs from above)
+    if (blackHoleModel) {
+      blackHoleModel.visible = false;
     }
 
-    // galCentreSprite: full opacity while outside disk, fade as camera enters
+    // galBHSprite: 2D billboard black hole — fades in as galBHTransitionT rises
+    if (galBHSprite) {
+      galBHSprite.position.set(0, 0, 0);
+      const _bhOp = Math.min(1.0, galBHTransitionT * 2.0);
+      galBHSprite.material.opacity = _bhOp;
+      galBHSprite.visible = _bhOp > 0.01;
+    }
+
+    // galCentreSprite: approach indicator, fades as BH sprite takes over
     if (galCentreSprite) {
-      const _cOp = _insideDisk
-        ? Math.max(0.0, _galCamDist / _diskOuter)
-        : 1.0;
-      galCentreSprite.material.opacity = _cOp;
+      galCentreSprite.material.opacity = Math.max(0.0, 1.0 - galBHTransitionT * 3.0);
       galCentreSprite.material.needsUpdate = true;
     }
     if (beauGaDisc) {
@@ -3452,11 +3477,12 @@ function animate(){
       beauGaDisc.material.needsUpdate = true;
     }
     if (bhStarfield) bhStarfield.visible = galBHTransitionT > 0.1;
-  } else if (!galacticViewActive && galBHTransitionT > 0) {
-    galBHTransitionT = 0;
+  } else if (!galacticViewActive) {
+    if (galBHTransitionT > 0) galBHTransitionT = 0;
+    if (galBHSprite && galBHSprite.visible) galBHSprite.visible = false;
   }
-  if (galacticViewActive && !blackHoleModel.visible && galCentreSprite && galBHTransitionT < 0.01) {
-    galCentreSprite.material.opacity = 1.0;
+  if (galacticViewActive && galBHTransitionT < 0.01) {
+    if (galCentreSprite) galCentreSprite.material.opacity = 1.0;
   }
   // ── End galactic view BH transition ───────────────────────────────────────
 
