@@ -3816,7 +3816,12 @@ function animate(){
       if (bhEHRadius > 0) {
         var _camToBH = camera.position.distanceTo(_bhWorldPos);
         var _halfTanFov = Math.tan(camera.fov * Math.PI / 360);
-        var _shadowR = bhEHRadius / (_camToBH * _halfTanFov * 2.0);
+        // In galactic view blackHoleModel is scaled down by _galF, so the
+        // world-space event horizon radius is bhEHRadius * _galF, not bhEHRadius.
+        var _ehWorld = galacticViewActive && galaxyVisualRadius > 0
+          ? bhEHRadius * (20.0 / (galaxyVisualRadius * 0.4))
+          : bhEHRadius;
+        var _shadowR = _ehWorld / (_camToBH * _halfTanFov * 2.0);
         bhLensingUniforms.uShadowR.value = Math.max(_shadowR, 0.015);
         bhLensingUniforms.uInnerR.value  = Math.max(_shadowR * 0.82, 0.012);
         bhLensingUniforms.uOuterR.value  = Math.max(_shadowR * 1.35, 0.04);
