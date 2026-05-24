@@ -632,11 +632,14 @@ gltfLoader.load('need_some_space.glb', function(gltf) {
       '  vec2  pCloud = pBase + vec2(uLayerY * 0.6, uLayerY * 0.4);',
       '  float cloud   = fbm4(pCloud);',
       '  float grain   = vnoise(pCloud * 11.0);',
-      // Static (non-rotating) disk-local coords — large features here stay
-      // fixed in world space, so they can\'t sweep around the BH and form
-      // arc stripes. Multiple scales covering very-far to mid-zoom range.
+      // Static (non-rotating) disk-local coords — large features stay fixed
+      // in world space, so they can\'t sweep around the BH and form arc
+      // stripes. NO uLayerY offset here: all 5 stacked disk layers sample
+      // the SAME static grain at each (vRadius, vAngle), so the additive
+      // blend across layers reinforces the grain pattern rather than
+      // averaging independent samples to a smooth mean. Grain stays
+      // visible from any viewing angle including straight above / below.
       '  vec2 pStatic = vec2(vRadius*cos(vAngle), vRadius*sin(vAngle)) / max(uInnerR * 0.55, 0.001);',
-      '  pStatic += vec2(uLayerY * 0.6, uLayerY * 0.4);',
       '  float grainXL  = vnoise(pStatic * 2.0);',   // huge — visible at any zoom
       '  float grainBig = vnoise(pStatic * 6.0);',   // large
       '  float grainMid = vnoise(pStatic * 14.0);',  // medium
