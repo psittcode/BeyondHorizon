@@ -3209,14 +3209,13 @@ function animate(){
 
   if (BH_CLOSE_DIST > 0) {
     if (blackHoleModel) {
-      blackHoleModel.visible = bhTransitionT > 0.05;
+      // INLINE GALAXY MODE: BH model is always visible in the Milky Way view,
+      // not gated by the bhTransitionT proximity transition. Renders right
+      // on top of the galaxy model at galacticCorePos.
+      blackHoleModel.visible = outsideSkybox && !galacticViewActive && !spaceshipViewActive;
     }
-    if (bhDiskMaterials && bhTransitionT > 0) {
-      // Was 0.0025 = ~10 s/revolution — far too fast. 0.0005 = ~50 s/revolution,
-      // a slow plasma flow that reads as orbital motion without being dizzying.
+    if (bhDiskMaterials && blackHoleModel && blackHoleModel.visible) {
       var _dt = deltaMs * 0.0005;
-      // bhTransitionT: 1 when fully zoomed in (close to BH_CLOSE_DIST),
-      // 0 when zoomed out (near BH_FAR_DIST). Invert -> grain boost factor.
       var _zoomOut = 1.0 - bhTransitionT;
       for (var _di = 0; _di < bhDiskMaterials.length; _di++) {
         bhDiskMaterials[_di].uniforms.uTime.value += _dt;
@@ -3225,10 +3224,13 @@ function animate(){
     }
   }
 
-  // Switch renderer to BH-optimised settings when the black hole becomes visible,
-  // and restore defaults when it's gone.  Only flip once per boundary crossing so
-  // shaders are not rebuilt on every frame.
-  if (bhTransitionT > 0.06 && !bhRendererSettings) {
+  // === BH skybox renderer-switch DISABLED for inline-galaxy mode ===
+  // Original (disabled): when bhTransitionT > 0.06, this would hide the
+  // galaxy / set black background / enable the lensing composer. In
+  // inline-galaxy mode we keep the normal renderer running so the BH
+  // disk renders on top of the visible galaxy.
+  // To restore the skybox mode: change "false &&" back to nothing.
+  if (false && bhTransitionT > 0.06 && !bhRendererSettings) {
     bhOrigToneMapping    = renderer.toneMapping;
     bhOrigExposure       = renderer.toneMappingExposure;
     bhOrigOutputEncoding = renderer.outputEncoding;
