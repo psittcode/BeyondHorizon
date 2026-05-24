@@ -632,12 +632,21 @@ gltfLoader.load('need_some_space.glb', function(gltf) {
       '  vec2  pCloud = pBase + vec2(uLayerY * 0.6, uLayerY * 0.4);',
       '  float cloud   = fbm4(pCloud);',
       '  float grain   = vnoise(pCloud * 11.0);',
-      // Two high-frequency grain octaves combined for richer turbulent
-      // texture — features at both scales are too small for the disk
-      // rotation to form visible arc stripes, only "boiling" detail.
+      // Static (non-rotating) disk-local coords for the larger grain
+      // octaves. Features here stay fixed in world space — they're big
+      // enough to be visible at zoom-out, and because they don't rotate
+      // with the disk they can't sweep into visible arc stripes.
+      '  vec2 pStatic = vec2(vRadius*cos(vAngle), vRadius*sin(vAngle)) / max(uInnerR * 0.55, 0.001);',
+      '  pStatic += vec2(uLayerY * 0.6, uLayerY * 0.4);',
+      '  float grainBig = vnoise(pStatic * 5.5);',
+      '  float grainMid = vnoise(pStatic * 13.0);',
+      // High-frequency rotating octaves — features too small for arc
+      // stripes; add boiling cloud detail at close zoom.
       '  float grainHi1 = vnoise(pCloud * 32.0);',
       '  float grainHi2 = vnoise(pCloud * 75.0);',
-      '  float grainHi  = 0.55 * grainHi1 + 0.45 * grainHi2;',
+      // Combined grain — large static grain dominates at zoom-out, fine
+      // rotating grain adds detail at close zoom.
+      '  float grainHi  = 0.35*grainBig + 0.25*grainMid + 0.22*grainHi1 + 0.18*grainHi2;',
       // === Dual ring sets — ~80 rings with non-uniform clustering ===
       // Two ring sets at spacings 0.030 and 0.044 in logR (was 0.14 / 0.20).
       // Set 1 -> ~80 rings, set 2 -> ~55 rings. They drift in and out of
