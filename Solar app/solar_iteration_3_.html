@@ -632,21 +632,20 @@ gltfLoader.load('need_some_space.glb', function(gltf) {
       '  vec2  pCloud = pBase + vec2(uLayerY * 0.6, uLayerY * 0.4);',
       '  float cloud   = fbm4(pCloud);',
       '  float grain   = vnoise(pCloud * 11.0);',
-      // Static (non-rotating) disk-local coords for the larger grain
-      // octaves. Features here stay fixed in world space — they're big
-      // enough to be visible at zoom-out, and because they don't rotate
-      // with the disk they can't sweep into visible arc stripes.
+      // Static (non-rotating) disk-local coords — large features here stay
+      // fixed in world space, so they can\'t sweep around the BH and form
+      // arc stripes. Multiple scales covering very-far to mid-zoom range.
       '  vec2 pStatic = vec2(vRadius*cos(vAngle), vRadius*sin(vAngle)) / max(uInnerR * 0.55, 0.001);',
       '  pStatic += vec2(uLayerY * 0.6, uLayerY * 0.4);',
-      '  float grainBig = vnoise(pStatic * 5.5);',
-      '  float grainMid = vnoise(pStatic * 13.0);',
-      // High-frequency rotating octaves — features too small for arc
-      // stripes; add boiling cloud detail at close zoom.
+      '  float grainXL  = vnoise(pStatic * 2.0);',   // huge — visible at any zoom
+      '  float grainBig = vnoise(pStatic * 6.0);',   // large
+      '  float grainMid = vnoise(pStatic * 14.0);',  // medium
+      // High-frequency rotating octaves — fine boiling detail at close zoom.
       '  float grainHi1 = vnoise(pCloud * 32.0);',
       '  float grainHi2 = vnoise(pCloud * 75.0);',
-      // Combined grain — large static grain dominates at zoom-out, fine
-      // rotating grain adds detail at close zoom.
-      '  float grainHi  = 0.35*grainBig + 0.25*grainMid + 0.22*grainHi1 + 0.18*grainHi2;',
+      // All scales blended (weights sum to 1.0). Large static octaves
+      // dominate so the grain reads at any camera distance.
+      '  float grainHi  = 0.30*grainXL + 0.22*grainBig + 0.18*grainMid + 0.16*grainHi1 + 0.14*grainHi2;',
       // === Dual ring sets — ~80 rings with non-uniform clustering ===
       // Two ring sets at spacings 0.030 and 0.044 in logR (was 0.14 / 0.20).
       // Set 1 -> ~80 rings, set 2 -> ~55 rings. They drift in and out of
@@ -679,19 +678,20 @@ gltfLoader.load('need_some_space.glb', function(gltf) {
       // Arc patchiness — narrowed (0.40+0.60 -> 0.60+0.40) so the dim end
       // of the cloud range doesn't drop rings below the bleed floor.
       '  ringMaskHard *= 0.60 + 0.40 * cloud;',
-      // Aggressive grain modulation — range 0.40-1.00 means each ring's
-      // brightness varies up to 2.5x across its arc, so it reads as a
-      // broken stippled cloud filament rather than a smooth rubber band.
-      // Two grain octaves (32x and 75x) combined give fine-detail boiling
-      // texture; both frequencies are too small for the disk rotation to
-      // form visible arc stripes.
-      '  ringMaskHard *= 0.40 + 0.60 * grainHi;',
-      // === Uniform bleed — gentle gap-fill, ring peaks stay clearly above ===
-      // Floor dropped 0.15 -> 0.08 to make room for the wider grain
-      // modulation (0.40-1.00). Minimum ring brightness after all factors
-      // is 0.45 * 0.60 * 0.40 = 0.108, still ~1.35x the bleed floor so
-      // even grain-dark ring patches stay visibly above the gap level.
-      '  ringMaskHard = max(ringMaskHard, 0.08);',
+      // Grain strength ramps with radial position — outer disk is much
+      // more broken up (matches real accretion physics: cooler, clumpier
+      // outer regions). At the inner edge grain only modulates ~35%; at
+      // the outer disk grain modulates 75% of ring brightness.
+      '  float grainStrength = mix(0.35, 0.75, smoothstep(0.0, 0.85, t));',
+      '  ringMaskHard *= (1.0 - grainStrength) + grainStrength * grainHi;',
+      // === Bleed floor fades with radial position ===
+      // At outer disk the grain strength is high (0.75) so ring brightness
+      // can dip to 0.45 * 0.60 * 0.25 = 0.068; a constant 0.08 bleed
+      // floor would swallow these dim patches into a solid mass at the
+      // outer edge. Fade the floor with sqrt(1-t) so it tracks the disk
+      // brightness — gap visibility preserved across all radii.
+      '  float bleedFloor = 0.08 * pow(max(1.0 - t, 0.0), 0.5);',
+      '  ringMaskHard = max(ringMaskHard, bleedFloor);',
       // === Soft haze base — diffuse glow behind rings (max alpha ~0.06) ===
       // Ensures ringMask never drops below this faint base level inside the
       // disk, giving the elliptical area a subtle ambient luminosity.
