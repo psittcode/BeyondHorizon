@@ -566,7 +566,7 @@ gltfLoader.load('need_some_space.glb', function(gltf) {
       depthWrite: false,
       depthTest: false
     }));
-    const _glowSize = galaxyRadius * 0.36;
+    const _glowSize = galaxyRadius * 0.72;
     galacticGlowSprite.scale.set(_glowSize, _glowSize, 1);
     galacticGlowSprite.position.copy(galacticCorePos);
     galacticGlowSprite.renderOrder = 4; // above galaxy disc and model
@@ -764,13 +764,16 @@ gltfLoader.load('need_some_space.glb', function(gltf) {
       // Outer: dusty rose / salmon (cooler still)
       // Far:   muted rose -> lavender -> pale purple-white (nebula haze)
       '  vec3 col;',
-      '  if      (t < 0.15) { col = mix(vec3(1.00,0.16,0.04), vec3(1.00,0.12,0.02), smoothstep(0.00, 0.15, t)); }',
-      '  else if (t < 0.32) { col = mix(vec3(1.00,0.12,0.02), vec3(1.00,0.08,0.01), smoothstep(0.15, 0.32, t)); }',
-      '  else if (t < 0.50) { col = mix(vec3(1.00,0.08,0.01), vec3(0.90,0.05,0.00), smoothstep(0.32, 0.50, t)); }',
-      '  else if (t < 0.68) { col = mix(vec3(0.90,0.05,0.00), vec3(0.85,0.30,0.20), smoothstep(0.50, 0.68, t)); }',
-      '  else if (t < 0.85) { col = mix(vec3(0.80,0.40,0.27), vec3(0.67,0.47,0.40), smoothstep(0.68, 0.85, t)); }',
-      '  else if (t < 0.95) { col = mix(vec3(0.67,0.47,0.40), vec3(0.73,0.67,0.80), smoothstep(0.85, 0.95, t)); }',
-      '  else               { col = mix(vec3(0.73,0.67,0.80), vec3(0.93,0.93,1.00), smoothstep(0.95, 1.00, t)); }',
+      // Reddish-orange inner, smoothly fading through dusty rose to lavender
+      // out to the nebula-white edge. Each stop's start matches the previous
+      // stop's end so the gradient blends continuously across t.
+      '  if      (t < 0.15) { col = mix(vec3(1.00,0.22,0.06), vec3(1.00,0.17,0.04), smoothstep(0.00, 0.15, t)); }',
+      '  else if (t < 0.32) { col = mix(vec3(1.00,0.17,0.04), vec3(1.00,0.13,0.02), smoothstep(0.15, 0.32, t)); }',
+      '  else if (t < 0.50) { col = mix(vec3(1.00,0.13,0.02), vec3(0.92,0.10,0.02), smoothstep(0.32, 0.50, t)); }',
+      '  else if (t < 0.68) { col = mix(vec3(0.92,0.10,0.02), vec3(0.85,0.22,0.13), smoothstep(0.50, 0.68, t)); }',
+      '  else if (t < 0.85) { col = mix(vec3(0.85,0.22,0.13), vec3(0.72,0.40,0.32), smoothstep(0.68, 0.85, t)); }',
+      '  else if (t < 0.95) { col = mix(vec3(0.72,0.40,0.32), vec3(0.73,0.62,0.78), smoothstep(0.85, 0.95, t)); }',
+      '  else               { col = mix(vec3(0.73,0.62,0.78), vec3(0.93,0.93,1.00), smoothstep(0.95, 1.00, t)); }',
       // Strong over-brightness boost so the additive disk contribution
       // dominates the galaxy texture behind it. With colour > 1.0 each
       // disk pixel writes more luminance than the BeauGa galaxy can.
