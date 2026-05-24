@@ -1080,8 +1080,8 @@ const glowMesh = (function() {
     blending: THREE.AdditiveBlending,
     depthWrite: false
   }));
-  // Sun core diameter is 4 (radius 2); match the glow sprite to that size.
-  _sprite.scale.set(4, 4, 1);
+  // Sun core diameter is 4 (radius 2); glow sits as a thin halo at 1.5× → 6.
+  _sprite.scale.set(6, 6, 1);
   _sprite.renderOrder = 4;
   scene.add(_sprite);
   return _sprite;
