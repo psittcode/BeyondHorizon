@@ -654,10 +654,17 @@ gltfLoader.load('need_some_space.glb', function(gltf) {
       // Two ring sets at spacings 0.030 and 0.044 in logR (was 0.14 / 0.20).
       // Set 1 -> ~80 rings, set 2 -> ~55 rings. They drift in and out of
       // alignment for natural clustering.
-      // Ring positions NO uLayerY offset — all 5 layers' rings land at the
-      // same radii so from above the layers reinforce the ring structure
-      // rather than smearing it across slightly offset radial positions.
-      '  float perturbLogR  = logR + 0.02 * sin(logR * 5.0 + 1.0);',
+      // Ring positions: NO uLayerY offset (layer reinforcement from above).
+      // Two perturbations to break the "perfect circle" rubber-band look:
+      //   1) low-freq sin gives organic clustering across radius
+      //   2) radial wobble = pStatic-based noise shifts ring position
+      //      azimuthally too. Wobble amplitude scales with radial position
+      //      AND camera zoom-out, so the further away or further out the
+      //      rings appear as turbulent wavy curves rather than concentric
+      //      circles.
+      '  float wobbleAmt = mix(0.004, 0.016, smoothstep(0.0, 0.85, t)) * (1.0 + uZoomOut * 0.6);',
+      '  float radialWobble = (vnoise(pStatic * 1.6) - 0.5) * wobbleAmt;',
+      '  float perturbLogR  = logR + 0.02 * sin(logR * 5.0 + 1.0) + radialWobble;',
       '  float ringSpacing1 = 0.030;',
       '  float ringInput1   = perturbLogR / ringSpacing1;',
       '  float ringDist1    = min(fract(ringInput1), 1.0 - fract(ringInput1));',
