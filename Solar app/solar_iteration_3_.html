@@ -480,6 +480,7 @@ let bhStarfield           = null; // procedural starfield for BH mode (no galact
 let bhDiskMaterials       = null; // materials of each stacked disk layer, for uTime animation
 let galacticGlowSprite    = null; // bright white glow at the galactic core, visible at far zoom before BH detail kicks in
 let galaxyPivot           = null; // pivot Group at galacticCorePos so milkyWayModel rotates wobble-free
+const _galaxyAxis         = new THREE.Vector3(0, 1, 0); // reused Y-axis vector for galaxy spin rotateOnWorldAxis
 const _bhScreenPos        = new THREE.Vector3();
 let _bhSavedVisibility    = null;
 
@@ -3204,12 +3205,15 @@ function animate(){
   if (bhStarfield) bhStarfield.position.copy(camera.position);
   solarSystemMarker.visible = !bhRendererSettings && outsideSkybox && !galacticViewActive;
 
-  // Galaxy spin — both the need_some_space GLB (via its pivot at
-  // galacticCorePos) and the BeauGa purple disc rotate around their
-  // own Y axes at the same rate. 0.00012 rad/ms = ~52 s per revolution.
+  // Galaxy spin — both the need_some_space GLB and the BeauGa purple
+  // disc rotate around the WORLD Y axis (horizontal spin in their own
+  // plane). For beauGaDisc rotateOnWorldAxis is required because the
+  // disc already has rotation.x = -π/2 and a plain rotation.y would
+  // tilt the disc out of horizontal due to Euler XYZ order.
+  // 0.00012 rad/ms = ~52 s per revolution.
   var _galaxySpin = deltaMs * 0.00012;
   if (galaxyPivot) galaxyPivot.rotation.y += _galaxySpin;
-  if (beauGaDisc)  beauGaDisc.rotation.y  += _galaxySpin;
+  if (beauGaDisc)  beauGaDisc.rotateOnWorldAxis(_galaxyAxis, _galaxySpin);
 
   // === Galactic-core glow visibility & fade ===
   // Full bright at far zoom (replaces the BH model entirely when the
