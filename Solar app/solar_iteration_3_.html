@@ -632,24 +632,22 @@ gltfLoader.load('need_some_space.glb', function(gltf) {
       '  vec2  pCloud = pBase + vec2(uLayerY * 0.6, uLayerY * 0.4);',
       '  float cloud  = fbm4(pCloud);',
       '  float grain  = vnoise(pCloud * 11.0);',
-      // === Dense ring filaments — ~30 hair-thin rings ===
-      // ringSpacing 0.08 in logR gives ~30 rings across the disk's radial
-      // extent. Slight logR perturbation (sin term) makes the spacing
-      // non-uniform — rings cluster organically rather than aligning on a
-      // perfect mechanical grid.
-      '  float perturbLogR = logR + 0.03 * sin(logR * 7.0 + 1.0);',
-      '  float ringSpacing = 0.08;',
+      // === Dense ring filaments — ~120 finely-packed rings ===
+      // ringSpacing 0.02 in logR -> ~120 rings across the disk's radial
+      // extent. Cumulatively they form a hazy cloud-like structure; gaps
+      // are visible only when zoomed in close.
+      // Slight logR perturbation breaks the perfect-grid mechanical look.
+      '  float perturbLogR = logR + 0.025 * sin(logR * 7.0 + 1.0);',
+      '  float ringSpacing = 0.020;',
       '  float ringInput   = perturbLogR / ringSpacing + uLayerY * 0.04;',
       '  float ringFrac    = fract(ringInput);',
       '  float ringDist    = min(ringFrac, 1.0 - ringFrac);',
-      // Gaussian profile (K = 60) — hair-thin bright peak (FWHM ≈ 22 % of
-      // spacing) with soft falloff. Adjacent rings tails overlap slightly,
-      // so from a distance the disk reads as a cohesive glowing mass, but
-      // up close the individual ring centers are still distinguishable.
+      // Gaussian profile (K = 60) — hair-thin bright peak with soft falloff.
+      // Adjacent rings tails overlap, so from a distance the rings blur
+      // into a hazy luminous mass; up close, the individual peaks resolve.
       '  float ringMaskHard = exp(-ringDist * ringDist * 60.0);',
-      // Per-ring opacity hash — each ring identified by floor(ringInput+0.5)
-      // gets a deterministic opacity in [0.30, 0.90]. Some rings bright,
-      // others faint, breaking the uniform neon-line look.
+      // Per-ring opacity hash — each of the ~120 rings gets a deterministic
+      // opacity in [0.30, 0.90]. Some bright, others faint -> layered cloud.
       '  float ringIndex = floor(ringInput + 0.5);',
       '  float ringOpVar = 0.30 + 0.60 * hash21(vec2(ringIndex * 0.7, 3.0));',
       '  ringMaskHard *= ringOpVar;',
