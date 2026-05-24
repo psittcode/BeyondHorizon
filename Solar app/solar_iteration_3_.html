@@ -632,33 +632,32 @@ gltfLoader.load('need_some_space.glb', function(gltf) {
       '  vec2  pCloud = pBase + vec2(uLayerY * 0.6, uLayerY * 0.4);',
       '  float cloud  = fbm4(pCloud);',
       '  float grain  = vnoise(pCloud * 11.0);',
-      // === Dense ring filaments — ~120 finely-packed rings ===
-      // ringSpacing 0.02 in logR -> ~120 rings across the disk's radial
-      // extent. Cumulatively they form a hazy cloud-like structure; gaps
-      // are visible only when zoomed in close.
-      // Slight logR perturbation breaks the perfect-grid mechanical look.
+      // === Dual ring sets — non-uniform clustering ===
+      // Two ring sets at slightly different spacings (0.020 and 0.028). They
+      // drift in and out of alignment across the radial range, so in some
+      // regions a ring from each set lands close together (visually
+      // "grouped" / almost touching) and in others they're well separated
+      // (visible gaps). Natural clustering without per-ring offsets.
       '  float perturbLogR = logR + 0.025 * sin(logR * 7.0 + 1.0);',
-      '  float ringSpacing = 0.020;',
-      '  float ringInput   = perturbLogR / ringSpacing + uLayerY * 0.04;',
-      '  float ringFrac    = fract(ringInput);',
-      '  float ringDist    = min(ringFrac, 1.0 - ringFrac);',
-      // Very soft Gaussian (K = 10) — exp(-0.25 * 10) = 0.082 at gap midpoint,
-      // so the ring "tail" reaches across the gap and adjacent rings overlap
-      // almost entirely. Rings are visible only as gentle ripples of intensity
-      // within an otherwise continuous luminous cloud.
-      '  float ringMaskHard = exp(-ringDist * ringDist * 10.0);',
-      // Per-ring opacity hash — each of the ~120 rings gets a deterministic
-      // opacity in [0.30, 0.90]. Some bright, others faint -> layered cloud.
-      '  float ringIndex = floor(ringInput + 0.5);',
-      '  float ringOpVar = 0.30 + 0.60 * hash21(vec2(ringIndex * 0.7, 3.0));',
+      '  float ringSpacing1 = 0.020;',
+      '  float ringInput1   = perturbLogR / ringSpacing1 + uLayerY * 0.04;',
+      '  float ringDist1    = min(fract(ringInput1), 1.0 - fract(ringInput1));',
+      // Gaussian K=7 — slightly wider/thicker rings than before (K=10)
+      '  float ring1 = exp(-ringDist1 * ringDist1 * 7.0);',
+      '  float ringSpacing2 = 0.028;',
+      '  float ringInput2   = perturbLogR / ringSpacing2 + uLayerY * 0.06 + 0.3;',
+      '  float ringDist2    = min(fract(ringInput2), 1.0 - fract(ringInput2));',
+      '  float ring2 = exp(-ringDist2 * ringDist2 * 7.0);',
+      '  float ringMaskHard = max(ring1, ring2);',
+      // Per-ring opacity — narrower range (0.65-0.95) so no ring drops dim
+      // enough to look like a shadow strip against its neighbours.
+      '  float ringIndex = floor(ringInput1 + 0.5);',
+      '  float ringOpVar = 0.65 + 0.30 * hash21(vec2(ringIndex * 0.7, 3.0));',
       '  ringMaskHard *= ringOpVar;',
-      // Cloud dominates the modulation now — ring mask varies up to ~7x in
-      // intensity depending on the FBM, so the rings dissolve into puffy
-      // cloud patches almost everywhere.
-      '  ringMaskHard *= 0.12 + 0.88 * cloud;',
-      // Extra fine-noise multiplier breaks any residual ring crispness
-      // into stippled cloud detail (no concentric circles visible).
-      '  ringMaskHard *= 0.55 + 0.45 * grain;',
+      // Softer cloud modulation — minimum lifted 0.12 -> 0.55 so low-cloud
+      // patches no longer read as dark "shadow strips" cutting through the
+      // disk. Cloud still varies the brightness but in a much narrower range.
+      '  ringMaskHard *= 0.55 + 0.45 * cloud;',
       // === Outer fog transition ===
       // For t > 0.65 the rings dissolve smoothly into a diffuse fog layer.
       // fogMix=0 -> pure ring-gated alpha; fogMix=1 -> pure cloud-driven fog.
