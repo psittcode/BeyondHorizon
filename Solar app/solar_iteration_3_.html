@@ -2577,6 +2577,7 @@ function exitGalacticView() {
   if (blackHoleModel && galacticCorePos) {
     blackHoleModel.position.copy(galacticCorePos);
     blackHoleModel.scale.set(1, 1, 1);
+    blackHoleModel.quaternion.identity(); // restore XZ-flat orientation for Milky Way view
     blackHoleModel.visible = false;
   }
   if (beauGaDisc) { beauGaDisc.material.opacity = 1.0; beauGaDisc.material.needsUpdate = true; }
@@ -2621,6 +2622,7 @@ function flyToSolarSystem() {
     if (blackHoleModel && galacticCorePos) {
       blackHoleModel.position.copy(galacticCorePos);
       blackHoleModel.scale.set(1, 1, 1);
+      blackHoleModel.quaternion.identity();
       blackHoleModel.visible = false;
     }
     if (beauGaDisc) { beauGaDisc.material.opacity = 1.0; beauGaDisc.material.needsUpdate = true; }
@@ -3393,13 +3395,23 @@ function animate(){
     ));
     galBHTransitionT += (_galRaw - galBHTransitionT) * 0.05;
 
-    // Scale so disk outer radius = 12 galactic-view units — small enough that
-    // camera is always outside it, avoiding the "two arcs" look of viewing from inside.
-    // bhR = galaxyVisualRadius*0.04, disk outer = bhR*10 = galaxyVisualRadius*0.4
+    // Scale so disk outer radius = 12 galactic-view units
     const _galF = 12.0 / (galaxyVisualRadius * 0.4);
     blackHoleModel.position.set(0, 0, 0);
     blackHoleModel.scale.setScalar(_galF);
     blackHoleModel.visible = galBHTransitionT > 0.04;
+
+    // Disk layers lie flat in XZ (rotation.x = -π/2 on each child).
+    // Viewed from the galactic camera above the plane they appear as a tilted
+    // ellipse — two separate arcs left/right. Fix: rotate the group so the
+    // disk's Y-axis normal always points toward the camera, making it appear
+    // as a circular ring regardless of camera position.
+    if (blackHoleModel.visible) {
+      const _camDir = camera.position.clone().normalize();
+      blackHoleModel.quaternion.setFromUnitVectors(
+        new THREE.Vector3(0, 1, 0), _camDir
+      );
+    }
 
     if (bhDiskMaterials && blackHoleModel.visible) {
       const _gdt = deltaMs * 0.0005;
