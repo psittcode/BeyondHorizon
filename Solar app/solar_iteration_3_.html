@@ -3374,6 +3374,20 @@ function animate(){
     // less prominence in the centre, still readable at far zoom.
     galacticGlowSprite.material.opacity = _gOp * 0.50;
   }
+
+  // === Sun glow pulsation ===
+  // Two incommensurate sines layered so the rhythm feels organic (a "breathing"
+  // light bulb) rather than a clean metronome. Driven by real wall time so the
+  // speed slider only affects orbital motion, not the pulse cadence.
+  {
+    const _t = nowMs * 0.001;
+    const _pulse = 0.5 * Math.sin(_t * 1.6) + 0.5 * Math.sin(_t * 2.3 + 1.0);
+    const _scaleF = 1.0 + _pulse * 0.06;   // ±6% halo size
+    const _opF    = 1.0 + _pulse * 0.18;   // ±18% halo brightness
+    glowMesh.scale.set(6 * _scaleF, 6 * _scaleF, 1);
+    glowMesh.material.opacity = Math.max(0.0, Math.min(1.0, _opF));
+    sunLight.intensity = 1.5 + _pulse * 0.15;
+  }
   const _ssBtn = document.getElementById('solarSystemBtn');
   if (_ssBtn) _ssBtn.style.display = outsideSkybox ? 'block' : 'none';
 
