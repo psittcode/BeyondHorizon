@@ -614,9 +614,10 @@ gltfLoader.load('need_some_space.glb', function(gltf) {
     transparent: true,
     alphaTest: 0,
     blending: THREE.AdditiveBlending,
-    // Dimmed (was 0xffffff) so the BH plasma ring at the centre punches
-    // through the galaxy texture more clearly.
-    color: 0x999999,
+    // Blue-tinted to match the skybox background tone.
+    // Additive blending means this colour multiplies the texture; tweak the
+    // hex to shift warmer (e.g. 0x8899cc) or cooler (e.g. 0x4466aa).
+    color: 0x6688bb,
     depthWrite: false,
     depthTest: false,
     side: THREE.DoubleSide
