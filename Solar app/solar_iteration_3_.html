@@ -4542,10 +4542,11 @@ window.addEventListener("resize", ()=>{
   miniGlow.scale.set(11, 11, 1);
   miniScene.add(miniGlow);
 
-  // Sun-side lighting: bright point light from origin, very dim ambient so the
-  // night side reads as dark. decay=0 so distant outer planets aren't dimmer.
-  miniScene.add(new THREE.PointLight(0xffeecc, 2.4, 0, 0));
-  miniScene.add(new THREE.AmbientLight(0x6080a0, 0.08));
+  // Sun-side lighting: softer point light + warmer ambient floor so the night
+  // side reads as shadowed but still has detail, and the day side isn't blown
+  // out. decay=0 so distant outer planets aren't dimmer than inner.
+  miniScene.add(new THREE.PointLight(0xffeecc, 1.3, 0, 0));
+  miniScene.add(new THREE.AmbientLight(0x90a8c4, 0.32));
 
   // Real orbital periods span ~684× (Mercury 0.24 yr → Neptune 164.79 yr).
   // A single linear multiplier can't make all 8 planets visibly move — either
@@ -4559,7 +4560,7 @@ window.addEventListener("resize", ()=>{
   const speedLabelEl = document.getElementById('miniSpeedLabel');
   if (speedLabelEl) {
     const rounded = Math.round(earthMultiplier / 100000) * 100000;
-    speedLabelEl.textContent = '≈ ' + rounded.toLocaleString() + '× Earth orbital speed';
+    speedLabelEl.textContent = '≈ ' + rounded.toLocaleString() + '× real-life speed';
   }
 
   // Planets — all 8, compressed but monotonic distances, real period ratios
