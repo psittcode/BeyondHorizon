@@ -4547,16 +4547,19 @@ window.addEventListener("resize", ()=>{
   miniScene.add(new THREE.PointLight(0xffeecc, 2.4, 0, 0));
   miniScene.add(new THREE.AmbientLight(0x6080a0, 0.08));
 
-  // ── Realistic relative orbital speeds, all multiplied by one factor.
-  // Earth period = 1 year; mini-Earth completes one orbit in ~31.6 seconds.
+  // Real orbital periods span ~684× (Mercury 0.24 yr → Neptune 164.79 yr).
+  // A single linear multiplier can't make all 8 planets visibly move — either
+  // Mercury blurs or Neptune freezes. Compress with 1/sqrt(period) so outer
+  // planets are still slower than inner, but visibly orbit during one session.
   const YEAR_SEC = 365.25 * 86400;
-  const MINI_SPEED_MULTIPLIER = 1000000; // × real-time
-  const realRadPerSec = years => (2 * Math.PI) / (years * YEAR_SEC);
+  const EARTH_VIEW_PERIOD_SEC = 10; // Earth completes one orbit every 10 s on screen
+  const EARTH_BASE_SPEED = (2 * Math.PI) / EARTH_VIEW_PERIOD_SEC;
+  const earthMultiplier = YEAR_SEC / EARTH_VIEW_PERIOD_SEC; // ≈ 3,155,760
 
   const speedLabelEl = document.getElementById('miniSpeedLabel');
   if (speedLabelEl) {
-    speedLabelEl.textContent =
-      MINI_SPEED_MULTIPLIER.toLocaleString() + '× real-life orbital speed';
+    const rounded = Math.round(earthMultiplier / 100000) * 100000;
+    speedLabelEl.textContent = '≈ ' + rounded.toLocaleString() + '× Earth orbital speed';
   }
 
   // Planets — all 8, compressed but monotonic distances, real period ratios
@@ -4585,7 +4588,7 @@ window.addEventListener("resize", ()=>{
         specular: 0x111111
       })
     );
-    const speed = realRadPerSec(p.years) * MINI_SPEED_MULTIPLIER;
+    const speed = EARTH_BASE_SPEED / Math.sqrt(p.years);
     const startAngle = (i / miniPlanetDefs.length) * Math.PI * 2 + Math.random() * 0.5;
     miniPlanets.push({ mesh, name: p.name, dist: p.dist, speed, angle: startAngle });
     miniScene.add(mesh);
