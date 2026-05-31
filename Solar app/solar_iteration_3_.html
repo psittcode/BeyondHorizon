@@ -4578,17 +4578,71 @@ window.addEventListener("resize", ()=>{
   const miniPlanets = [];
   let saturnMesh = null;
   let saturnRingMesh = null;
+  let earthMesh = null;
+  let earthShaderMat = null;
+
+  // Custom Earth day/night shader: blends daymap with nightmap (city lights)
+  // across the terminator using the dot product between surface normal and
+  // the sun direction. sunDir is updated each frame as Earth orbits.
+  function makeEarthMaterial() {
+    return new THREE.ShaderMaterial({
+      uniforms: {
+        dayMap:   { value: earthTexture },
+        nightMap: { value: earthNightTexture },
+        sunDir:   { value: new THREE.Vector3(1, 0, 0) },
+        ambient:  { value: 0.18 },
+        nightBoost: { value: 1.55 }
+      },
+      vertexShader: `
+        varying vec2 vUv;
+        varying vec3 vWorldNormal;
+        void main() {
+          vUv = uv;
+          vWorldNormal = normalize(mat3(modelMatrix) * normal);
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: `
+        uniform sampler2D dayMap;
+        uniform sampler2D nightMap;
+        uniform vec3 sunDir;
+        uniform float ambient;
+        uniform float nightBoost;
+        varying vec2 vUv;
+        varying vec3 vWorldNormal;
+        void main() {
+          float cosA = dot(normalize(vWorldNormal), normalize(sunDir));
+          // Smooth dawn/dusk band roughly 18 deg wide centred on the terminator
+          float dayWeight = smoothstep(-0.15, 0.20, cosA);
+          vec3 dayColor   = texture2D(dayMap, vUv).rgb;
+          vec3 nightColor = texture2D(nightMap, vUv).rgb * nightBoost;
+          // Day side: lambert-ish with an ambient floor so night→day mix is smooth
+          float dayLight = mix(ambient, 1.0, max(cosA, 0.0));
+          vec3 day = dayColor * dayLight;
+          gl_FragColor = vec4(mix(nightColor, day, dayWeight), 1.0);
+        }
+      `
+    });
+  }
 
   miniPlanetDefs.forEach((p, i) => {
-    const mesh = new THREE.Mesh(
-      new THREE.SphereGeometry(p.size, 48, 48),
-      new THREE.MeshPhongMaterial({
+    let material;
+    if (p.name === 'Earth') {
+      earthShaderMat = makeEarthMaterial();
+      material = earthShaderMat;
+    } else {
+      material = new THREE.MeshPhongMaterial({
         map: p.tex,
         color: p.color,
         shininess: 6,
         specular: 0x111111
-      })
+      });
+    }
+    const mesh = new THREE.Mesh(
+      new THREE.SphereGeometry(p.size, 48, 48),
+      material
     );
+    if (p.name === 'Earth') earthMesh = mesh;
     const speed = EARTH_BASE_SPEED / Math.sqrt(p.years);
     const startAngle = (i / miniPlanetDefs.length) * Math.PI * 2 + Math.random() * 0.5;
     miniPlanets.push({ mesh, name: p.name, dist: p.dist, speed, angle: startAngle });
@@ -4687,6 +4741,14 @@ window.addEventListener("resize", ()=>{
 
     if (saturnMesh && saturnRingMesh) {
       saturnRingMesh.position.copy(saturnMesh.position);
+    }
+
+    // Earth's sun direction (Earth → Sun, world space) drives the day/night shader
+    if (earthShaderMat && earthMesh) {
+      const ep = earthMesh.position;
+      earthShaderMat.uniforms.sunDir.value
+        .set(-ep.x, -ep.y, -ep.z)
+        .normalize();
     }
 
     for (const m of miniMoons) {
