@@ -283,13 +283,20 @@
       height: 92px;
       padding: 0 40px;
       border-radius: 14px;
-      background: rgba(10, 12, 24, 0.5);
-      border: 1px solid rgba(150, 180, 255, 0.14);
-      backdrop-filter: blur(8px);
-      -webkit-backdrop-filter: blur(8px);
+      /* Same frosted-glass treatment as the main card */
+      background:
+        linear-gradient(135deg, rgba(180, 205, 255, 0.045) 0%, rgba(255, 255, 255, 0.008) 28%, rgba(10, 12, 30, 0) 58%),
+        linear-gradient(135deg, rgba(40, 55, 95, 0.004), rgba(10, 12, 30, 0.006));
+      border: 1px solid rgba(180, 205, 255, 0.16);
+      backdrop-filter: blur(3px) saturate(115%) brightness(1.04);
+      -webkit-backdrop-filter: blur(3px) saturate(115%) brightness(1.04);
       display: flex;
       align-items: center;
-      box-shadow: 0 0 30px rgba(60, 90, 160, 0.1);
+      box-shadow:
+        0 0 60px rgba(80, 130, 220, 0.18),
+        0 0 140px rgba(40, 70, 140, 0.12),
+        inset 0 1px 0 rgba(255, 255, 255, 0.18),
+        inset 0 0 1px rgba(255, 255, 255, 0.12);
     }
     .stripInner {
       position: relative;
