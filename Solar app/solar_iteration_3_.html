@@ -4634,6 +4634,37 @@ window.addEventListener("resize", ()=>{
     }
   });
 
+  // ── Moons: Earth's Moon + Jupiter's four Galilean moons.
+  // Moon periods (vs their parent's orbit) are much shorter than planet
+  // periods vs the Sun, so applying the same 1/sqrt(period) scheme would
+  // smear Io into a blur. Instead, pin reasonable on-screen periods that
+  // preserve relative ordering.
+  const moonDefs = [
+    { name: 'Moon',     parent: 'Earth',   tex: moonTexture,     size: 0.18, dist: 1.30, period: 2.7 },
+    { name: 'Io',       parent: 'Jupiter', tex: ioTexture,       size: 0.16, dist: 1.95, period: 1.5 },
+    { name: 'Europa',   parent: 'Jupiter', tex: europaTexture,   size: 0.14, dist: 2.45, period: 2.1 },
+    { name: 'Ganymede', parent: 'Jupiter', tex: ganymedeTexture, size: 0.19, dist: 3.10, period: 3.0 },
+    { name: 'Callisto', parent: 'Jupiter', tex: callistoTexture, size: 0.16, dist: 3.85, period: 4.6 }
+  ];
+  const planetByName = {};
+  for (const p of miniPlanets) planetByName[p.name] = p.mesh;
+
+  const miniMoons = moonDefs.map(m => {
+    const mesh = new THREE.Mesh(
+      new THREE.SphereGeometry(m.size, 32, 32),
+      new THREE.MeshPhongMaterial({ map: m.tex, shininess: 4, specular: 0x111111 })
+    );
+    miniScene.add(mesh);
+    return {
+      mesh,
+      parentMesh: planetByName[m.parent],
+      dist: m.dist,
+      speed: (2 * Math.PI) / m.period,
+      angle: Math.random() * Math.PI * 2,
+      tilt: (Math.random() - 0.5) * 0.25
+    };
+  });
+
   // Slight orbital plane tilt for cinematic look
   const planeTilt = 0.18;
   let miniLast = performance.now();
@@ -4656,6 +4687,18 @@ window.addEventListener("resize", ()=>{
 
     if (saturnMesh && saturnRingMesh) {
       saturnRingMesh.position.copy(saturnMesh.position);
+    }
+
+    for (const m of miniMoons) {
+      if (!m.parentMesh) continue;
+      m.angle += m.speed * dt;
+      const px = m.parentMesh.position.x;
+      const py = m.parentMesh.position.y;
+      const pz = m.parentMesh.position.z;
+      const mx = Math.cos(m.angle) * m.dist;
+      const mz = Math.sin(m.angle) * m.dist;
+      m.mesh.position.set(px + mx, py + Math.sin(m.angle) * m.tilt, pz + mz);
+      m.mesh.rotation.y += dt * 0.4;
     }
 
     // Very slow camera drift for cinematic feel
