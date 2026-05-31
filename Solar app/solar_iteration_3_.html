@@ -268,7 +268,7 @@
       z-index: 2;
       margin-top: 28px;
       width: min(1280px, 92vw);
-      height: 78px;
+      height: 112px;
       padding: 0 40px;
       border-radius: 14px;
       background: rgba(10, 12, 24, 0.5);
@@ -320,6 +320,9 @@
     .stripLabel {
       position: absolute;
       top: 14px;
+      left: 50%;
+      transform: translateX(-50%);
+      text-align: center;
       font-family: 'Exo 2', sans-serif;
       font-size: 8px;
       font-weight: 400;
@@ -327,18 +330,36 @@
       text-transform: uppercase;
       color: rgba(200, 215, 245, 0.65);
       white-space: nowrap;
+      line-height: 1.5;
     }
-    .stripScale {
+    .stripLabel .stripAu {
+      display: block;
+      font-size: 7.5px;
+      letter-spacing: 0.02em;
+      text-transform: none;
+      color: rgba(170, 195, 235, 0.45);
+    }
+    /* Top-left heading for the distance scale */
+    .stripTitle {
       position: absolute;
-      bottom: 6px;
+      top: 8px;
       left: 0;
       font-family: 'Exo 2', sans-serif;
       font-size: 9px;
-      letter-spacing: 0.3em;
+      letter-spacing: 0.22em;
       text-transform: uppercase;
-      color: rgba(180, 200, 240, 0.35);
+      color: rgba(200, 215, 245, 0.6);
     }
-    .stripScale.right { left: auto; right: 0; }
+    /* Bottom-left unit definition */
+    .stripLegend {
+      position: absolute;
+      bottom: 8px;
+      left: 0;
+      font-family: 'Exo 2', sans-serif;
+      font-size: 8.5px;
+      letter-spacing: 0.06em;
+      color: rgba(170, 195, 235, 0.4);
+    }
 
     @media (max-width: 900px) {
       .menuCard { flex-direction: column; height: auto; }
@@ -439,8 +460,8 @@
   <div class="distanceStrip">
     <div class="stripInner" id="stripInner">
       <div class="stripLine"></div>
-      <div class="stripScale">Sun</div>
-      <div class="stripScale right">30 AU</div>
+      <div class="stripTitle">Relative distance of each planet from the Sun</div>
+      <div class="stripLegend">AU = astronomical unit&nbsp;&nbsp;·&nbsp;&nbsp;1 AU = 149,597,871 km</div>
     </div>
   </div>
 </div>
@@ -4443,6 +4464,10 @@ window.addEventListener("resize", ()=>{
     const lbl = document.createElement('div');
     lbl.className = 'stripLabel';
     lbl.textContent = p.name;
+    const au = document.createElement('span');
+    au.className = 'stripAu';
+    au.textContent = p.au + ' AU';
+    lbl.appendChild(au);
     wrap.appendChild(dot);
     wrap.appendChild(lbl);
     stripInner.appendChild(wrap);
