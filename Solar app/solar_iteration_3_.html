@@ -4591,7 +4591,7 @@ window.addEventListener("resize", ()=>{
         nightMap: { value: earthNightTexture },
         sunDir:   { value: new THREE.Vector3(1, 0, 0) },
         ambient:  { value: 0.18 },
-        nightBoost: { value: 1.55 }
+        nightBoost: { value: 3.2 }
       },
       vertexShader: `
         varying vec2 vUv;
@@ -4615,7 +4615,8 @@ window.addEventListener("resize", ()=>{
           // Smooth dawn/dusk band roughly 18 deg wide centred on the terminator
           float dayWeight = smoothstep(-0.15, 0.20, cosA);
           vec3 dayColor   = texture2D(dayMap, vUv).rgb;
-          vec3 nightColor = texture2D(nightMap, vUv).rgb * nightBoost;
+          // Warm sodium-lamp tint so the city glow reads as artificial light, not just bright pixels
+          vec3 nightColor = texture2D(nightMap, vUv).rgb * nightBoost * vec3(1.05, 0.95, 0.72);
           // Day side: lambert-ish with an ambient floor so night→day mix is smooth
           float dayLight = mix(ambient, 1.0, max(cosA, 0.0));
           vec3 day = dayColor * dayLight;
@@ -4728,7 +4729,7 @@ window.addEventListener("resize", ()=>{
     const dt = (now - miniLast) * 0.001;
     miniLast = now;
 
-    miniSun.rotation.y += dt * 0.05;
+    miniSun.rotation.y += dt * 0.28;
     miniSky.rotation.y += dt * 0.002;
 
     for (const p of miniPlanets) {
