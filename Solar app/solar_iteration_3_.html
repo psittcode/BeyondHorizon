@@ -344,6 +344,46 @@
       .menuRight { padding: 32px; }
       .creditLine { position: static; margin-top: 12px; }
     }
+
+    /* Floating "Main Menu" return button (shown while inside the app) */
+    #returnToMenuBtn {
+      position: fixed;
+      bottom: 20px;
+      left: 20px;
+      z-index: 500;
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      padding: 9px 16px 9px 13px;
+      background: rgba(10, 14, 28, 0.55);
+      color: rgba(220, 230, 250, 0.88);
+      border: 1px solid rgba(150, 180, 255, 0.28);
+      border-radius: 999px;
+      backdrop-filter: blur(10px) saturate(140%);
+      -webkit-backdrop-filter: blur(10px) saturate(140%);
+      cursor: pointer;
+      font-family: 'Exo 2', system-ui, sans-serif;
+      font-size: 11px;
+      font-weight: 500;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      box-shadow: 0 0 18px rgba(80, 130, 220, 0.18);
+      transition: background 0.2s ease, border-color 0.2s ease,
+                  color 0.2s ease, transform 0.2s ease,
+                  box-shadow 0.2s ease;
+    }
+    #returnToMenuBtn:hover {
+      background: rgba(30, 55, 110, 0.6);
+      border-color: rgba(180, 210, 255, 0.55);
+      color: #ffffff;
+      transform: translateY(-1px);
+      box-shadow: 0 0 24px rgba(109, 168, 255, 0.4);
+    }
+    #returnToMenuBtn svg {
+      width: 14px;
+      height: 14px;
+      opacity: 0.85;
+    }
   </style>
 </head>
 <body>
@@ -406,6 +446,15 @@
     </div>
   </div>
 </div>
+
+<!-- RETURN-TO-MENU BUTTON (always visible while inside the app) -->
+<button id="returnToMenuBtn" title="Return to main menu">
+  <svg viewBox="0 0 16 16" aria-hidden="true">
+    <path d="M9.5 3 L4.5 8 L9.5 13" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M4.8 8 L13 8" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+  </svg>
+  <span>Main Menu</span>
+</button>
 
 <!-- INFO PANEL -->
 <div id="panel" style="
@@ -4577,16 +4626,38 @@ window.addEventListener("resize", ()=>{
   function dismissMenu(then) {
     menuActive = false;
     menuEl.classList.add('hidden');
-    // After fade-out, free the WebGL context
     setTimeout(() => {
-      try {
-        miniRenderer.dispose();
-        miniRenderer.forceContextLoss && miniRenderer.forceContextLoss();
-      } catch (e) {}
-      menuEl.style.display = 'none';
       if (typeof then === 'function') then();
     }, 950);
   }
+
+  function openMenu() {
+    // Return user to a clean default state — exit any non-default views
+    if (typeof galacticViewActive !== 'undefined' && galacticViewActive
+        && typeof exitGalacticView === 'function') {
+      try { exitGalacticView(); } catch (e) { console.warn('exitGalacticView failed:', e); }
+    }
+    if (typeof spaceshipViewActive !== 'undefined' && spaceshipViewActive
+        && typeof exitSpaceshipView === 'function') {
+      try { exitSpaceshipView(); } catch (e) { console.warn('exitSpaceshipView failed:', e); }
+    }
+    // Close any open info panel
+    const ipanel = document.getElementById('panel');
+    if (ipanel) ipanel.style.display = 'none';
+
+    menuEl.classList.remove('hidden');
+    if (!menuActive) {
+      menuActive = true;
+      miniLast = performance.now();
+      resizeStarField();
+      resizeMini();
+      requestAnimationFrame(drawStars);
+      requestAnimationFrame(animateMini);
+    }
+  }
+
+  // Expose so the floating "Main Menu" button can call it
+  window.openMainMenu = openMenu;
 
   document.getElementById('btnEnter').addEventListener('click', () => {
     dismissMenu();
@@ -4599,6 +4670,12 @@ window.addEventListener("resize", ()=>{
       }
     });
   });
+
+  // Floating return-to-menu button
+  const returnBtn = document.getElementById('returnToMenuBtn');
+  if (returnBtn) {
+    returnBtn.addEventListener('click', () => openMenu());
+  }
 })();
 </script>
 
