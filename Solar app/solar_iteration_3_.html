@@ -397,15 +397,14 @@
       0%, 100% { top: 14px; }
       50% { top: 18px; }
     }
-    /* Glowing white V that tracks the selected body in the mini 3D scene */
+    /* Glowing white ring that encircles the selected body in the mini 3D scene */
     #miniPointer {
       position: absolute;
-      width: 13px;
-      height: 13px;
-      border-right: 2.5px solid #ffffff;
-      border-bottom: 2.5px solid #ffffff;
-      transform: translate(-50%, -50%) rotate(45deg);
-      filter: drop-shadow(0 0 7px rgba(255, 255, 255, 0.95));
+      border: 2px solid #ffffff;
+      border-radius: 50%;
+      box-sizing: border-box;
+      box-shadow: 0 0 9px rgba(255, 255, 255, 0.9), inset 0 0 7px rgba(255, 255, 255, 0.45);
+      transform: translate(-50%, -50%);
       opacity: 0;
       pointer-events: none;
       z-index: 4;
@@ -4555,8 +4554,17 @@ window.addEventListener("resize", ()=>{
     }
     wrap.appendChild(dot);
     wrap.appendChild(lbl);
-    // Clicking a planet (or the Sun) drops the glowing pointer onto it
+    // Clicking a planet (or the Sun) drops the glowing pointer onto it.
+    // Clicking the already-selected body again deselects it.
     wrap.addEventListener('click', () => {
+      if (selectedStripPlanet === wrap) {
+        // Toggle off: clear selection, hide pointer and mini-scene ring
+        wrap.classList.remove('selected');
+        selectedStripPlanet = null;
+        selectedBodyName = null;
+        stripPointer.classList.remove('visible');
+        return;
+      }
       if (selectedStripPlanet) selectedStripPlanet.classList.remove('selected');
       wrap.classList.add('selected');
       selectedStripPlanet = wrap;
@@ -4682,6 +4690,9 @@ window.addEventListener("resize", ()=>{
   miniPointer.id = 'miniPointer';
   miniCanvas.parentElement.appendChild(miniPointer);
   const _miniProj = new THREE.Vector3();
+  const _miniCenter = new THREE.Vector3();
+  const _miniRight = new THREE.Vector3();
+  const _miniEdge = new THREE.Vector3();
 
   // Camera tilted to see orbital plane in 3/4 view, pulled back to fit Neptune
   miniCamera.position.set(0, 24, 52);
@@ -4696,6 +4707,8 @@ window.addEventListener("resize", ()=>{
     new THREE.MeshBasicMaterial({ map: sunTexture, color: 0xffeecc })
   );
   miniScene.add(miniSun);
+  // Sphere radii (scene units) for sizing the selection ring; Sun is 2.4
+  const bodyRadius = { Sun: 2.4 };
 
   // Sun glow sprite (soft halo)
   const glowCanvas = document.createElement('canvas');
@@ -4816,6 +4829,7 @@ window.addEventListener("resize", ()=>{
       material
     );
     if (p.name === 'Earth') earthMesh = mesh;
+    bodyRadius[p.name] = p.size;
     const speed = EARTH_BASE_SPEED / Math.sqrt(p.years);
     const startAngle = (i / miniPlanetDefs.length) * Math.PI * 2 + Math.random() * 0.5;
     miniPlanets.push({ mesh, name: p.name, dist: p.dist, speed, angle: startAngle });
@@ -4952,16 +4966,31 @@ window.addEventListener("resize", ()=>{
 
     miniRenderer.render(miniScene, miniCamera);
 
-    // Aim the mini arrow at the selected body and follow it as it orbits, by
-    // projecting its 3D world position onto the canvas each frame.
+    // Encircle the selected body with the glowing ring and follow it as it
+    // orbits, projecting its 3D position (and a sphere-radius offset for size)
+    // onto the canvas each frame.
     if (selectedBodyName) {
       const target = selectedBodyName === 'Sun' ? miniSun : planetByName[selectedBodyName];
       if (target) {
-        target.getWorldPosition(_miniProj).project(miniCamera);
+        target.getWorldPosition(_miniCenter);
+        _miniProj.copy(_miniCenter).project(miniCamera);
         if (_miniProj.z < 1) {
           const w = miniCanvas.clientWidth, h = miniCanvas.clientHeight;
-          miniPointer.style.left = ((_miniProj.x * 0.5 + 0.5) * w) + 'px';
-          miniPointer.style.top = ((-_miniProj.y * 0.5 + 0.5) * h - 18) + 'px';
+          const cx = (_miniProj.x * 0.5 + 0.5) * w;
+          const cy = (-_miniProj.y * 0.5 + 0.5) * h;
+          // Project a point one sphere-radius to the camera's right → screen radius
+          _miniRight.setFromMatrixColumn(miniCamera.matrixWorld, 0);
+          _miniEdge.copy(_miniCenter).addScaledVector(_miniRight, bodyRadius[selectedBodyName] || 1);
+          _miniEdge.project(miniCamera);
+          const screenR = Math.hypot(
+            (_miniEdge.x * 0.5 + 0.5) * w - cx,
+            (-_miniEdge.y * 0.5 + 0.5) * h - cy
+          );
+          const dia = Math.max(10, screenR * 2 + 10); // ring sits just outside the sphere
+          miniPointer.style.width = dia + 'px';
+          miniPointer.style.height = dia + 'px';
+          miniPointer.style.left = cx + 'px';
+          miniPointer.style.top = cy + 'px';
           miniPointer.classList.add('visible');
         } else {
           miniPointer.classList.remove('visible');
