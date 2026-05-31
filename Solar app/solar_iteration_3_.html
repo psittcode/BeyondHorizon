@@ -3,14 +3,409 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Solar System</title>
+  <title>Beyond Horizons</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Exo+2:wght@200;300;400;500;600&display=swap" rel="stylesheet">
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { background: #000; overflow: hidden; }
     canvas { display: block; }
+
+    /* ─────────── MAIN MENU OVERLAY ─────────── */
+    #mainMenu {
+      position: fixed;
+      inset: 0;
+      z-index: 9999;
+      background: #05050f;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      font-family: 'Exo 2', system-ui, sans-serif;
+      color: #e8eef9;
+      overflow: hidden;
+      transition: opacity 0.9s ease, visibility 0.9s ease;
+    }
+    #mainMenu.hidden {
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+    }
+
+    /* Animated starfield background */
+    #starField {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
+      z-index: 0;
+    }
+
+    /* Outer card holding the two halves */
+    .menuCard {
+      position: relative;
+      z-index: 2;
+      display: flex;
+      width: min(1280px, 92vw);
+      height: min(640px, 72vh);
+      border-radius: 24px;
+      overflow: hidden;
+      background: rgba(10, 12, 24, 0.55);
+      border: 1px solid rgba(150, 180, 255, 0.18);
+      backdrop-filter: blur(14px) saturate(140%);
+      -webkit-backdrop-filter: blur(14px) saturate(140%);
+      box-shadow:
+        0 0 60px rgba(80, 130, 220, 0.18),
+        0 0 140px rgba(40, 70, 140, 0.12),
+        inset 0 0 1px rgba(255, 255, 255, 0.08);
+    }
+
+    /* Left half — mini Three.js render */
+    .menuLeft {
+      position: relative;
+      flex: 1.05;
+      background: #02030a;
+      overflow: hidden;
+      border-top-left-radius: 24px;
+      border-bottom-left-radius: 24px;
+    }
+    #miniSolar {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+    .vignette {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      background:
+        radial-gradient(ellipse at center, rgba(0,0,0,0) 45%, rgba(5,5,15,0.85) 100%),
+        linear-gradient(90deg, rgba(5,5,15,0.4) 0%, rgba(0,0,0,0) 12%, rgba(0,0,0,0) 88%, rgba(5,5,15,0.6) 100%);
+      border-top-left-radius: 24px;
+      border-bottom-left-radius: 24px;
+    }
+    .leftBadge {
+      position: absolute;
+      top: 24px;
+      left: 24px;
+      font-family: 'Exo 2', sans-serif;
+      font-size: 10px;
+      letter-spacing: 0.35em;
+      text-transform: uppercase;
+      color: rgba(200, 220, 255, 0.5);
+      z-index: 3;
+    }
+    .leftBadge::before {
+      content: '';
+      display: inline-block;
+      width: 6px; height: 6px;
+      background: #6da8ff;
+      border-radius: 50%;
+      margin-right: 10px;
+      vertical-align: middle;
+      box-shadow: 0 0 8px #6da8ff;
+      animation: blinkBadge 2.4s ease-in-out infinite;
+    }
+    @keyframes blinkBadge {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.35; }
+    }
+
+    /* Right half — text content */
+    .menuRight {
+      flex: 1;
+      padding: 56px 56px 48px 56px;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-start;
+      position: relative;
+      background:
+        linear-gradient(135deg, rgba(20, 30, 60, 0.35), rgba(10, 12, 30, 0.55));
+    }
+
+    .logoRow {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 32px;
+    }
+    .logoMark {
+      width: 32px;
+      height: 32px;
+      filter: drop-shadow(0 0 6px rgba(120, 170, 255, 0.7));
+    }
+    .logoMark circle, .logoMark line {
+      stroke: #cfe0ff;
+      fill: none;
+    }
+    .logoText {
+      font-family: 'Exo 2', sans-serif;
+      font-size: 11px;
+      letter-spacing: 0.4em;
+      text-transform: uppercase;
+      color: rgba(220, 230, 255, 0.7);
+    }
+
+    .menuTitle {
+      font-family: 'Orbitron', sans-serif;
+      font-weight: 900;
+      font-size: clamp(36px, 4.2vw, 60px);
+      letter-spacing: 0.14em;
+      line-height: 1.05;
+      color: #ffffff;
+      text-shadow: 0 0 30px rgba(120, 170, 255, 0.25);
+      margin-bottom: 14px;
+    }
+    .menuTagline {
+      font-family: 'Exo 2', sans-serif;
+      font-weight: 300;
+      font-size: 14px;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: rgba(200, 215, 245, 0.55);
+      margin-bottom: 28px;
+    }
+
+    .statChips {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 28px;
+      flex-wrap: wrap;
+    }
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 14px;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(150, 180, 240, 0.22);
+      border-radius: 999px;
+      font-family: 'Exo 2', sans-serif;
+      font-size: 12px;
+      font-weight: 400;
+      letter-spacing: 0.08em;
+      color: rgba(220, 230, 250, 0.85);
+    }
+    .chip .chipIcon {
+      width: 12px; height: 12px;
+      opacity: 0.85;
+    }
+
+    .menuDescription {
+      font-family: 'Exo 2', sans-serif;
+      font-weight: 300;
+      font-size: 15px;
+      line-height: 1.65;
+      color: rgba(210, 220, 240, 0.78);
+      margin-bottom: 36px;
+      max-width: 460px;
+    }
+
+    .menuButtons {
+      display: flex;
+      gap: 14px;
+      margin-bottom: 36px;
+      flex-wrap: wrap;
+    }
+    .btnPrimary, .btnGhost {
+      font-family: 'Exo 2', sans-serif;
+      font-weight: 500;
+      font-size: 13px;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      padding: 14px 28px;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.25s ease;
+      background: transparent;
+    }
+    .btnPrimary {
+      color: #07101e;
+      background: linear-gradient(135deg, #b9d3ff 0%, #6da8ff 100%);
+      border: 1px solid rgba(180, 210, 255, 0.6);
+      box-shadow:
+        0 0 24px rgba(109, 168, 255, 0.45),
+        0 0 60px rgba(109, 168, 255, 0.2),
+        inset 0 1px 0 rgba(255, 255, 255, 0.4);
+    }
+    .btnPrimary:hover {
+      transform: translateY(-1px);
+      box-shadow:
+        0 0 32px rgba(109, 168, 255, 0.65),
+        0 0 80px rgba(109, 168, 255, 0.3),
+        inset 0 1px 0 rgba(255, 255, 255, 0.5);
+    }
+    .btnGhost {
+      color: rgba(220, 230, 250, 0.85);
+      border: 1px solid rgba(180, 200, 240, 0.32);
+    }
+    .btnGhost:hover {
+      border-color: rgba(180, 200, 240, 0.6);
+      background: rgba(255, 255, 255, 0.04);
+      color: #ffffff;
+    }
+
+    .creditLine {
+      position: absolute;
+      bottom: 22px;
+      left: 56px;
+      right: 56px;
+      font-family: 'Exo 2', sans-serif;
+      font-size: 10px;
+      letter-spacing: 0.3em;
+      text-transform: uppercase;
+      color: rgba(180, 195, 230, 0.32);
+    }
+
+    /* Bottom distance strip */
+    .distanceStrip {
+      position: relative;
+      z-index: 2;
+      margin-top: 28px;
+      width: min(1280px, 92vw);
+      height: 78px;
+      padding: 0 40px;
+      border-radius: 14px;
+      background: rgba(10, 12, 24, 0.5);
+      border: 1px solid rgba(150, 180, 255, 0.14);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      display: flex;
+      align-items: center;
+      box-shadow: 0 0 30px rgba(60, 90, 160, 0.1);
+    }
+    .stripInner {
+      position: relative;
+      width: 100%;
+      height: 100%;
+    }
+    .stripLine {
+      position: absolute;
+      left: 0; right: 0;
+      top: 50%;
+      transform: translateY(-50%);
+      height: 1px;
+      background: linear-gradient(90deg,
+        rgba(180, 200, 240, 0) 0%,
+        rgba(180, 200, 240, 0.45) 8%,
+        rgba(180, 200, 240, 0.45) 92%,
+        rgba(180, 200, 240, 0) 100%);
+    }
+    .stripPlanet {
+      position: absolute;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+    }
+    .stripDot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #cfe0ff;
+      box-shadow: 0 0 8px rgba(180, 210, 255, 0.8);
+    }
+    .stripDot.sun {
+      width: 14px; height: 14px;
+      background: radial-gradient(circle, #ffe9b3 0%, #ffb84d 70%);
+      box-shadow: 0 0 14px rgba(255, 200, 100, 0.8);
+    }
+    .stripLabel {
+      position: absolute;
+      top: 14px;
+      font-family: 'Exo 2', sans-serif;
+      font-size: 10px;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: rgba(200, 215, 245, 0.6);
+      white-space: nowrap;
+    }
+    .stripScale {
+      position: absolute;
+      bottom: 6px;
+      left: 0;
+      font-family: 'Exo 2', sans-serif;
+      font-size: 9px;
+      letter-spacing: 0.3em;
+      text-transform: uppercase;
+      color: rgba(180, 200, 240, 0.35);
+    }
+    .stripScale.right { left: auto; right: 0; }
+
+    @media (max-width: 900px) {
+      .menuCard { flex-direction: column; height: auto; }
+      .menuLeft { height: 240px; border-radius: 24px 24px 0 0; }
+      .menuRight { padding: 32px; }
+      .creditLine { position: static; margin-top: 12px; }
+    }
   </style>
 </head>
 <body>
+
+<!-- ─────────── MAIN MENU OVERLAY ─────────── -->
+<div id="mainMenu">
+  <canvas id="starField"></canvas>
+
+  <div class="menuCard">
+    <div class="menuLeft">
+      <div class="leftBadge">Live Orbit · Realtime</div>
+      <canvas id="miniSolar"></canvas>
+      <div class="vignette"></div>
+    </div>
+
+    <div class="menuRight">
+      <div class="logoRow">
+        <svg class="logoMark" viewBox="0 0 40 40">
+          <circle cx="20" cy="20" r="14" stroke-width="1.2"/>
+          <line x1="4" y1="20" x2="36" y2="20" stroke-width="1.2"/>
+          <circle cx="20" cy="20" r="2" fill="#cfe0ff" stroke="none"/>
+        </svg>
+        <span class="logoText">Beyond · Horizons</span>
+      </div>
+
+      <h1 class="menuTitle">Beyond<br>Horizons</h1>
+      <div class="menuTagline">Scientific knowledge, made explorable</div>
+
+      <div class="statChips">
+        <div class="chip">
+          <svg class="chipIcon" viewBox="0 0 12 12"><circle cx="6" cy="6" r="3" fill="#cfe0ff"/><circle cx="6" cy="6" r="5" fill="none" stroke="#6da8ff" stroke-width="0.7"/></svg>
+          8 Planets
+        </div>
+        <div class="chip">
+          <svg class="chipIcon" viewBox="0 0 12 12"><ellipse cx="6" cy="6" rx="5" ry="2" fill="none" stroke="#cfe0ff" stroke-width="0.8"/><circle cx="6" cy="6" r="1.4" fill="#cfe0ff"/></svg>
+          1 Galaxy
+        </div>
+        <div class="chip">
+          <svg class="chipIcon" viewBox="0 0 12 12"><path d="M2 6 Q4 2 6 6 T10 6" fill="none" stroke="#cfe0ff" stroke-width="0.9"/></svg>
+          ∞ Discovery
+        </div>
+      </div>
+
+      <p class="menuDescription">From the orbits of our solar system to the edge of the observable universe — Beyond Horizons brings the cosmos within reach.</p>
+
+      <div class="menuButtons">
+        <button class="btnPrimary" id="btnEnter">Enter Simulation</button>
+        <button class="btnGhost" id="btnGalaxy">Explore the Galaxy</button>
+      </div>
+
+      <div class="creditLine">A Beyond Horizons experience · Built with Three.js</div>
+    </div>
+  </div>
+
+  <div class="distanceStrip">
+    <div class="stripInner" id="stripInner">
+      <div class="stripLine"></div>
+      <div class="stripScale">Sun</div>
+      <div class="stripScale right">30 AU</div>
+    </div>
+  </div>
+</div>
 
 <!-- INFO PANEL -->
 <div id="panel" style="
@@ -3967,6 +4362,244 @@ window.addEventListener("resize", ()=>{
   if (finalComposer)  finalComposer.setSize(innerWidth, innerHeight);
   if (bhLensingUniforms) bhLensingUniforms.uAspect.value = innerWidth / innerHeight;
 });
+
+// ════════════════════════════════════════════════════════════════════════
+// MAIN MENU SCREEN
+// ════════════════════════════════════════════════════════════════════════
+
+(function initMainMenu() {
+  const menuEl = document.getElementById('mainMenu');
+  if (!menuEl) return;
+
+  // ── Planet timeline strip (sqrt scale, gives "real relative distance" feel)
+  const stripData = [
+    { name: 'Sun',     au: 0,    sun: true },
+    { name: 'Mercury', au: 0.39 },
+    { name: 'Venus',   au: 0.72 },
+    { name: 'Earth',   au: 1.0  },
+    { name: 'Mars',    au: 1.52 },
+    { name: 'Jupiter', au: 5.2  },
+    { name: 'Saturn',  au: 9.5  },
+    { name: 'Uranus',  au: 19.2 },
+    { name: 'Neptune', au: 30.0 }
+  ];
+  const stripInner = document.getElementById('stripInner');
+  const maxAu = 30.0;
+  stripData.forEach(p => {
+    const t = Math.sqrt(p.au / maxAu); // 0..1
+    const leftPct = 3 + t * 94;        // 3% margin on each side
+    const wrap = document.createElement('div');
+    wrap.className = 'stripPlanet';
+    wrap.style.left = leftPct + '%';
+    const dot = document.createElement('div');
+    dot.className = 'stripDot' + (p.sun ? ' sun' : '');
+    const lbl = document.createElement('div');
+    lbl.className = 'stripLabel';
+    lbl.textContent = p.name;
+    wrap.appendChild(dot);
+    wrap.appendChild(lbl);
+    stripInner.appendChild(wrap);
+  });
+
+  // ── Animated star particle background
+  const starCanvas = document.getElementById('starField');
+  const starCtx = starCanvas.getContext('2d');
+  let starW = 0, starH = 0;
+  let stars = [];
+  function resizeStarField() {
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    starW = starCanvas.clientWidth;
+    starH = starCanvas.clientHeight;
+    starCanvas.width = starW * dpr;
+    starCanvas.height = starH * dpr;
+    starCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const count = Math.floor((starW * starH) / 3200);
+    stars = [];
+    for (let i = 0; i < count; i++) {
+      stars.push({
+        x: Math.random() * starW,
+        y: Math.random() * starH,
+        r: Math.random() * 1.1 + 0.2,
+        a: Math.random() * 0.7 + 0.2,
+        vx: (Math.random() - 0.5) * 0.04,
+        vy: (Math.random() - 0.5) * 0.02,
+        tw: Math.random() * Math.PI * 2
+      });
+    }
+  }
+  resizeStarField();
+  window.addEventListener('resize', resizeStarField);
+
+  let menuActive = true;
+  function drawStars(ts) {
+    if (!menuActive) return;
+    starCtx.clearRect(0, 0, starW, starH);
+    const t = ts * 0.001;
+    for (const s of stars) {
+      s.x += s.vx; s.y += s.vy;
+      if (s.x < 0) s.x += starW; else if (s.x > starW) s.x -= starW;
+      if (s.y < 0) s.y += starH; else if (s.y > starH) s.y -= starH;
+      const flicker = 0.75 + 0.25 * Math.sin(t * 1.2 + s.tw);
+      starCtx.globalAlpha = s.a * flicker;
+      starCtx.fillStyle = '#cfe0ff';
+      starCtx.beginPath();
+      starCtx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+      starCtx.fill();
+    }
+    starCtx.globalAlpha = 1;
+    requestAnimationFrame(drawStars);
+  }
+  requestAnimationFrame(drawStars);
+
+  // ── Mini Three.js solar system in the left half
+  const miniCanvas = document.getElementById('miniSolar');
+  const miniRenderer = new THREE.WebGLRenderer({
+    canvas: miniCanvas,
+    antialias: true,
+    alpha: true
+  });
+  miniRenderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  const miniScene = new THREE.Scene();
+  const miniCamera = new THREE.PerspectiveCamera(45, 1, 0.1, 5000);
+
+  function resizeMini() {
+    const w = miniCanvas.clientWidth;
+    const h = miniCanvas.clientHeight;
+    if (w === 0 || h === 0) return;
+    miniRenderer.setSize(w, h, false);
+    miniCamera.aspect = w / h;
+    miniCamera.updateProjectionMatrix();
+  }
+  resizeMini();
+  window.addEventListener('resize', resizeMini);
+
+  // Camera tilted slightly to see orbital plane in 3/4 view
+  miniCamera.position.set(0, 18, 38);
+  miniCamera.lookAt(0, 0, 0);
+
+  // Skybox — same milky way texture as main scene
+  const miniSky = new THREE.Mesh(
+    new THREE.SphereGeometry(800, 32, 32),
+    new THREE.MeshBasicMaterial({ map: milkyWayTexture, side: THREE.BackSide })
+  );
+  miniScene.add(miniSky);
+
+  // Sun
+  const miniSun = new THREE.Mesh(
+    new THREE.SphereGeometry(2.4, 48, 48),
+    new THREE.MeshBasicMaterial({ map: sunTexture, color: 0xffeecc })
+  );
+  miniScene.add(miniSun);
+
+  // Sun glow sprite (soft halo)
+  const glowCanvas = document.createElement('canvas');
+  glowCanvas.width = 256; glowCanvas.height = 256;
+  const gctx = glowCanvas.getContext('2d');
+  const grad = gctx.createRadialGradient(128, 128, 0, 128, 128, 128);
+  grad.addColorStop(0,   'rgba(255, 220, 150, 0.85)');
+  grad.addColorStop(0.3, 'rgba(255, 180, 90, 0.35)');
+  grad.addColorStop(1,   'rgba(255, 140, 50, 0)');
+  gctx.fillStyle = grad;
+  gctx.fillRect(0, 0, 256, 256);
+  const glowTex = new THREE.CanvasTexture(glowCanvas);
+  const miniGlow = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: glowTex, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending
+  }));
+  miniGlow.scale.set(9, 9, 1);
+  miniScene.add(miniGlow);
+
+  // Soft point light from sun (planets use Basic materials so this is decorative)
+  miniScene.add(new THREE.PointLight(0xffeecc, 1.0, 0, 2));
+  miniScene.add(new THREE.AmbientLight(0xffffff, 0.7));
+
+  // Planets in the mini scene — compressed distances, same textures as main
+  const miniPlanetDefs = [
+    { dist: 5.0,  size: 0.45, tex: mercuryTexture, color: 0xbbbbbb, speed: 0.40 },
+    { dist: 7.5,  size: 0.65, tex: venusTexture,   color: 0xffcc88, speed: 0.30 },
+    { dist: 10.5, size: 0.72, tex: earthTexture,   color: 0x88aaff, speed: 0.24 },
+    { dist: 13.5, size: 0.52, tex: marsTexture,    color: 0xff7755, speed: 0.19 },
+    { dist: 18.0, size: 1.4,  tex: jupiterTexture, color: 0xffcc99, speed: 0.12 },
+    { dist: 23.0, size: 1.2,  tex: saturnTexture,  color: 0xffddaa, speed: 0.09 }
+  ];
+  const miniPlanets = [];
+  miniPlanetDefs.forEach((p, i) => {
+    const mesh = new THREE.Mesh(
+      new THREE.SphereGeometry(p.size, 32, 32),
+      new THREE.MeshBasicMaterial({ map: p.tex, color: p.color })
+    );
+    const startAngle = (i / miniPlanetDefs.length) * Math.PI * 2 + Math.random() * 0.5;
+    miniPlanets.push({ mesh, dist: p.dist, speed: p.speed, angle: startAngle });
+    miniScene.add(mesh);
+
+    // Faint orbit ring
+    const ringGeo = new THREE.RingGeometry(p.dist - 0.015, p.dist + 0.015, 96);
+    const ringMat = new THREE.MeshBasicMaterial({
+      color: 0x6da8ff, transparent: true, opacity: 0.15, side: THREE.DoubleSide
+    });
+    const ring = new THREE.Mesh(ringGeo, ringMat);
+    ring.rotation.x = -Math.PI / 2;
+    miniScene.add(ring);
+  });
+
+  // Slight orbital plane tilt for cinematic look
+  const planeTilt = 0.18;
+  let miniLast = performance.now();
+  function animateMini() {
+    if (!menuActive) return;
+    const now = performance.now();
+    const dt = (now - miniLast) * 0.001;
+    miniLast = now;
+
+    miniSun.rotation.y += dt * 0.05;
+    miniSky.rotation.y += dt * 0.002;
+
+    for (const p of miniPlanets) {
+      p.angle += p.speed * dt;
+      const x = Math.cos(p.angle) * p.dist;
+      const z = Math.sin(p.angle) * p.dist;
+      p.mesh.position.set(x, Math.sin(p.angle) * planeTilt * p.dist * 0.05, z);
+      p.mesh.rotation.y += dt * 0.5;
+    }
+
+    // Very slow camera drift for cinematic feel
+    const camT = now * 0.00004;
+    miniCamera.position.x = Math.sin(camT) * 6;
+    miniCamera.position.z = 36 + Math.cos(camT) * 4;
+    miniCamera.position.y = 16 + Math.sin(camT * 1.3) * 2;
+    miniCamera.lookAt(0, 0, 0);
+
+    miniRenderer.render(miniScene, miniCamera);
+    requestAnimationFrame(animateMini);
+  }
+  requestAnimationFrame(animateMini);
+
+  // ── Button handlers
+  function dismissMenu(then) {
+    menuActive = false;
+    menuEl.classList.add('hidden');
+    // After fade-out, free the WebGL context
+    setTimeout(() => {
+      try {
+        miniRenderer.dispose();
+        miniRenderer.forceContextLoss && miniRenderer.forceContextLoss();
+      } catch (e) {}
+      menuEl.style.display = 'none';
+      if (typeof then === 'function') then();
+    }, 950);
+  }
+
+  document.getElementById('btnEnter').addEventListener('click', () => {
+    dismissMenu();
+  });
+
+  document.getElementById('btnGalaxy').addEventListener('click', () => {
+    dismissMenu(() => {
+      if (typeof enterGalacticView === 'function') {
+        try { enterGalacticView(); } catch (e) { console.warn('enterGalacticView failed:', e); }
+      }
+    });
+  });
+})();
 </script>
 
 </body>
