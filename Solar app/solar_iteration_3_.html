@@ -397,6 +397,21 @@
       0%, 100% { top: 14px; }
       50% { top: 18px; }
     }
+    /* Glowing white V that tracks the selected body in the mini 3D scene */
+    #miniPointer {
+      position: absolute;
+      width: 13px;
+      height: 13px;
+      border-right: 2.5px solid #ffffff;
+      border-bottom: 2.5px solid #ffffff;
+      transform: translate(-50%, -50%) rotate(45deg);
+      filter: drop-shadow(0 0 7px rgba(255, 255, 255, 0.95));
+      opacity: 0;
+      pointer-events: none;
+      z-index: 4;
+      transition: opacity 0.2s ease;
+    }
+    #miniPointer.visible { opacity: 1; }
     /* Top-left heading for the distance scale */
     .stripTitle {
       position: absolute;
@@ -4517,6 +4532,9 @@ window.addEventListener("resize", ()=>{
   stripPointer.className = 'stripPointer';
   stripInner.appendChild(stripPointer);
   let selectedStripPlanet = null;
+  // Name of the body the user selected — read by the mini scene to aim its
+  // own arrow at the matching planet/sun (set in the click handler below).
+  let selectedBodyName = null;
 
   stripData.forEach(p => {
     const t = Math.sqrt(p.au / maxAu); // 0..1
@@ -4542,6 +4560,7 @@ window.addEventListener("resize", ()=>{
       if (selectedStripPlanet) selectedStripPlanet.classList.remove('selected');
       wrap.classList.add('selected');
       selectedStripPlanet = wrap;
+      selectedBodyName = p.name;
       stripPointer.style.left = leftPct + '%';
       stripPointer.classList.add('visible');
     });
@@ -4656,6 +4675,13 @@ window.addEventListener("resize", ()=>{
   }
   resizeMini();
   window.addEventListener('resize', resizeMini);
+
+  // Glowing white V that tracks the selected body in the mini scene. Lives in
+  // the (position:relative) left panel so canvas pixels map 1:1 to its coords.
+  const miniPointer = document.createElement('div');
+  miniPointer.id = 'miniPointer';
+  miniCanvas.parentElement.appendChild(miniPointer);
+  const _miniProj = new THREE.Vector3();
 
   // Camera tilted to see orbital plane in 3/4 view, pulled back to fit Neptune
   miniCamera.position.set(0, 24, 52);
@@ -4925,6 +4951,25 @@ window.addEventListener("resize", ()=>{
     menuSkyRenderer.render(menuSkyScene, menuSkyCamera);
 
     miniRenderer.render(miniScene, miniCamera);
+
+    // Aim the mini arrow at the selected body and follow it as it orbits, by
+    // projecting its 3D world position onto the canvas each frame.
+    if (selectedBodyName) {
+      const target = selectedBodyName === 'Sun' ? miniSun : planetByName[selectedBodyName];
+      if (target) {
+        target.getWorldPosition(_miniProj).project(miniCamera);
+        if (_miniProj.z < 1) {
+          const w = miniCanvas.clientWidth, h = miniCanvas.clientHeight;
+          miniPointer.style.left = ((_miniProj.x * 0.5 + 0.5) * w) + 'px';
+          miniPointer.style.top = ((-_miniProj.y * 0.5 + 0.5) * h - 18) + 'px';
+          miniPointer.classList.add('visible');
+        } else {
+          miniPointer.classList.remove('visible');
+        }
+      }
+    } else {
+      miniPointer.classList.remove('visible');
+    }
 
     requestAnimationFrame(animateMini);
   }
