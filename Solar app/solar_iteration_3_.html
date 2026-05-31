@@ -4507,15 +4507,17 @@ window.addEventListener("resize", ()=>{
   });
   menuSkyRenderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   const menuSkyScene = new THREE.Scene();
-  // Match main camera: fov 75, 23.4°-tilted up vector, position (0,22,110) → origin
-  const menuSkyCamera = new THREE.PerspectiveCamera(75, 1, 0.1, 100000);
-  menuSkyCamera.up.set(Math.sin(ECLIPTIC_TILT), Math.cos(ECLIPTIC_TILT), 0);
-  menuSkyCamera.position.set(0, 22, 110);
+  // fov matches the mini scene camera (55) so star scale is identical across the
+  // card edge; position/orientation/skybox-rotation are synced to the mini scene
+  // every frame in animateMini, so this is literally the same moving sky.
+  const menuSkyCamera = new THREE.PerspectiveCamera(55, 1, 0.1, 100000);
+  menuSkyCamera.position.set(0, 24, 52);
   menuSkyCamera.lookAt(0, 0, 0);
-  menuSkyScene.add(new THREE.Mesh(
+  const menuSkyMesh = new THREE.Mesh(
     new THREE.SphereGeometry(20000, 64, 64),
     new THREE.MeshBasicMaterial({ map: milkyWayTexture, side: THREE.BackSide })
-  ));
+  );
+  menuSkyScene.add(menuSkyMesh);
   function renderMenuSky() {
     const w = menuSkyCanvas.clientWidth;
     const h = menuSkyCanvas.clientHeight;
@@ -4819,7 +4821,16 @@ window.addEventListener("resize", ()=>{
     miniCamera.lookAt(0, 0, 0);
 
     miniRenderer.render(miniScene, miniCamera);
+
+    // Drive the full-screen background from the exact same camera and skybox
+    // rotation as the mini scene so the sky behind the glass is the identical
+    // moving sky — not a static snapshot. Aspect stays full-screen; orientation
+    // and motion are copied verbatim.
+    menuSkyMesh.rotation.copy(miniSky.rotation);
+    menuSkyCamera.position.copy(miniCamera.position);
+    menuSkyCamera.quaternion.copy(miniCamera.quaternion);
     menuSkyRenderer.render(menuSkyScene, menuSkyCamera);
+
     requestAnimationFrame(animateMini);
   }
   requestAnimationFrame(animateMini);
