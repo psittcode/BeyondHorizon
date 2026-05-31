@@ -17,7 +17,7 @@
       position: fixed;
       inset: 0;
       z-index: 9999;
-      background: #05050f url("8k_stars_milky_way.jpg") center center / cover no-repeat;
+      background: #05050f;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -33,14 +33,23 @@
       pointer-events: none;
     }
 
-    /* Animated starfield background */
-    #starField {
+    /* Real Milky Way skybox background — same texture & camera as the 3D view */
+    #menuSky {
       position: absolute;
       inset: 0;
       width: 100%;
       height: 100%;
       display: block;
       z-index: 0;
+    }
+    /* Animated starfield twinkle layer */
+    #starField {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
+      z-index: 1;
     }
 
     /* Outer card holding the two halves */
@@ -383,6 +392,7 @@
 
 <!-- ─────────── MAIN MENU OVERLAY ─────────── -->
 <div id="mainMenu">
+  <canvas id="menuSky"></canvas>
   <canvas id="starField"></canvas>
 
   <div class="menuCard">
@@ -4487,6 +4497,41 @@ window.addEventListener("resize", ()=>{
   }
   requestAnimationFrame(drawStars);
 
+  // ── Full-screen Milky Way skybox behind the menu — identical texture and
+  //    camera framing to the main 3D view, so the background reads as the same
+  //    sky you fly into when the menu fades out.
+  const menuSkyCanvas = document.getElementById('menuSky');
+  const menuSkyRenderer = new THREE.WebGLRenderer({
+    canvas: menuSkyCanvas,
+    antialias: true
+  });
+  menuSkyRenderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  const menuSkyScene = new THREE.Scene();
+  // Match main camera: fov 75, 23.4°-tilted up vector, position (0,22,110) → origin
+  const menuSkyCamera = new THREE.PerspectiveCamera(75, 1, 0.1, 100000);
+  menuSkyCamera.up.set(Math.sin(ECLIPTIC_TILT), Math.cos(ECLIPTIC_TILT), 0);
+  menuSkyCamera.position.set(0, 22, 110);
+  menuSkyCamera.lookAt(0, 0, 0);
+  menuSkyScene.add(new THREE.Mesh(
+    new THREE.SphereGeometry(20000, 64, 64),
+    new THREE.MeshBasicMaterial({ map: milkyWayTexture, side: THREE.BackSide })
+  ));
+  function renderMenuSky() {
+    const w = menuSkyCanvas.clientWidth;
+    const h = menuSkyCanvas.clientHeight;
+    if (w === 0 || h === 0) return;
+    menuSkyRenderer.setSize(w, h, false);
+    menuSkyCamera.aspect = w / h;
+    menuSkyCamera.updateProjectionMatrix();
+    menuSkyRenderer.render(menuSkyScene, menuSkyCamera);
+  }
+  renderMenuSky();
+  window.addEventListener('resize', renderMenuSky);
+  // Texture may finish loading after first render — repaint when it arrives
+  if (milkyWayTexture.image && !milkyWayTexture.image.complete) {
+    milkyWayTexture.image.addEventListener('load', renderMenuSky);
+  }
+
   // ── Mini Three.js solar system in the left half
   const miniCanvas = document.getElementById('miniSolar');
   const miniRenderer = new THREE.WebGLRenderer({
@@ -4774,6 +4819,7 @@ window.addEventListener("resize", ()=>{
     miniCamera.lookAt(0, 0, 0);
 
     miniRenderer.render(miniScene, miniCamera);
+    menuSkyRenderer.render(menuSkyScene, menuSkyCamera);
     requestAnimationFrame(animateMini);
   }
   requestAnimationFrame(animateMini);
@@ -4807,6 +4853,7 @@ window.addEventListener("resize", ()=>{
       miniLast = performance.now();
       resizeStarField();
       resizeMini();
+      renderMenuSky();
       requestAnimationFrame(drawStars);
       requestAnimationFrame(animateMini);
     }
