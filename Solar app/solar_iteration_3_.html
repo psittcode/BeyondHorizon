@@ -52,14 +52,15 @@
       height: min(640px, 72vh);
       border-radius: 24px;
       overflow: hidden;
-      background: rgba(10, 12, 24, 0.55);
-      border: 1px solid rgba(150, 180, 255, 0.18);
-      backdrop-filter: blur(14px) saturate(140%);
-      -webkit-backdrop-filter: blur(14px) saturate(140%);
+      background: rgba(14, 18, 34, 0.28);
+      border: 1px solid rgba(170, 195, 255, 0.22);
+      backdrop-filter: blur(28px) saturate(150%) brightness(1.05);
+      -webkit-backdrop-filter: blur(28px) saturate(150%) brightness(1.05);
       box-shadow:
         0 0 60px rgba(80, 130, 220, 0.18),
         0 0 140px rgba(40, 70, 140, 0.12),
-        inset 0 0 1px rgba(255, 255, 255, 0.08);
+        inset 0 1px 0 rgba(255, 255, 255, 0.18),
+        inset 0 0 1px rgba(255, 255, 255, 0.12);
     }
 
     /* Left half — mini Three.js render */
@@ -136,7 +137,8 @@
       justify-content: flex-start;
       position: relative;
       background:
-        linear-gradient(135deg, rgba(20, 30, 60, 0.35), rgba(10, 12, 30, 0.55));
+        linear-gradient(135deg, rgba(150, 180, 255, 0.10) 0%, rgba(255, 255, 255, 0.02) 30%, rgba(10, 12, 30, 0) 60%),
+        linear-gradient(135deg, rgba(20, 30, 60, 0.18), rgba(10, 12, 30, 0.28));
     }
 
     .menuTitle {
