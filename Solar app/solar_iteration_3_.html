@@ -358,6 +358,45 @@
       text-transform: none;
       color: rgba(170, 195, 235, 0.45);
     }
+    /* Hover/selected feedback on each planet in the strip */
+    .stripPlanet { cursor: pointer; }
+    .stripPlanet .stripLabel,
+    .stripPlanet .stripDot { transition: all 0.2s ease; }
+    .stripPlanet:hover .stripLabel,
+    .stripPlanet.selected .stripLabel {
+      color: #ffffff;
+      text-shadow: 0 0 10px rgba(180, 210, 255, 0.85);
+    }
+    .stripPlanet:hover .stripLabel .stripAu,
+    .stripPlanet.selected .stripLabel .stripAu {
+      color: rgba(220, 232, 252, 0.85);
+    }
+    .stripPlanet:hover .stripDot {
+      box-shadow: 0 0 14px rgba(210, 230, 255, 1);
+      transform: scale(1.25);
+    }
+    /* Glowing white V (chevron) that points down at the selected planet */
+    .stripPointer {
+      position: absolute;
+      top: 14px;
+      width: 9px;
+      height: 9px;
+      border-right: 2px solid #ffffff;
+      border-bottom: 2px solid #ffffff;
+      transform: translate(-50%, -50%) rotate(45deg);
+      filter: drop-shadow(0 0 6px rgba(255, 255, 255, 0.95));
+      opacity: 0;
+      pointer-events: none;
+      transition: left 0.35s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.25s ease;
+    }
+    .stripPointer.visible {
+      opacity: 1;
+      animation: pointerBob 1.6s ease-in-out infinite;
+    }
+    @keyframes pointerBob {
+      0%, 100% { top: 14px; }
+      50% { top: 18px; }
+    }
     /* Top-left heading for the distance scale */
     .stripTitle {
       position: absolute;
@@ -4472,6 +4511,13 @@ window.addEventListener("resize", ()=>{
   ];
   const stripInner = document.getElementById('stripInner');
   const maxAu = 30.0;
+
+  // Glowing white chevron that points down at the planet the user clicks
+  const stripPointer = document.createElement('div');
+  stripPointer.className = 'stripPointer';
+  stripInner.appendChild(stripPointer);
+  let selectedStripPlanet = null;
+
   stripData.forEach(p => {
     const t = Math.sqrt(p.au / maxAu); // 0..1
     const leftPct = 3 + t * 94;        // 3% margin on each side
@@ -4491,6 +4537,14 @@ window.addEventListener("resize", ()=>{
     }
     wrap.appendChild(dot);
     wrap.appendChild(lbl);
+    // Clicking a planet (or the Sun) drops the glowing pointer onto it
+    wrap.addEventListener('click', () => {
+      if (selectedStripPlanet) selectedStripPlanet.classList.remove('selected');
+      wrap.classList.add('selected');
+      selectedStripPlanet = wrap;
+      stripPointer.style.left = leftPct + '%';
+      stripPointer.classList.add('visible');
+    });
     stripInner.appendChild(wrap);
   });
 
