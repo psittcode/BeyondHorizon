@@ -120,6 +120,14 @@
       color: rgba(190, 210, 245, 0.55);
       padding-left: 16px;
     }
+    .leftBadge .badgeFact {
+      margin-top: 4px;
+      color: rgba(170, 195, 235, 0.42);
+    }
+    /* extra gap between the speed line and the first fact line */
+    .leftBadge .badgeSub:not(.badgeFact) + .badgeFact {
+      margin-top: 10px;
+    }
     @keyframes blinkBadge {
       0%, 100% { opacity: 1; }
       50% { opacity: 0.35; }
@@ -392,6 +400,8 @@
       <div class="leftBadge">
         <div class="badgeTitle">The Solar System</div>
         <div class="badgeSub" id="miniSpeedLabel">— × real-life orbital speed</div>
+        <div class="badgeSub badgeFact">Age · 4.568 billion years</div>
+        <div class="badgeSub badgeFact">Formed ≈ 9.2 billion years after the Big Bang</div>
       </div>
       <canvas id="miniSolar"></canvas>
     </div>
