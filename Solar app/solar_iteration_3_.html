@@ -92,23 +92,35 @@
       position: absolute;
       top: 24px;
       left: 24px;
-      font-family: 'Exo 2', sans-serif;
-      font-size: 10px;
-      letter-spacing: 0.35em;
-      text-transform: uppercase;
-      color: rgba(200, 220, 255, 0.5);
       z-index: 3;
+      font-family: 'Exo 2', sans-serif;
     }
-    .leftBadge::before {
+    .leftBadge .badgeTitle {
+      font-size: 13px;
+      font-weight: 500;
+      letter-spacing: 0.28em;
+      text-transform: uppercase;
+      color: rgba(225, 235, 252, 0.92);
+      margin-bottom: 5px;
+      display: flex;
+      align-items: center;
+    }
+    .leftBadge .badgeTitle::before {
       content: '';
       display: inline-block;
       width: 6px; height: 6px;
       background: #6da8ff;
       border-radius: 50%;
       margin-right: 10px;
-      vertical-align: middle;
       box-shadow: 0 0 8px #6da8ff;
       animation: blinkBadge 2.4s ease-in-out infinite;
+    }
+    .leftBadge .badgeSub {
+      font-size: 10px;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: rgba(190, 210, 245, 0.55);
+      padding-left: 16px;
     }
     @keyframes blinkBadge {
       0%, 100% { opacity: 1; }
@@ -127,30 +139,8 @@
         linear-gradient(135deg, rgba(20, 30, 60, 0.35), rgba(10, 12, 30, 0.55));
     }
 
-    .logoRow {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      margin-bottom: 32px;
-    }
-    .logoMark {
-      width: 32px;
-      height: 32px;
-      filter: drop-shadow(0 0 6px rgba(120, 170, 255, 0.7));
-    }
-    .logoMark circle, .logoMark line {
-      stroke: #cfe0ff;
-      fill: none;
-    }
-    .logoText {
-      font-family: 'Exo 2', sans-serif;
-      font-size: 11px;
-      letter-spacing: 0.4em;
-      text-transform: uppercase;
-      color: rgba(220, 230, 255, 0.7);
-    }
-
     .menuTitle {
+      margin-top: 8px;
       font-family: 'Orbitron', sans-serif;
       font-weight: 900;
       font-size: clamp(36px, 4.2vw, 60px);
@@ -320,10 +310,11 @@
       position: absolute;
       top: 14px;
       font-family: 'Exo 2', sans-serif;
-      font-size: 10px;
-      letter-spacing: 0.18em;
+      font-size: 8px;
+      font-weight: 400;
+      letter-spacing: 0.04em;
       text-transform: uppercase;
-      color: rgba(200, 215, 245, 0.6);
+      color: rgba(200, 215, 245, 0.65);
       white-space: nowrap;
     }
     .stripScale {
@@ -394,21 +385,15 @@
 
   <div class="menuCard">
     <div class="menuLeft">
-      <div class="leftBadge">Live Orbit · Realtime</div>
+      <div class="leftBadge">
+        <div class="badgeTitle">The Solar System</div>
+        <div class="badgeSub" id="miniSpeedLabel">— × real-life orbital speed</div>
+      </div>
       <canvas id="miniSolar"></canvas>
       <div class="vignette"></div>
     </div>
 
     <div class="menuRight">
-      <div class="logoRow">
-        <svg class="logoMark" viewBox="0 0 40 40">
-          <circle cx="20" cy="20" r="14" stroke-width="1.2"/>
-          <line x1="4" y1="20" x2="36" y2="20" stroke-width="1.2"/>
-          <circle cx="20" cy="20" r="2" fill="#cfe0ff" stroke="none"/>
-        </svg>
-        <span class="logoText">Beyond · Horizons</span>
-      </div>
-
       <h1 class="menuTitle">Beyond<br>Horizons</h1>
       <div class="menuTagline">Scientific knowledge, made explorable</div>
 
@@ -4509,7 +4494,7 @@ window.addEventListener("resize", ()=>{
   });
   miniRenderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   const miniScene = new THREE.Scene();
-  const miniCamera = new THREE.PerspectiveCamera(45, 1, 0.1, 5000);
+  const miniCamera = new THREE.PerspectiveCamera(55, 1, 0.1, 5000);
 
   function resizeMini() {
     const w = miniCanvas.clientWidth;
@@ -4522,8 +4507,8 @@ window.addEventListener("resize", ()=>{
   resizeMini();
   window.addEventListener('resize', resizeMini);
 
-  // Camera tilted slightly to see orbital plane in 3/4 view
-  miniCamera.position.set(0, 18, 38);
+  // Camera tilted to see orbital plane in 3/4 view, pulled back to fit Neptune
+  miniCamera.position.set(0, 24, 52);
   miniCamera.lookAt(0, 0, 0);
 
   // Skybox — same milky way texture as main scene
@@ -4533,7 +4518,7 @@ window.addEventListener("resize", ()=>{
   );
   miniScene.add(miniSky);
 
-  // Sun
+  // Sun (always self-lit)
   const miniSun = new THREE.Mesh(
     new THREE.SphereGeometry(2.4, 48, 48),
     new THREE.MeshBasicMaterial({ map: sunTexture, color: 0xffeecc })
@@ -4554,40 +4539,95 @@ window.addEventListener("resize", ()=>{
   const miniGlow = new THREE.Sprite(new THREE.SpriteMaterial({
     map: glowTex, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending
   }));
-  miniGlow.scale.set(9, 9, 1);
+  miniGlow.scale.set(11, 11, 1);
   miniScene.add(miniGlow);
 
-  // Soft point light from sun (planets use Basic materials so this is decorative)
-  miniScene.add(new THREE.PointLight(0xffeecc, 1.0, 0, 2));
-  miniScene.add(new THREE.AmbientLight(0xffffff, 0.7));
+  // Sun-side lighting: bright point light from origin, very dim ambient so the
+  // night side reads as dark. decay=0 so distant outer planets aren't dimmer.
+  miniScene.add(new THREE.PointLight(0xffeecc, 2.4, 0, 0));
+  miniScene.add(new THREE.AmbientLight(0x6080a0, 0.08));
 
-  // Planets in the mini scene — compressed distances, same textures as main
+  // ── Realistic relative orbital speeds, all multiplied by one factor.
+  // Earth period = 1 year; mini-Earth completes one orbit in ~31.6 seconds.
+  const YEAR_SEC = 365.25 * 86400;
+  const MINI_SPEED_MULTIPLIER = 1000000; // × real-time
+  const realRadPerSec = years => (2 * Math.PI) / (years * YEAR_SEC);
+
+  const speedLabelEl = document.getElementById('miniSpeedLabel');
+  if (speedLabelEl) {
+    speedLabelEl.textContent =
+      MINI_SPEED_MULTIPLIER.toLocaleString() + '× real-life orbital speed';
+  }
+
+  // Planets — all 8, compressed but monotonic distances, real period ratios
   const miniPlanetDefs = [
-    { dist: 5.0,  size: 0.45, tex: mercuryTexture, color: 0xbbbbbb, speed: 0.40 },
-    { dist: 7.5,  size: 0.65, tex: venusTexture,   color: 0xffcc88, speed: 0.30 },
-    { dist: 10.5, size: 0.72, tex: earthTexture,   color: 0x88aaff, speed: 0.24 },
-    { dist: 13.5, size: 0.52, tex: marsTexture,    color: 0xff7755, speed: 0.19 },
-    { dist: 18.0, size: 1.4,  tex: jupiterTexture, color: 0xffcc99, speed: 0.12 },
-    { dist: 23.0, size: 1.2,  tex: saturnTexture,  color: 0xffddaa, speed: 0.09 }
+    { name:'Mercury', dist: 4.0,  size: 0.42, tex: mercuryTexture, color: 0xbbbbbb, years: 0.2408 },
+    { name:'Venus',   dist: 5.6,  size: 0.62, tex: venusTexture,   color: 0xffcc88, years: 0.6152 },
+    { name:'Earth',   dist: 7.4,  size: 0.70, tex: earthTexture,   color: 0xffffff, years: 1.0000 },
+    { name:'Mars',    dist: 9.4,  size: 0.52, tex: marsTexture,    color: 0xff8866, years: 1.8810 },
+    { name:'Jupiter', dist: 14.0, size: 1.55, tex: jupiterTexture, color: 0xffddaa, years: 11.862 },
+    { name:'Saturn',  dist: 18.5, size: 1.30, tex: saturnTexture,  color: 0xffeebb, years: 29.457 },
+    { name:'Uranus',  dist: 22.5, size: 0.92, tex: uranusTexture,  color: 0xaaddff, years: 84.011 },
+    { name:'Neptune', dist: 26.5, size: 0.90, tex: neptuneTexture, color: 0x6688ff, years: 164.79 }
   ];
+
   const miniPlanets = [];
+  let saturnMesh = null;
+  let saturnRingMesh = null;
+
   miniPlanetDefs.forEach((p, i) => {
     const mesh = new THREE.Mesh(
-      new THREE.SphereGeometry(p.size, 32, 32),
-      new THREE.MeshBasicMaterial({ map: p.tex, color: p.color })
+      new THREE.SphereGeometry(p.size, 48, 48),
+      new THREE.MeshPhongMaterial({
+        map: p.tex,
+        color: p.color,
+        shininess: 6,
+        specular: 0x111111
+      })
     );
+    const speed = realRadPerSec(p.years) * MINI_SPEED_MULTIPLIER;
     const startAngle = (i / miniPlanetDefs.length) * Math.PI * 2 + Math.random() * 0.5;
-    miniPlanets.push({ mesh, dist: p.dist, speed: p.speed, angle: startAngle });
+    miniPlanets.push({ mesh, name: p.name, dist: p.dist, speed, angle: startAngle });
     miniScene.add(mesh);
 
     // Faint orbit ring
-    const ringGeo = new THREE.RingGeometry(p.dist - 0.015, p.dist + 0.015, 96);
-    const ringMat = new THREE.MeshBasicMaterial({
-      color: 0x6da8ff, transparent: true, opacity: 0.15, side: THREE.DoubleSide
+    const orbitGeo = new THREE.RingGeometry(p.dist - 0.02, p.dist + 0.02, 128);
+    const orbitMat = new THREE.MeshBasicMaterial({
+      color: 0x6da8ff, transparent: true, opacity: 0.13, side: THREE.DoubleSide
     });
-    const ring = new THREE.Mesh(ringGeo, ringMat);
-    ring.rotation.x = -Math.PI / 2;
-    miniScene.add(ring);
+    const orbit = new THREE.Mesh(orbitGeo, orbitMat);
+    orbit.rotation.x = -Math.PI / 2;
+    miniScene.add(orbit);
+
+    if (p.name === 'Saturn') {
+      saturnMesh = mesh;
+      const ringInner = p.size * 1.35;
+      const ringOuter = p.size * 2.35;
+      const ringGeo = new THREE.RingGeometry(ringInner, ringOuter, 96, 1);
+      // Remap UVs so the radial direction maps to U (texture x), matching the
+      // saturn ring alpha texture's strip layout.
+      const posArr = ringGeo.attributes.position.array;
+      const uvAttr = ringGeo.attributes.uv;
+      for (let v = 0; v < uvAttr.count; v++) {
+        const vx = posArr[v * 3];
+        const vy = posArr[v * 3 + 1];
+        const r = Math.sqrt(vx * vx + vy * vy);
+        const t = (r - ringInner) / (ringOuter - ringInner);
+        uvAttr.setXY(v, t, 0.5);
+      }
+      const ringMat = new THREE.MeshBasicMaterial({
+        map: ringTexture,
+        transparent: true,
+        side: THREE.DoubleSide,
+        opacity: 0.95,
+        depthWrite: false
+      });
+      saturnRingMesh = new THREE.Mesh(ringGeo, ringMat);
+      // Lie in orbital plane, then tilt by Saturn's axial tilt (~26.7°)
+      saturnRingMesh.rotation.x = Math.PI / 2;
+      saturnRingMesh.rotation.y = 26.73 * Math.PI / 180;
+      miniScene.add(saturnRingMesh);
+    }
   });
 
   // Slight orbital plane tilt for cinematic look
@@ -4610,11 +4650,15 @@ window.addEventListener("resize", ()=>{
       p.mesh.rotation.y += dt * 0.5;
     }
 
+    if (saturnMesh && saturnRingMesh) {
+      saturnRingMesh.position.copy(saturnMesh.position);
+    }
+
     // Very slow camera drift for cinematic feel
     const camT = now * 0.00004;
-    miniCamera.position.x = Math.sin(camT) * 6;
-    miniCamera.position.z = 36 + Math.cos(camT) * 4;
-    miniCamera.position.y = 16 + Math.sin(camT * 1.3) * 2;
+    miniCamera.position.x = Math.sin(camT) * 8;
+    miniCamera.position.z = 50 + Math.cos(camT) * 5;
+    miniCamera.position.y = 22 + Math.sin(camT * 1.3) * 2.5;
     miniCamera.lookAt(0, 0, 0);
 
     miniRenderer.render(miniScene, miniCamera);
