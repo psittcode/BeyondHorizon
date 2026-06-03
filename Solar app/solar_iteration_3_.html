@@ -4196,6 +4196,15 @@ function animate(){
         keplerCamera.position.add(delta);
       }
       keplerControls.update();
+
+      // Zoomed all the way out → escape back to the Milky Way galaxy view, the
+      // same way zooming out of the Solar System reveals the galaxy. flyToMilkyWay
+      // calls exitKeplerSystem, so the "The Kepler-22 System" button reappears.
+      if (!keplerFlying &&
+          keplerCamera.position.distanceTo(keplerControls.target) >= keplerControls.maxDistance - 2) {
+        flyToMilkyWay();
+        return;
+      }
     }
 
     renderer.render(keplerScene, keplerCamera);
