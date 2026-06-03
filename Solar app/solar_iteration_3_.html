@@ -2716,7 +2716,7 @@ window.addEventListener("click", e => {
   // Milky Way galaxy view: clicking the Kepler-22 System dot opens its system
   if (keplerSystemMarker.visible) {
     const mwHits = raycaster.intersectObject(keplerSystemMarker, true);
-    if (mwHits.length > 0) { enterKeplerSystem(); return; }
+    if (mwHits.length > 0) { flyToKeplerDot(); return; }
   }
 
   // Check Jupiter moons first — hide Jupiter temporarily so it can't block
@@ -3876,6 +3876,13 @@ let keplerLockedObject = null;   // body the camera is locked onto (after a fly-
 let keplerFlying       = false;  // true during a fly-to animation
 const KEPLER_B_ORBIT_R = 8;      // scene units
 const KEPLER_B_SPEED   = 0.00009; // angular speed (period 289.9 d, ~Earth-like), scaled by global `speed`
+// Entry "fly-in": when the system view opens it starts zoomed way out (the star
+// is a small point, matching the galaxy dot we just dove into) and keeps zooming
+// in, so the system grows in continuously instead of cutting to a static page.
+let keplerIntroActive  = false;
+let keplerIntroT       = 0;
+const KEPLER_INTRO_FROM = new THREE.Vector3(0, 5, 90); // far: star is a tiny point
+const KEPLER_INTRO_TO   = new THREE.Vector3(0, 6, 18); // settled system view
 
 function initKeplerScene() {
   if (keplerScene) return;
@@ -4015,12 +4022,15 @@ function enterKeplerSystem() {
   document.getElementById('panelContent').innerHTML = KEPLER_22B_INFO;
   document.getElementById('backToList').style.display = 'none';
 
-  // Reset to a system-overview camera
+  // Begin the fly-in: start far out (star is a small point, continuing the dive
+  // from the galaxy dot) and zoom in to the system. The render loop animates this.
   keplerLockedObject = null;
   keplerFlying = false;
-  keplerCamera.position.set(0, 6, 18);
+  keplerIntroActive = true;
+  keplerIntroT = 0;
+  keplerCamera.position.copy(KEPLER_INTRO_FROM);
   keplerControls.target.set(0, 0, 0);
-  keplerControls.update();
+  keplerCamera.lookAt(0, 0, 0);
 }
 
 // Tear down the Kepler-22 system scene and hand control back to the main view.
@@ -4031,38 +4041,16 @@ function exitKeplerSystem() {
   controls.enabled = true;
 }
 
-// Smoothly fly the main camera from its current pose to (endPos, endTarget) over
-// `frames`, then run onDone. Reuses the easing/generation guard the other fly-to
-// helpers use so a newer fly cancels an in-flight one.
-function flyCameraTo(endPos, endTarget, frames, onDone) {
-  lockedObject = null;
-  const myGeneration = ++flyGeneration;
-  isFlyingTo = true;
-  const startPos    = camera.position.clone();
-  const startTarget = controls.target.clone();
-  const step = 1 / Math.max(1, frames);
-  let t = 0;
-  (function step1() {
-    if (myGeneration !== flyGeneration) { isFlyingTo = false; return; }
-    t += step;
-    if (t > 1) t = 1;
-    const ease = t * t * (3 - 2 * t);
-    camera.position.lerpVectors(startPos, endPos, ease);
-    controls.target.lerpVectors(startTarget, endTarget, ease);
-    camera.up.set(0, 1, 0);
-    controls.update();
-    if (t < 1) requestAnimationFrame(step1);
-    else { isFlyingTo = false; if (onDone) onDone(); }
-  })();
-}
-
-// "The Kepler-22 System" button — visibly zoom IN on the Kepler-22 dot, then drop
-// into the system scene (its skybox + star + orbiting planet), the same way
-// flying into the Solar System works. The galaxy + markers only render once the
-// camera is well outside the skybox sphere, so if we're still at solar-system
-// scale we first fly OUT to a galaxy overview, then zoom IN to the dot — that way
-// the approach to the dot is actually on screen rather than appearing only at the
-// very end of an outward flight.
+// "The Kepler-22 System" button — one continuous zoom IN on the Kepler-22 dot
+// that flows straight into the system scene (its skybox + star + orbiting planet),
+// the same way zooming into the Solar System feels: no pause, no abrupt page swap.
+//
+// The galaxy + dot only render while the camera is outside the skybox sphere, so
+// if we're still at solar-system scale we snap straight out to a galaxy overview
+// first (instant — the visible part is the zoom that follows). The zoom uses an
+// ease-IN curve so the camera is moving FASTEST at the moment we hand off to the
+// system scene, which then continues the zoom-in (see keplerIntro), so the two
+// segments read as a single uninterrupted dive.
 function flyToKeplerDot() {
   if (!galacticCorePos) return; // GLB not yet loaded
 
@@ -4075,22 +4063,43 @@ function flyToKeplerDot() {
   scene.updateMatrixWorld(true);
   const dotPos = keplerSystemMarker.getWorldPosition(new THREE.Vector3());
 
-  // Galaxy overview (far out, dot small) and the zoomed-in framing of the dot.
-  // The close framing stays just outside the skybox so the dot keeps rendering
-  // right up until we swap into the system scene.
-  const overviewPos = new THREE.Vector3(dotPos.x, dotPos.y + R * 1.00, dotPos.z + R * 0.80);
-  const closePos    = new THREE.Vector3(dotPos.x, dotPos.y + R * 0.15, dotPos.z + R * 0.12);
-
-  const zoomInThenEnter = () =>
-    flyCameraTo(closePos, dotPos.clone(), 95, () => enterKeplerSystem());
-
+  camera.up.set(0, 1, 0);
+  // Make sure we start out at galaxy scale so the dot is on screen for the zoom.
   if (camera.position.length() < SKYBOX_RADIUS * 1.5) {
-    // At solar-system scale: fly out to the galaxy overview first, then zoom in.
-    flyCameraTo(overviewPos, dotPos.clone(), 90, zoomInThenEnter);
-  } else {
-    // Already at galaxy scale — just zoom in to the dot.
-    zoomInThenEnter();
+    camera.position.set(dotPos.x, dotPos.y + R * 0.95, dotPos.z + R * 0.75);
+    controls.target.copy(dotPos);
+    controls.update();
   }
+
+  // End framing: dot centred and as close as we can get while still outside the
+  // skybox (so it stays visible right up to the hand-off into the system scene).
+  const endPos    = new THREE.Vector3(dotPos.x, dotPos.y + R * 0.14, dotPos.z + R * 0.10);
+  const endTarget = dotPos.clone();
+
+  lockedObject = null;
+  const myGeneration = ++flyGeneration;
+  isFlyingTo = true;
+  const startPos    = camera.position.clone();
+  const startTarget = controls.target.clone();
+
+  let t = 0;
+  (function zoomIn() {
+    if (myGeneration !== flyGeneration) { isFlyingTo = false; return; }
+    t += 0.015;
+    if (t > 1) t = 1;
+    const ease = t * t; // ease-IN: accelerate, fastest at the hand-off (no stop)
+    camera.position.lerpVectors(startPos, endPos, ease);
+    controls.target.lerpVectors(startTarget, endTarget, ease);
+    camera.up.set(0, 1, 0);
+    controls.update();
+    if (t < 1) {
+      requestAnimationFrame(zoomIn);
+    } else {
+      isFlyingTo = false;
+      // Hand straight off to the system scene, which keeps zooming in from here.
+      enterKeplerSystem();
+    }
+  })();
 }
 
 document.getElementById('otherGalaxiesBtn').onclick = () => { flyToKeplerDot(); };
@@ -4109,15 +4118,28 @@ function animate(){
     keplerBPivot.rotation.y += KEPLER_B_SPEED * speed * kScale;
     keplerB.rotation.y      += 0.01 * speed * kScale;
 
-    // Keep the camera locked onto the selected body as it orbits (after fly-in)
-    if (keplerLockedObject && !keplerFlying) {
-      const tp = keplerLockedObject.getWorldPosition(new THREE.Vector3());
-      const delta = tp.clone().sub(keplerControls.target);
-      keplerControls.target.copy(tp);
-      keplerCamera.position.add(delta);
+    if (keplerIntroActive) {
+      // Continuous zoom-in on entry — ease-OUT so it's moving fastest right after
+      // the swap (continuing the galaxy dive) and settles smoothly. Drive the
+      // camera directly (no OrbitControls) so the lerp isn't overridden.
+      keplerIntroT += 0.02 * kScale;
+      if (keplerIntroT >= 1) keplerIntroT = 1;
+      const e = keplerIntroT * (2 - keplerIntroT); // ease-out
+      keplerCamera.position.lerpVectors(KEPLER_INTRO_FROM, KEPLER_INTRO_TO, e);
+      keplerControls.target.set(0, 0, 0);
+      keplerCamera.lookAt(0, 0, 0);
+      if (keplerIntroT >= 1) { keplerIntroActive = false; keplerControls.update(); }
+    } else {
+      // Keep the camera locked onto the selected body as it orbits (after fly-in)
+      if (keplerLockedObject && !keplerFlying) {
+        const tp = keplerLockedObject.getWorldPosition(new THREE.Vector3());
+        const delta = tp.clone().sub(keplerControls.target);
+        keplerControls.target.copy(tp);
+        keplerCamera.position.add(delta);
+      }
+      keplerControls.update();
     }
 
-    keplerControls.update();
     renderer.render(keplerScene, keplerCamera);
     return;
   }
