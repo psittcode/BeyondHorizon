@@ -1047,6 +1047,40 @@ solarSystemMarker.add(ssDot);
   solarSystemMarker.add(sp);
 })();
 
+// Kepler-22 System marker — a Sun-like neighbour ~644 ly away in Cygnus. On the
+// galaxy's scale that is right next to the Sun (only ~2.5% of the Sun→core
+// distance), so this sits a short, scientifically-directed hop from the Solar
+// System marker (distance exaggerated for visibility). Positioned under
+// galaxyPivot once the GLB loads (see below).
+const keplerSystemMarker = new THREE.Group();
+keplerSystemMarker.visible = false;
+keplerSystemMarker.userData = { name: "Kepler-22 System" };
+scene.add(keplerSystemMarker);
+
+const kepDot = new THREE.Mesh(
+  new THREE.SphereGeometry(600, 16, 16),
+  new THREE.MeshBasicMaterial({ color: 0xff9d5c })
+);
+kepDot.userData = { name: "Kepler-22 System" };
+keplerSystemMarker.add(kepDot);
+
+(function() {
+  const c = document.createElement('canvas');
+  c.width = 640; c.height = 128;
+  const ctx = c.getContext('2d');
+  ctx.clearRect(0, 0, 640, 128);
+  ctx.fillStyle = '#ff9d5c';
+  ctx.font = 'bold 52px Arial';
+  ctx.fillText('Kepler-22 System', 10, 82);
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: new THREE.CanvasTexture(c),
+    depthTest: false
+  }));
+  sp.scale.set(15000, 3000, 1);
+  sp.position.set(0, 1300, 0);
+  keplerSystemMarker.add(sp);
+})();
+
 const gltfLoader = new THREE.GLTFLoader();
 gltfLoader.load('need_some_space.glb', function(gltf) {
   milkyWayModel = gltf.scene;
@@ -1104,6 +1138,21 @@ gltfLoader.load('need_some_space.glb', function(gltf) {
   if (solarSystemMarker.parent) solarSystemMarker.parent.remove(solarSystemMarker);
   galaxyPivot.add(solarSystemMarker);
   solarSystemMarker.position.copy(_ssWorldPos).sub(galacticCorePos);
+
+  // Kepler-22 System sits next to the Sun in its true galactic direction
+  // (longitude 79.09°, latitude +15.79° — toward Cygnus, near the direction of
+  // galactic rotation and slightly above the disc). In this frame the galactic
+  // centre lies along −X from the Sun and the rotation direction along −Z, so
+  // dir = (−cos b·cos l, sin b, −cos b·sin l). True separation is ~1.3% of the
+  // galaxy radius; exaggerated here to ~8% so the labelled dot is distinguishable.
+  if (solarSystemMarker.parent) solarSystemMarker.parent.add(keplerSystemMarker);
+  const _kl = 79.09 * Math.PI / 180, _kb = 15.79 * Math.PI / 180;
+  const _kepDir = new THREE.Vector3(
+    -Math.cos(_kb) * Math.cos(_kl),
+     Math.sin(_kb),
+    -Math.cos(_kb) * Math.sin(_kl)
+  ).multiplyScalar(galaxyRadius * 0.08);
+  keplerSystemMarker.position.copy(solarSystemMarker.position).add(_kepDir);
 
   // === Galactic-core white glow sprite ===
   // A bright luminous spot at the galactic centre, visible from far zoom
@@ -2687,6 +2736,12 @@ window.addEventListener("click", e => {
     return;
   }
 
+  // Milky Way galaxy view: clicking the Kepler-22 System dot opens its system
+  if (keplerSystemMarker.visible) {
+    const mwHits = raycaster.intersectObject(keplerSystemMarker, true);
+    if (mwHits.length > 0) { enterKeplerSystem(); return; }
+  }
+
   // Check Jupiter moons first — hide Jupiter temporarily so it can't block
   const jupiterMesh = meshes.find(m => m.userData.name === "Jupiter");
   const jupiterWasVisible = jupiterMesh.visible;
@@ -4057,6 +4112,7 @@ function animate(){
   galaxySkybox.position.copy(camera.position);
   if (bhStarfield) bhStarfield.position.copy(camera.position);
   solarSystemMarker.visible = !bhRendererSettings && outsideSkybox && !galacticViewActive;
+  keplerSystemMarker.visible = solarSystemMarker.visible;
 
   // Galaxy spin — same slow rate in all views, tied to planet speed slider.
   // Paused during fly-to animations, and also when galPaused is active in galactic view.
