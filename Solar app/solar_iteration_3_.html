@@ -688,7 +688,7 @@ Speed<br>
   font-size: 13px;
   width: 100%;
   margin-top: 4px;
-">Star Systems</button>
+">The Kepler-22 System</button>
 </div>
 
 <!-- Spaceship Earth legend panel -->
@@ -4054,9 +4054,8 @@ function exitKeplerSystem() {
 }
 
 document.getElementById('otherGalaxiesBtn').onclick = () => {
-  // "Star Systems" — drop into the Galactic View so the user can locate and
-  // click the Kepler-22 marker (an in-galaxy neighbour, not another galaxy).
-  if (!galacticViewActive) enterGalacticView();
+  // "The Kepler-22 System" — go straight into the Kepler-22 system scene.
+  enterKeplerSystem();
 };
 document.getElementById('keplerBackBtn').onclick = () => { exitKeplerSystem(); };
 
