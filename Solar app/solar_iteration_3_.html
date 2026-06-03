@@ -4031,9 +4031,38 @@ function exitKeplerSystem() {
   controls.enabled = true;
 }
 
-// "The Kepler-22 System" button — fly/zoom the camera to the Kepler-22 dot in
-// the Milky Way galaxy view, then drop into the system scene at the end of the
-// zoom (same logic as flying into the Solar System).
+// Smoothly fly the main camera from its current pose to (endPos, endTarget) over
+// `frames`, then run onDone. Reuses the easing/generation guard the other fly-to
+// helpers use so a newer fly cancels an in-flight one.
+function flyCameraTo(endPos, endTarget, frames, onDone) {
+  lockedObject = null;
+  const myGeneration = ++flyGeneration;
+  isFlyingTo = true;
+  const startPos    = camera.position.clone();
+  const startTarget = controls.target.clone();
+  const step = 1 / Math.max(1, frames);
+  let t = 0;
+  (function step1() {
+    if (myGeneration !== flyGeneration) { isFlyingTo = false; return; }
+    t += step;
+    if (t > 1) t = 1;
+    const ease = t * t * (3 - 2 * t);
+    camera.position.lerpVectors(startPos, endPos, ease);
+    controls.target.lerpVectors(startTarget, endTarget, ease);
+    camera.up.set(0, 1, 0);
+    controls.update();
+    if (t < 1) requestAnimationFrame(step1);
+    else { isFlyingTo = false; if (onDone) onDone(); }
+  })();
+}
+
+// "The Kepler-22 System" button — visibly zoom IN on the Kepler-22 dot, then drop
+// into the system scene (its skybox + star + orbiting planet), the same way
+// flying into the Solar System works. The galaxy + markers only render once the
+// camera is well outside the skybox sphere, so if we're still at solar-system
+// scale we first fly OUT to a galaxy overview, then zoom IN to the dot — that way
+// the approach to the dot is actually on screen rather than appearing only at the
+// very end of an outward flight.
 function flyToKeplerDot() {
   if (!galacticCorePos) return; // GLB not yet loaded
 
@@ -4044,40 +4073,24 @@ function flyToKeplerDot() {
 
   const R = galaxyVisualRadius;
   scene.updateMatrixWorld(true);
-  const dotPos    = keplerSystemMarker.getWorldPosition(new THREE.Vector3());
-  const endTarget = dotPos.clone();
-  // Stay outside the skybox sphere (so the galaxy + markers keep rendering) while
-  // framing the dot much closer than the full-galaxy overview.
-  const endPos = new THREE.Vector3(dotPos.x, dotPos.y + R * 0.20, dotPos.z + R * 0.16);
+  const dotPos = keplerSystemMarker.getWorldPosition(new THREE.Vector3());
 
-  lockedObject = null;
-  const myGeneration = ++flyGeneration;
-  isFlyingTo = true;
+  // Galaxy overview (far out, dot small) and the zoomed-in framing of the dot.
+  // The close framing stays just outside the skybox so the dot keeps rendering
+  // right up until we swap into the system scene.
+  const overviewPos = new THREE.Vector3(dotPos.x, dotPos.y + R * 1.00, dotPos.z + R * 0.80);
+  const closePos    = new THREE.Vector3(dotPos.x, dotPos.y + R * 0.15, dotPos.z + R * 0.12);
 
-  const startPos    = camera.position.clone();
-  const startTarget = controls.target.clone();
+  const zoomInThenEnter = () =>
+    flyCameraTo(closePos, dotPos.clone(), 95, () => enterKeplerSystem());
 
-  let t = 0;
-  (function flyOut() {
-    if (myGeneration !== flyGeneration) { isFlyingTo = false; return; }
-    t += 0.01; // ~100-frame arc, matching flyToMilkyWay
-    if (t > 1) t = 1;
-    const ease = t * t * (3 - 2 * t);
-
-    camera.position.lerpVectors(startPos, endPos, ease);
-    controls.target.lerpVectors(startTarget, endTarget, ease);
-    camera.up.set(0, 1, 0);
-    controls.update();
-
-    if (t < 1) {
-      requestAnimationFrame(flyOut);
-    } else {
-      isFlyingTo = false;
-      // Arrived at the dot — enter the Kepler-22 system scene (its skybox + star
-      // + orbiting planet), the same way flying into the Solar System works.
-      enterKeplerSystem();
-    }
-  })();
+  if (camera.position.length() < SKYBOX_RADIUS * 1.5) {
+    // At solar-system scale: fly out to the galaxy overview first, then zoom in.
+    flyCameraTo(overviewPos, dotPos.clone(), 90, zoomInThenEnter);
+  } else {
+    // Already at galaxy scale — just zoom in to the dot.
+    zoomInThenEnter();
+  }
 }
 
 document.getElementById('otherGalaxiesBtn').onclick = () => { flyToKeplerDot(); };
