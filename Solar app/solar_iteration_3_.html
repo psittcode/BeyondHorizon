@@ -3134,6 +3134,8 @@ let galCamBeforeSpaceship = null;  // camera state saved when entering spaceship
 let galEarthZoomedIn = false;      // true when camera is locked on Earth in galactic view
 
 function enterGalacticView() {
+  // Leave the Kepler-22 system scene if it's showing (it takes over the renderer)
+  if (keplerSystemViewActive) exitKeplerSystem();
   // Fully exit spaceship view first — the two views are independent
   if (spaceshipViewActive) exitSpaceshipView();
 
@@ -3296,6 +3298,7 @@ function exitGalacticView() {
 // Fly the camera from wherever it is back into the solar system (triggered by the
 // "The Solar System" button that appears when zoomed out to galaxy scale).
 function flyToSolarSystem() {
+  if (keplerSystemViewActive) exitKeplerSystem();
   renderer.setClearColor(0x000000, 1); // TEST: restore default clear colour when leaving Milky Way view
   showBodiesList();
   // Clean up galactic view state without jumping the camera position
@@ -3434,6 +3437,7 @@ function showMilkyWayPanel() {
 function flyToMilkyWay() {
   if (!galacticCorePos) return; // GLB not yet loaded
 
+  if (keplerSystemViewActive) exitKeplerSystem();
   renderer.setClearColor(0x000005, 1); // TEST: force near-black canvas background for Milky Way view
 
   showMilkyWayPanel();
@@ -3787,6 +3791,7 @@ let seSavedHelioVis     = null;
 
 function enterSpaceshipView() {
   spaceshipEnteredFrom = 'main';
+  if (keplerSystemViewActive) exitKeplerSystem();
   if (galacticViewActive) exitGalacticView();
   document.getElementById('panel').style.display = 'none';
 
@@ -4027,11 +4032,12 @@ function exitKeplerSystem() {
 }
 
 // "The Kepler-22 System" button — fly/zoom the camera to the Kepler-22 dot in
-// the Milky Way galaxy view, using the same easing as the other fly-to actions.
-// From there, clicking the dot drops into the system scene.
+// the Milky Way galaxy view, then drop into the system scene at the end of the
+// zoom (same logic as flying into the Solar System).
 function flyToKeplerDot() {
   if (!galacticCorePos) return; // GLB not yet loaded
 
+  if (keplerSystemViewActive) exitKeplerSystem();
   renderer.setClearColor(0x000005, 1); // near-black background, as in the Milky Way view
   showMilkyWayPanel();
   if (galacticViewActive) exitGalacticView();
@@ -4063,8 +4069,14 @@ function flyToKeplerDot() {
     camera.up.set(0, 1, 0);
     controls.update();
 
-    if (t < 1) requestAnimationFrame(flyOut);
-    else isFlyingTo = false;
+    if (t < 1) {
+      requestAnimationFrame(flyOut);
+    } else {
+      isFlyingTo = false;
+      // Arrived at the dot — enter the Kepler-22 system scene (its skybox + star
+      // + orbiting planet), the same way flying into the Solar System works.
+      enterKeplerSystem();
+    }
   })();
 }
 
