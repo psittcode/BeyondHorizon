@@ -4016,6 +4016,8 @@ function enterKeplerSystem() {
   controls.enabled = false; // prevent main OrbitControls from consuming mouse input
 
   document.getElementById('speedPanel').style.display = 'block'; // slider drives the orbit
+  // Hide the "The Kepler-22 System" button — we're already in the system
+  document.getElementById('otherGalaxiesBtn').style.display = 'none';
 
   // Show Kepler-22b info in the existing panel
   document.getElementById('panel').style.display = 'block';
@@ -4039,6 +4041,8 @@ function exitKeplerSystem() {
   keplerSystemViewActive = false;
   keplerLockedObject = null;
   controls.enabled = true;
+  // Restore the "The Kepler-22 System" button now that we've left the system
+  document.getElementById('otherGalaxiesBtn').style.display = 'block';
 }
 
 // "The Kepler-22 System" button — one continuous zoom IN on the Kepler-22 dot
