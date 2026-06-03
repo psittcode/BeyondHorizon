@@ -3885,6 +3885,9 @@ let keplerLockedObject = null;   // body the camera is locked onto (after a fly-
 let keplerFlying       = false;  // true during a fly-to animation
 let keplerListVisible  = false;  // whether the Kepler bodies list is showing
 let keplerOrbitsVisible = true;  // whether Kepler-22b's orbit ring is showing
+// Tracks the skybox-boundary side last frame so the Solar System panel can flip
+// to the Milky Way panel on zoom-out and back to the bodies list on zoom-in.
+let prevOutsideSkybox  = false;
 const KEPLER_B_ORBIT_R = 8;      // scene units
 const KEPLER_B_SPEED   = 0.00009; // angular speed (period 289.9 d, ~Earth-like), scaled by global `speed`
 // Entry "fly-in": when the system view opens it starts zoomed way out (the star
@@ -4276,6 +4279,22 @@ function animate(){
       return;
     }
   }
+
+  // Side panel follows the skybox boundary in the Solar System, the same way the
+  // Kepler system does it: zooming out to the galaxy shows the Milky Way panel,
+  // zooming back in shows the Solar System bodies list. Only fires on a boundary
+  // crossing, and only when focused on the Solar System (target near the origin)
+  // so galaxy/Milky-Way/Kepler navigation is left alone. prevOutsideSkybox is
+  // updated every (non-Kepler) frame so crossings made during fly-tos or other
+  // views are consumed without flipping the panel.
+  if (!galacticViewActive && !spaceshipViewActive && !isFlyingTo &&
+      !bhRendererSettings && galaxyVisualRadius > 0 &&
+      controls.target.length() < 5000 &&
+      outsideSkybox !== prevOutsideSkybox) {
+    if (outsideSkybox) showMilkyWayPanel();
+    else showBodiesList();
+  }
+  prevOutsideSkybox = outsideSkybox;
 
   // Galaxy spin — same slow rate in all views, tied to planet speed slider.
   // Paused during fly-to animations, and also when galPaused is active in galactic view.
