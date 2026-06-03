@@ -680,7 +680,7 @@ Speed<br>
 <button id="otherGalaxiesBtn" style="
   display: none;
   background: rgba(255,160,80,0.2);
-  color: #ffb060;
+  color: white;
   border: 1px solid rgba(255,160,80,0.5);
   padding: 6px 12px;
   cursor: pointer;
@@ -878,29 +878,6 @@ Speed<br>
   user-select: none;
 ">Show Galaxy Edit Bar</div>
 
-<!-- KEPLER PAGE OVERLAY — only the back button; info shown in the existing #panel -->
-<div id="keplerPage" style="
-  display: none;
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  font-family: sans-serif;
-">
-  <button id="keplerBackBtn" style="
-    position: absolute;
-    top: 20px;
-    left: 20px;
-    background: rgba(255,160,80,0.2);
-    color: #ffb060;
-    border: 1px solid rgba(255,160,80,0.5);
-    padding: 6px 14px;
-    cursor: pointer;
-    border-radius: 4px;
-    font-size: 13px;
-    font-family: sans-serif;
-    pointer-events: auto;
-  ">&#8592; Back to the Galaxy</button>
-</div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128/examples/js/controls/OrbitControls.js"></script>
@@ -4027,7 +4004,6 @@ function enterKeplerSystem() {
   controls.enabled = false; // prevent main OrbitControls from consuming mouse input
 
   document.getElementById('speedPanel').style.display = 'block'; // slider drives the orbit
-  document.getElementById('keplerPage').style.display = 'block';
 
   // Show Kepler-22b info in the existing panel
   document.getElementById('panel').style.display = 'block';
@@ -4042,22 +4018,57 @@ function enterKeplerSystem() {
   keplerControls.update();
 }
 
+// Tear down the Kepler-22 system scene and hand control back to the main view.
+// Called from the main-menu button (there is no in-scene back button).
 function exitKeplerSystem() {
   keplerSystemViewActive = false;
   keplerLockedObject = null;
   controls.enabled = true;
-
-  document.getElementById('keplerPage').style.display = 'none';
-
-  // Return to the Galactic View, where the Kepler-22 marker lives
-  if (!galacticViewActive) enterGalacticView();
 }
 
-document.getElementById('otherGalaxiesBtn').onclick = () => {
-  // "The Kepler-22 System" — go straight into the Kepler-22 system scene.
-  enterKeplerSystem();
-};
-document.getElementById('keplerBackBtn').onclick = () => { exitKeplerSystem(); };
+// "The Kepler-22 System" button — fly/zoom the camera to the Kepler-22 dot in
+// the Milky Way galaxy view, using the same easing as the other fly-to actions.
+// From there, clicking the dot drops into the system scene.
+function flyToKeplerDot() {
+  if (!galacticCorePos) return; // GLB not yet loaded
+
+  renderer.setClearColor(0x000005, 1); // near-black background, as in the Milky Way view
+  showMilkyWayPanel();
+  if (galacticViewActive) exitGalacticView();
+
+  const R = galaxyVisualRadius;
+  scene.updateMatrixWorld(true);
+  const dotPos    = keplerSystemMarker.getWorldPosition(new THREE.Vector3());
+  const endTarget = dotPos.clone();
+  // Stay outside the skybox sphere (so the galaxy + markers keep rendering) while
+  // framing the dot much closer than the full-galaxy overview.
+  const endPos = new THREE.Vector3(dotPos.x, dotPos.y + R * 0.20, dotPos.z + R * 0.16);
+
+  lockedObject = null;
+  const myGeneration = ++flyGeneration;
+  isFlyingTo = true;
+
+  const startPos    = camera.position.clone();
+  const startTarget = controls.target.clone();
+
+  let t = 0;
+  (function flyOut() {
+    if (myGeneration !== flyGeneration) { isFlyingTo = false; return; }
+    t += 0.01; // ~100-frame arc, matching flyToMilkyWay
+    if (t > 1) t = 1;
+    const ease = t * t * (3 - 2 * t);
+
+    camera.position.lerpVectors(startPos, endPos, ease);
+    controls.target.lerpVectors(startTarget, endTarget, ease);
+    camera.up.set(0, 1, 0);
+    controls.update();
+
+    if (t < 1) requestAnimationFrame(flyOut);
+    else isFlyingTo = false;
+  })();
+}
+
+document.getElementById('otherGalaxiesBtn').onclick = () => { flyToKeplerDot(); };
 
 function animate(){
   requestAnimationFrame(animate);
@@ -5251,6 +5262,10 @@ window.addEventListener("resize", ()=>{
     if (typeof spaceshipViewActive !== 'undefined' && spaceshipViewActive
         && typeof exitSpaceshipView === 'function') {
       try { exitSpaceshipView(); } catch (e) { console.warn('exitSpaceshipView failed:', e); }
+    }
+    if (typeof keplerSystemViewActive !== 'undefined' && keplerSystemViewActive
+        && typeof exitKeplerSystem === 'function') {
+      try { exitKeplerSystem(); } catch (e) { console.warn('exitKeplerSystem failed:', e); }
     }
     // Close any open info panel
     const ipanel = document.getElementById('panel');
