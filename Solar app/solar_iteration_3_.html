@@ -688,7 +688,7 @@ Speed<br>
   font-size: 13px;
   width: 100%;
   margin-top: 4px;
-">Other Galaxies</button>
+">Star Systems</button>
 </div>
 
 <!-- Spaceship Earth legend panel -->
@@ -899,7 +899,7 @@ Speed<br>
     font-size: 13px;
     font-family: sans-serif;
     pointer-events: auto;
-  ">&#8592; Back to the Milky Way Galaxy</button>
+  ">&#8592; Back to the Galaxy</button>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -2670,13 +2670,22 @@ function flyToObject(obj) {
 window.addEventListener("click", e => {
   // Ignore clicks on UI elements — only handle canvas clicks
   if (e.target !== renderer.domElement) return;
-  // Raycaster only meaningful in solar-system view
-  if (galacticViewActive || spaceshipViewActive) return;
+  // Spaceship Earth has no clickable bodies; galactic view handles its own
+  // clickable marker below, so only bail out here for spaceship view.
+  // The Kepler system scene has its own dedicated click handler.
+  if (spaceshipViewActive || keplerSystemViewActive) return;
 
   mouse.x = (e.clientX / innerWidth) * 2 - 1;
   mouse.y = -(e.clientY / innerHeight) * 2 + 1;
 
   raycaster.setFromCamera(mouse, camera);
+
+  // Galactic view: only the Kepler-22 marker is clickable → enter its system
+  if (galacticViewActive) {
+    const kHits = raycaster.intersectObject(galKeplerMarker, true);
+    if (kHits.length > 0) enterKeplerSystem();
+    return;
+  }
 
   // Check Jupiter moons first — hide Jupiter temporarily so it can't block
   const jupiterMesh = meshes.find(m => m.userData.name === "Jupiter");
@@ -2984,6 +2993,43 @@ const vegaDir = new THREE.Vector3(
  -Math.cos(19 * Math.PI/180) * Math.sin(67 * Math.PI/180)    // -0.871
 ).normalize();
 // ArrowHelper removed (line primitive deleted)
+
+// ── Kepler-22 system marker ────────────────────────────────────────────────
+// A Sun-like neighbour star ~644 ly away in Cygnus. Direction is the true
+// galactic bearing (longitude 79.09°, latitude +15.79°); distance is
+// exaggerated from its real ~7 scene-units to ~35 so the marker reads as a
+// clearly separate, clickable system. Center-referenced convention: galactic
+// centre (Sag A*) sits at the origin and the Sun marker at +X, so the
+// centre direction is −X and the rotation direction (l=90°) is −Z.
+const KEPLER_L = 79.09 * Math.PI / 180;
+const KEPLER_B = 15.79 * Math.PI / 180;
+const KEPLER_VIS_DIST = 35; // exaggerated for visibility (true scale ≈ 7)
+const keplerOffset = new THREE.Vector3(
+  -Math.cos(KEPLER_B) * Math.cos(KEPLER_L),
+   Math.sin(KEPLER_B),
+  -Math.cos(KEPLER_B) * Math.sin(KEPLER_L)
+).multiplyScalar(KEPLER_VIS_DIST);
+
+const galKeplerMarker = new THREE.Group();
+galacticGroup.add(galKeplerMarker);
+// Spinning star — slightly cooler tint than the Sun (Kepler-22 is 5,518 K)
+const galKeplerStar = new THREE.Mesh(
+  new THREE.SphereGeometry(0.7, 16, 16),
+  new THREE.MeshBasicMaterial({ map: sunTexture, color: 0xfff0d8 })
+);
+galKeplerStar.userData = { name: "Kepler-22" };
+galKeplerMarker.add(galKeplerStar);
+galKeplerMarker.add(new THREE.Mesh(
+  new THREE.SphereGeometry(1.8, 16, 16),
+  new THREE.MeshBasicMaterial({ color: 0xffee99, transparent: true, opacity: 0.15 })
+));
+// Ecliptic disc around the marker so it reads as "a system" like the Sun marker
+const galKeplerDisc = new THREE.Mesh(
+  new THREE.RingGeometry(1.3, 4.0, 48),
+  new THREE.MeshBasicMaterial({ color: 0xffb060, transparent: true, opacity: 0.5, side: THREE.DoubleSide })
+);
+galKeplerDisc.rotation.x = -Math.PI / 2 + GAL_TILT;
+galKeplerMarker.add(galKeplerDisc);
 
 // Earth dot orbiting inside the ecliptic ring.
 // Lives in galacticGroup (world space) so its position is absolute —
@@ -3778,11 +3824,21 @@ document.getElementById('seResetBtn').onclick = () => {
 // Animation
 let lastFrameMs = performance.now();
 
-// ── Kepler-22b View ──────────────────────────────────────────────────────────
-let keplerViewActive = false;
-let keplerScene      = null;
-let keplerCamera     = null;
-let keplerControls   = null;
+// ── Kepler-22 System View ─────────────────────────────────────────────────────
+// A self-contained interactive scene that behaves like the Solar System view:
+// a host star with Kepler-22b orbiting it, driven by the same speed slider, and
+// clickable to fly in and read its info. For now Kepler-22b is the only planet —
+// additional bodies later are just more orbit pivots.
+let keplerSystemViewActive = false;
+let keplerScene        = null;
+let keplerCamera       = null;
+let keplerControls     = null;
+let keplerBPivot       = null;   // orbit pivot for Kepler-22b
+let keplerB            = null;   // the planet mesh
+let keplerLockedObject = null;   // body the camera is locked onto (after a fly-to)
+let keplerFlying       = false;  // true during a fly-to animation
+const KEPLER_B_ORBIT_R = 8;      // scene units
+const KEPLER_B_SPEED   = 0.00009; // angular speed (period 289.9 d, ~Earth-like), scaled by global `speed`
 
 function initKeplerScene() {
   if (keplerScene) return;
@@ -3794,37 +3850,128 @@ function initKeplerScene() {
     new THREE.MeshBasicMaterial({ map: milkyWayTexture, side: THREE.BackSide })
   ));
 
-  // Lighting
+  // Lighting — point light sits at the host star
   keplerScene.add(new THREE.AmbientLight(0xffffff, 0.35));
   const kLight = new THREE.PointLight(0xfff5e0, 2.5, 0, 1.2);
-  kLight.position.set(8, 4, 6);
+  kLight.position.set(0, 0, 0);
   keplerScene.add(kLight);
 
-  // Kepler-22b: 2.4 × Earth's radius (Earth size = 0.55)
+  // Host star Kepler-22 — G-type, slightly cooler than the Sun (5,518 K)
+  const keplerStar = new THREE.Mesh(
+    new THREE.SphereGeometry(2, 64, 64),
+    new THREE.MeshBasicMaterial({ map: sunTexture, color: 0xfff0d8 })
+  );
+  keplerStar.userData = {
+    name: "Kepler-22",
+    size: 2,
+    info: `<b>Kepler-22</b><br><br>The Sun-like G-type host star of this system, about 644 light-years away in the constellation Cygnus. It is roughly 3% less massive than the Sun with a surface temperature of 5,518 K. Its one confirmed planet, Kepler-22b, orbits within the habitable zone — click it to learn more.`
+  };
+  keplerScene.add(keplerStar);
+  // Soft star glow (camera-facing sprite, matches the Sun's glow style)
+  (function() {
+    const _gc = document.createElement('canvas');
+    _gc.width = _gc.height = 256;
+    const _gx = _gc.getContext('2d');
+    const _gd = _gx.createRadialGradient(128, 128, 0, 128, 128, 128);
+    _gd.addColorStop(0.00, 'rgba(255, 244, 200, 1.00)');
+    _gd.addColorStop(0.20, 'rgba(255, 222, 140, 0.95)');
+    _gd.addColorStop(0.45, 'rgba(255, 185,  80, 0.70)');
+    _gd.addColorStop(0.75, 'rgba(235, 130,  30, 0.35)');
+    _gd.addColorStop(1.00, 'rgba(180,  80,   0, 0.00)');
+    _gx.fillStyle = _gd;
+    _gx.fillRect(0, 0, 256, 256);
+    const _sprite = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: new THREE.CanvasTexture(_gc),
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false
+    }));
+    _sprite.scale.set(6, 6, 1);
+    keplerScene.add(_sprite);
+  })();
+
+  // Kepler-22b on an orbit pivot — 2.1 × Earth's radius (Earth size = 0.55)
   const kTex = textureLoader.load("Kepler 22b_0.jpeg");
-  keplerScene.add(new THREE.Mesh(
-    new THREE.SphereGeometry(0.55 * 2.4, 64, 64),
+  keplerBPivot = new THREE.Group();
+  keplerScene.add(keplerBPivot);
+  keplerB = new THREE.Mesh(
+    new THREE.SphereGeometry(0.55 * 2.1, 64, 64),
     new THREE.MeshStandardMaterial({ map: kTex })
-  ));
+  );
+  keplerB.position.set(KEPLER_B_ORBIT_R, 0, 0);
+  keplerB.userData = { name: "Kepler-22b", size: 0.55 * 2.1, info: KEPLER_22B_INFO };
+  keplerBPivot.add(keplerB);
+  // Faint orbit ring for context
+  const kOrbit = new THREE.Mesh(
+    new THREE.RingGeometry(KEPLER_B_ORBIT_R - 0.03, KEPLER_B_ORBIT_R + 0.03, 128),
+    new THREE.MeshBasicMaterial({ color: 0x88aaff, transparent: true, opacity: 0.25, side: THREE.DoubleSide })
+  );
+  kOrbit.rotation.x = -Math.PI / 2;
+  keplerScene.add(kOrbit);
 
   keplerCamera = new THREE.PerspectiveCamera(75, innerWidth / innerHeight, 0.1, SKYBOX_RADIUS * 2);
-  keplerCamera.position.set(0, 0.5, 5.5);
+  keplerCamera.position.set(0, 6, 18);
 
   keplerControls = new THREE.OrbitControls(keplerCamera, renderer.domElement);
   keplerControls.enableDamping = true;
   keplerControls.dampingFactor = 0.08;
   keplerControls.minDistance   = 1.8;
-  keplerControls.maxDistance   = 60;
+  keplerControls.maxDistance   = 200;
   keplerControls.target.set(0, 0, 0);
   keplerControls.update();
 }
 
-function enterKeplerView() {
+// Fly the Kepler-scene camera to a clicked body and lock onto it (mirrors flyToObject)
+function flyToKeplerObject(obj) {
+  if (!obj || !obj.userData) return;
+  document.getElementById('panel').style.display = 'block';
+  document.getElementById('panelContent').innerHTML = obj.userData.info || '';
+  document.getElementById('backToList').style.display = 'none';
+
+  keplerLockedObject = obj;
+  keplerFlying = true;
+
+  const startPos    = keplerCamera.position.clone();
+  const startTarget = keplerControls.target.clone();
+  const endTarget   = obj.getWorldPosition(new THREE.Vector3());
+  const size        = obj.userData.size || 0.5;
+  const endPos      = endTarget.clone().add(new THREE.Vector3(0, size * 2, size * 8));
+
+  let t = 0;
+  (function flyTo() {
+    if (!keplerSystemViewActive) { keplerFlying = false; return; }
+    t += 0.03;
+    if (t > 1) t = 1;
+    const ease = t * t * (3 - 2 * t);
+    keplerCamera.position.lerpVectors(startPos, endPos, ease);
+    keplerControls.target.lerpVectors(startTarget, endTarget, ease);
+    keplerControls.update();
+    if (t < 1) requestAnimationFrame(flyTo);
+    else keplerFlying = false;
+  })();
+}
+
+// Click handling scoped to the Kepler system scene
+window.addEventListener("click", e => {
+  if (!keplerSystemViewActive) return;
+  if (e.target !== renderer.domElement) return;
+  mouse.x = (e.clientX / innerWidth) * 2 - 1;
+  mouse.y = -(e.clientY / innerHeight) * 2 + 1;
+  raycaster.setFromCamera(mouse, keplerCamera);
+  const hits = raycaster.intersectObjects(keplerScene.children, true);
+  for (const h of hits) {
+    let o = h.object;
+    while (o && !(o.userData && o.userData.name) && o.parent) o = o.parent;
+    if (o && o.userData && o.userData.name) { flyToKeplerObject(o); return; }
+  }
+});
+
+function enterKeplerSystem() {
   initKeplerScene();
-  keplerViewActive = true;
+  keplerSystemViewActive = true;
   controls.enabled = false; // prevent main OrbitControls from consuming mouse input
 
-  document.getElementById('speedPanel').style.display = 'none';
+  document.getElementById('speedPanel').style.display = 'block'; // slider drives the orbit
   document.getElementById('keplerPage').style.display = 'block';
 
   // Show Kepler-22b info in the existing panel
@@ -3832,31 +3979,54 @@ function enterKeplerView() {
   document.getElementById('panelContent').innerHTML = KEPLER_22B_INFO;
   document.getElementById('backToList').style.display = 'none';
 
-  // Reset camera to default view of Kepler-22b
-  keplerCamera.position.set(0, 0.5, 5.5);
+  // Reset to a system-overview camera
+  keplerLockedObject = null;
+  keplerFlying = false;
+  keplerCamera.position.set(0, 6, 18);
   keplerControls.target.set(0, 0, 0);
   keplerControls.update();
 }
 
-function exitKeplerView() {
-  keplerViewActive = false;
+function exitKeplerSystem() {
+  keplerSystemViewActive = false;
+  keplerLockedObject = null;
   controls.enabled = true;
 
   document.getElementById('keplerPage').style.display = 'none';
-  document.getElementById('speedPanel').style.display = 'block';
 
-  // Restore the Milky Way panel (where the user came from)
-  showMilkyWayPanel();
+  // Return to the Galactic View, where the Kepler-22 marker lives
+  if (!galacticViewActive) enterGalacticView();
 }
 
-document.getElementById('otherGalaxiesBtn').onclick = () => { enterKeplerView(); };
-document.getElementById('keplerBackBtn').onclick    = () => { exitKeplerView(); };
+document.getElementById('otherGalaxiesBtn').onclick = () => {
+  // "Star Systems" — drop into the Galactic View so the user can locate and
+  // click the Kepler-22 marker (an in-galaxy neighbour, not another galaxy).
+  if (!galacticViewActive) enterGalacticView();
+};
+document.getElementById('keplerBackBtn').onclick = () => { exitKeplerSystem(); };
 
 function animate(){
   requestAnimationFrame(animate);
 
-  // Kepler page takes over the renderer entirely — skip all solar-system logic
-  if (keplerViewActive) {
+  // Kepler-22 system takes over the renderer entirely — skip all solar-system logic
+  if (keplerSystemViewActive) {
+    const kNow = performance.now();
+    const kDelta = Math.min(kNow - lastFrameMs, 100);
+    lastFrameMs = kNow;
+    const kScale = kDelta / (1000 / 60);
+
+    // Advance Kepler-22b's orbit and self-spin using the global speed slider
+    keplerBPivot.rotation.y += KEPLER_B_SPEED * speed * kScale;
+    keplerB.rotation.y      += 0.01 * speed * kScale;
+
+    // Keep the camera locked onto the selected body as it orbits (after fly-in)
+    if (keplerLockedObject && !keplerFlying) {
+      const tp = keplerLockedObject.getWorldPosition(new THREE.Vector3());
+      const delta = tp.clone().sub(keplerControls.target);
+      keplerControls.target.copy(tp);
+      keplerCamera.position.add(delta);
+    }
+
     keplerControls.update();
     renderer.render(keplerScene, keplerCamera);
     return;
@@ -4177,6 +4347,10 @@ function animate(){
     const armAttr = galArm.geometry.attributes.position;
     armAttr.setXYZ(1, galX, galY, galZ);
     armAttr.needsUpdate = true;
+
+    // ── Kepler-22 marker co-travels with the Sun marker (644 ly neighbour) ──
+    galKeplerMarker.position.set(galX + keplerOffset.x, galY + keplerOffset.y, galZ + keplerOffset.z);
+    galKeplerStar.rotation.y += galSunSpin;
 
     // ── Earth orbit: galactic-time-scaled, frozen only at 1× real life (slider -4) ──
     // At slider -4: speed == SPEED_REALLIFE → delta = 0 → Earth appears static.
