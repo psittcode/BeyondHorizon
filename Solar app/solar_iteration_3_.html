@@ -4262,6 +4262,21 @@ function animate(){
   solarSystemMarker.visible = !bhRendererSettings && outsideSkybox && !galacticViewActive;
   keplerSystemMarker.visible = solarSystemMarker.visible;
 
+  // Enter the Kepler-22 system by zooming in toward its dot — the symmetric
+  // counterpart to the zoom-out escape. While focused on the Kepler dot in the
+  // galaxy view, crossing the skybox boundary (the same boundary that reveals the
+  // Solar System near the origin) hands off into the system scene, so the system
+  // "appears" as you keep zooming in. Gated on the dot being the focus so zooming
+  // in elsewhere (e.g. toward the Solar System) is unaffected.
+  if (!keplerSystemViewActive && !galacticViewActive && !spaceshipViewActive &&
+      !isFlyingTo && !bhRendererSettings && galaxyVisualRadius > 0) {
+    const _kDot = keplerSystemMarker.getWorldPosition(new THREE.Vector3());
+    if (controls.target.distanceTo(_kDot) < galaxyVisualRadius * 0.05 && camDist < SKYBOX_RADIUS) {
+      enterKeplerSystem();
+      return;
+    }
+  }
+
   // Galaxy spin — same slow rate in all views, tied to planet speed slider.
   // Paused during fly-to animations, and also when galPaused is active in galactic view.
   if (!isFlyingTo && !(galacticViewActive && galPaused)) {
