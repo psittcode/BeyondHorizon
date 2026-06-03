@@ -4099,6 +4099,30 @@ function exitKeplerSystem() {
   document.getElementById('toggleList').textContent = listVisible ? 'Hide Bodies' : 'Show Bodies';
 }
 
+// Zooming all the way out of the Kepler system drops back into the Milky Way
+// galaxy view, but — like zooming out of the Solar System — the Kepler dot stays
+// the centre focus point (we DON'T jump to the galactic core). We hand the main
+// camera the dot as its orbit target at a galaxy-scale framing (the reverse of
+// the zoom-in entry), so the user simply keeps zooming out with the dot centred.
+function escapeKeplerToGalaxy() {
+  if (!galacticCorePos) return;
+  const dotPos = keplerSystemMarker.getWorldPosition(new THREE.Vector3());
+  const R = galaxyVisualRadius;
+
+  exitKeplerSystem();                 // restores the button + leaves the system
+  renderer.setClearColor(0x000005, 1);
+  showMilkyWayPanel();
+  if (galacticViewActive) exitGalacticView();
+
+  // Frame the Kepler dot, centred, just outside the skybox so the galaxy + dot
+  // render — matching where the zoom-in entry began, so the hand-off is seamless.
+  lockedObject = null;
+  camera.up.set(0, 1, 0);
+  camera.position.set(dotPos.x, dotPos.y + R * 0.14, dotPos.z + R * 0.10);
+  controls.target.copy(dotPos);
+  controls.update();
+}
+
 // "The Kepler-22 System" button — one continuous zoom IN on the Kepler-22 dot
 // that flows straight into the system scene (its skybox + star + orbiting planet),
 // the same way zooming into the Solar System feels: no pause, no abrupt page swap.
@@ -4197,12 +4221,12 @@ function animate(){
       }
       keplerControls.update();
 
-      // Zoomed all the way out → escape back to the Milky Way galaxy view, the
-      // same way zooming out of the Solar System reveals the galaxy. flyToMilkyWay
-      // calls exitKeplerSystem, so the "The Kepler-22 System" button reappears.
+      // Zoomed all the way out → drop back into the galaxy with the Kepler dot
+      // kept as the centre focus (same feel as zooming out of the Solar System),
+      // rather than jumping to the galactic-core overview.
       if (!keplerFlying &&
           keplerCamera.position.distanceTo(keplerControls.target) >= keplerControls.maxDistance - 2) {
-        flyToMilkyWay();
+        escapeKeplerToGalaxy();
         return;
       }
     }
