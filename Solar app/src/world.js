@@ -3,6 +3,7 @@ import { viewManager } from './viewManager.js';
 import { loadGLB } from './core/assets.js';
 import { data } from './data/planets.js';
 import { MILKY_WAY_INFO, marsTransformedInfo, SUN_INFO, MOON_INFO } from './data/info.js';
+import { scaleRatioN, formatRatio, realPerCm, AU_KM, LY_KM } from './core/scale.js';
 
 // Rooms (lazy-loaded). register() only stores a factory; the module is import()-ed
 // on first entry, so its code + assets don't load until you visit it.
@@ -1361,6 +1362,39 @@ function updateSpeedLabel() {
   document.getElementById("speedLabel").textContent = getSpeedLabel(speed);
 }
 
+// Map-scale readout shown under the speed label. Picks the active view's camera,
+// focus distance (camera → orbit target), and km-per-unit anchor, then renders a
+// "1 : N" ratio that updates every frame as you zoom. Covers every view: the
+// Solar System, the galactic schematic, the zoomed-out Milky Way, and the lazy
+// rooms (Kepler, Andromeda), each of which exposes its own `kmPerUnit`.
+const scaleLabelEl = document.getElementById("scaleLabel");
+const _scaleTarget = new THREE.Vector3();
+function updateScaleReadout() {
+  if (!scaleLabelEl) return;
+  let cam, focusDist, kmPerUnit;
+  const room = viewManager.active;
+  if (room && room.camera) {
+    cam = room.camera;
+    const tgt = room.controls ? room.controls.target : _scaleTarget.set(0, 0, 0);
+    focusDist = cam.position.distanceTo(tgt);
+    kmPerUnit = room.kmPerUnit || SOLAR_KM_PER_UNIT;
+  } else {
+    cam = camera;
+    focusDist = camera.position.distanceTo(controls.target);
+    if (galacticViewActive) {
+      kmPerUnit = GALACTIC_KM_PER_UNIT;
+    } else if (camera.position.length() > SKYBOX_RADIUS && galaxyVisualRadius > 0) {
+      // Zoomed out to the Milky Way model: the Sun sits at 52% of its visual radius = 26,000 ly.
+      kmPerUnit = (26000 / (0.52 * galaxyVisualRadius)) * LY_KM;
+    } else {
+      kmPerUnit = SOLAR_KM_PER_UNIT;
+    }
+  }
+  const N = scaleRatioN(cam, focusDist, kmPerUnit);
+  scaleLabelEl.innerHTML =
+    formatRatio(N) + '<br><span style="opacity:0.7">1 cm ≈ ' + realPerCm(N) + '</span>';
+}
+
 document.getElementById("speed").oninput = e => {
   speed = Math.pow(10, parseFloat(e.target.value));
   updateSpeedLabel();
@@ -1491,6 +1525,11 @@ resetSimulation(); // start planets at real positions on load
 //   • Vertical oscillation: 2.7 bobs per galactic orbit, ±200 ly
 // ─────────────────────────────────────────────────────────────
 const GAL_R            = 280;                          // visual orbit radius (scene units)
+// Map-scale anchors: how many real km one world unit represents in each view.
+// Solar System: Earth's orbit = 10 units = 1 AU. Galactic schematic: Sun→core =
+// GAL_R units = 26,000 ly. (Milky Way & rooms compute their own at runtime.)
+const SOLAR_KM_PER_UNIT    = AU_KM / 10;
+const GALACTIC_KM_PER_UNIT = (26000 / GAL_R) * LY_KM;
 const GAL_Z_MAX        = 22;                           // vertical bob amplitude (exaggerated)
 const GAL_OSC_RATIO    = 2.7;                          // oscillations per galactic orbit
 const GAL_TILT         = 60.2 * Math.PI / 180;        // ecliptic tilt vs galactic plane
@@ -2523,6 +2562,10 @@ document.getElementById('andromedaBtn').onclick = () => {
 
 function animate(){
   requestAnimationFrame(animate);
+
+  // Map-scale readout — runs for every view (rooms included) before the room
+  // hands itself this frame below.
+  updateScaleReadout();
 
   // Strangler hook: while a migrated room (rooms/*.js) is active, let it drive
   // this frame and skip all legacy view code. Dormant until a room is registered.

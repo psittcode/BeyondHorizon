@@ -9,6 +9,7 @@
 
 import { loadTexture } from '../core/assets.js';
 import { KEPLER_22B_INFO } from '../data/info.js';
+import { AU_KM } from '../core/scale.js';
 
 const SKYBOX_RADIUS = 20000;
 const KEPLER_B_ORBIT_R = 8;
@@ -22,6 +23,8 @@ const _mouse = new THREE.Vector2();
 
 const room = {
   scene: null, camera: null, controls: null,
+  // Map-scale anchor: Kepler-22b orbits at KEPLER_B_ORBIT_R units ≈ 0.849 AU.
+  kmPerUnit: (0.849 * AU_KM) / KEPLER_B_ORBIT_R,
   bPivot: null, b: null, bClouds: null, star: null, orbit: null,
   lockedObject: null, flying: false,
   listVisible: false, orbitsVisible: true,

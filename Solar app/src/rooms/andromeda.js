@@ -6,6 +6,7 @@
 // so neither this code nor its assets cost anything until you visit.
 
 import { loadGLB, loadTexture } from '../core/assets.js';
+import { LY_KM } from '../core/scale.js';
 
 const SKYBOX_RADIUS = 20000;
 
@@ -139,6 +140,7 @@ const room = {
   galaxyPivot: null,
   starfield: null,
   radius: 3780,
+  kmPerUnit: 0,   // map-scale anchor; set in init() once the galaxy radius is measured
   _lastT: 0,
 
   // Frame the galaxy in a 3/4 view from above.
@@ -184,6 +186,8 @@ const room = {
     model.position.sub(center);
     const size = box.getSize(new THREE.Vector3());
     this.radius = Math.max(size.x, size.z) / 2;
+    // Andromeda is ~220,000 ly across, so its visual radius represents 110,000 ly.
+    this.kmPerUnit = (110000 / this.radius) * LY_KM;
     this.galaxyPivot.add(model);
 
     const aTex = loadTexture('androgalaxy.png');
