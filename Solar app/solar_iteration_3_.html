@@ -4216,19 +4216,29 @@ let andromedaViewActive = false;
 let andromedaScene      = null;
 let andromedaCamera     = null;
 let andromedaControls   = null;
+let andromedaGalaxyPivot = null;  // spins the galaxy (model + disc) slowly
+let andromedaRadius      = 3780;  // galaxy visual radius (refined once the GLB loads)
 
 const ANDROMEDA_INFO = `<b>The Andromeda Galaxy (M31)</b><br><br>
 The nearest large galaxy to the Milky Way — a spiral about 2.5 million light-years
 away in the constellation Andromeda, and the most distant object visible to the
 naked eye. It is on a slow collision course with our own galaxy, set to merge with
-it in roughly 4–5 billion years.<br><br>
-<span style="opacity:0.6;">(The galaxy model will be added to this view soon.)</span>`;
+it in roughly 4–5 billion years.`;
+
+// Position the Andromeda camera to frame the galaxy (a 3/4 view from above).
+function frameAndromedaCamera() {
+  const R = andromedaRadius;
+  andromedaCamera.position.set(0, R * 0.9, R * 2.2);
+  andromedaCamera.up.set(0, 1, 0);
+  andromedaControls.target.set(0, 0, 0);
+  andromedaControls.update();
+}
 
 function initAndromedaScene() {
   if (andromedaScene) return;
   andromedaScene = new THREE.Scene();
 
-  // Skybox — starfield for now; the Andromeda galaxy will be added in this scene
+  // Skybox — intergalactic starfield backdrop
   andromedaScene.add(new THREE.Mesh(
     new THREE.SphereGeometry(SKYBOX_RADIUS, 64, 64),
     new THREE.MeshBasicMaterial({ map: milkyWayTexture, side: THREE.BackSide })
@@ -4236,7 +4246,6 @@ function initAndromedaScene() {
   andromedaScene.add(new THREE.AmbientLight(0xffffff, 0.6));
 
   andromedaCamera = new THREE.PerspectiveCamera(75, innerWidth / innerHeight, 0.1, SKYBOX_RADIUS * 2);
-  andromedaCamera.position.set(0, 0, 60);
 
   andromedaControls = new THREE.OrbitControls(andromedaCamera, renderer.domElement);
   andromedaControls.enableDamping = true;
@@ -4244,7 +4253,51 @@ function initAndromedaScene() {
   andromedaControls.minDistance   = 1;
   andromedaControls.maxDistance   = SKYBOX_RADIUS * 0.9;
   andromedaControls.target.set(0, 0, 0);
-  andromedaControls.update();
+  frameAndromedaCamera();
+
+  // --- Andromeda galaxy: same build as the Milky Way (need_some_space.glb model
+  //     + a flat galaxy-texture disc), centred at the origin in this scene. ---
+  const ANDRO_SCALE = 1500;
+  andromedaGalaxyPivot = new THREE.Group();   // origin-centred so the galaxy spins cleanly
+  andromedaScene.add(andromedaGalaxyPivot);
+
+  new THREE.GLTFLoader().load('need_some_space.glb', function(gltf) {
+    const model = gltf.scene;
+    model.scale.set(ANDRO_SCALE, ANDRO_SCALE, ANDRO_SCALE);
+    model.rotation.set(0, 0, 0);
+    model.renderOrder = 1;
+
+    // Centre the model's bounding box on the origin (matches the Milky Way build)
+    const box = new THREE.Box3().setFromObject(model);
+    const center = box.getCenter(new THREE.Vector3());
+    model.position.sub(center);
+    const size = box.getSize(new THREE.Vector3());
+    andromedaRadius = Math.max(size.x, size.z) / 2;
+    andromedaGalaxyPivot.add(model);
+
+    // Flat galaxy disc using androgalaxy.png (additive, like the Milky Way disc)
+    const aTex = new THREE.TextureLoader().load('androgalaxy.png');
+    const disc = new THREE.Mesh(
+      new THREE.CircleGeometry(andromedaRadius, 128),
+      new THREE.MeshBasicMaterial({
+        map: aTex,
+        transparent: true,
+        alphaTest: 0,
+        blending: THREE.AdditiveBlending,
+        color: 0xffffff,
+        depthWrite: false,
+        depthTest: false,
+        side: THREE.DoubleSide
+      })
+    );
+    disc.rotation.x = -Math.PI / 2;
+    disc.renderOrder = 0;
+    andromedaGalaxyPivot.add(disc);
+
+    // Re-frame now that we know the true radius
+    andromedaControls.maxDistance = Math.min(SKYBOX_RADIUS * 0.9, andromedaRadius * 6);
+    frameAndromedaCamera();
+  });
 }
 
 function enterAndromedaView() {
@@ -4263,9 +4316,7 @@ function enterAndromedaView() {
   document.getElementById('panelContent').innerHTML = ANDROMEDA_INFO;
   document.getElementById('backToList').style.display = 'none';
 
-  andromedaCamera.position.set(0, 0, 60);
-  andromedaControls.target.set(0, 0, 0);
-  andromedaControls.update();
+  frameAndromedaCamera();
 }
 
 function exitAndromedaView() {
@@ -4279,8 +4330,9 @@ document.getElementById('andromedaBtn').onclick = () => { enterAndromedaView(); 
 function animate(){
   requestAnimationFrame(animate);
 
-  // Andromeda view takes over the renderer entirely — just its skybox for now
+  // Andromeda view takes over the renderer entirely (its own galaxy + skybox)
   if (andromedaViewActive) {
+    if (andromedaGalaxyPivot) andromedaGalaxyPivot.rotation.y += 0.0004;
     andromedaControls.update();
     renderer.render(andromedaScene, andromedaCamera);
     return;
