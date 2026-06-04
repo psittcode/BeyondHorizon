@@ -81,17 +81,21 @@ const room = {
     this.b.userData = { name: "Kepler-22b", size: KEPLER_B_RADIUS, info: KEPLER_22B_INFO };
     this.bPivot.add(this.b);
 
-    // Cloud layer — same logic as Earth: a slightly larger additive sphere
-    // (~3.6% over the surface, matching Earth's 0.57/0.55 shell) parented to the
-    // planet so it inherits the orbit, then spun independently in update().
+    // Cloud layer — a slightly larger sphere (~3.6% over the surface, matching
+    // Earth's 0.57/0.55 shell) parented to the planet so it inherits the orbit,
+    // then spun independently in update(). Unlike Earth's additive clouds, this
+    // uses NORMAL blending on an unlit MeshBasicMaterial: the clouds render as a
+    // constant semi-opaque white overlay that stays visible on the bright,
+    // star-facing day side (additive blending washed out there) and is unaffected
+    // by the scene's lighting.
     const cloudTex = loadTexture("clouds.png");
     this.bClouds = new THREE.Mesh(
       new THREE.SphereGeometry(KEPLER_B_RADIUS * (0.57 / 0.55), 64, 64),
       new THREE.MeshBasicMaterial({
         map: cloudTex,
         transparent: true,
-        opacity: 0.65,   // raised from Earth's 0.4 so clouds stay visible on the bright star-facing side
-        blending: THREE.AdditiveBlending,
+        opacity: 0.6,
+        blending: THREE.NormalBlending,
         depthWrite: false
       })
     );
