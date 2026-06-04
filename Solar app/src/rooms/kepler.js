@@ -34,8 +34,11 @@ const room = {
       new THREE.SphereGeometry(SKYBOX_RADIUS, 64, 64),
       new THREE.MeshBasicMaterial({ map: ctx.milkyWayTexture, side: THREE.BackSide })
     ));
-    scene.add(new THREE.AmbientLight(0xffffff, 0.35));
-    const kLight = new THREE.PointLight(0xfff5e0, 2.5, 0, 1.2);
+    // Match the Solar System's lighting (ambient 0.15 + point 1.5) so the
+    // star-facing side of Kepler-22b isn't blown out — the same brightness the
+    // Sun gives Earth and its neighbours, rather than the previous over-bright 2.5.
+    scene.add(new THREE.AmbientLight(0xffffff, 0.15));
+    const kLight = new THREE.PointLight(0xfff5e0, 1.5, 0, 1.2);
     kLight.position.set(0, 0, 0);
     scene.add(kLight);
 
