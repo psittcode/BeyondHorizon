@@ -1142,23 +1142,26 @@ function minDotScale(obj, trueRadius) {
   obj.scale.setScalar(s);
   return s;
 }
-// Sun glow — treat the Sun as a light source, not a textured sphere. The glow is
-// a modest halo proportional to the Sun's apparent size (so it stays tight around
-// the disc, the original look). Its brightness is highest right at the Sun —
-// blindingly bright, washing the disc into a bright orange bloom — and fades
-// gradually (log-smooth) with distance but never goes dim: far away the Sun is a
-// smaller, calmer orange ball. Brightness, not size, carries the effect.
-const SUN_GLOW_MUL  = 3.0;    // sprite width as a multiple of the Sun's apparent radius (≈ original halo)
-const SUN_GLOW_NEAR = 0.3;    // distance (units) at/under which the glow is fully bright
-const SUN_GLOW_FAR  = 300;    // distance (units) at which the glow reaches its (still-bright) floor
-const SUN_GLOW_MAX  = 1.0;    // opacity closest to the Sun
-const SUN_GLOW_MIN  = 0.55;   // opacity far away — still clearly a bright orange ball
+// Sun glow — the Sun is a light source. SIZE: a fixed on-screen ball that keeps
+// the same size as you zoom out (it does NOT shrink), tightening to a modest rim
+// around the disc when you zoom right in (the original close-up look). BRIGHTNESS
+// carries the effect: highest right at the Sun (a blinding orange bloom) and
+// fading gradually (log-smooth, starting the moment you pull back) to a
+// still-bright floor far away.
+const SUN_GLOW_FAR_PX  = 34;   // fixed glow-ball radius (px) when zoomed out — stays this size
+const SUN_GLOW_RIM_MUL = 1.5;  // glow radius as a multiple of the disc when zoomed right in
+const SUN_GLOW_NEAR = 0.3;     // distance (units) at/under which the glow is fully bright
+const SUN_GLOW_FAR  = 300;     // distance (units) at which the glow reaches its (still-bright) floor
+const SUN_GLOW_MAX  = 1.0;     // opacity closest to the Sun
+const SUN_GLOW_MIN  = 0.55;    // opacity far away — still clearly a bright orange ball
 function updateSunGlow() {
   const tanHalf = Math.tan((camera.fov * Math.PI / 180) / 2);
   const dSun = camera.position.length();           // Sun sits at the origin
   const worldPerPx = (2 * dSun * tanHalf) / window.innerHeight;
-  const apparentWorld = Math.max(sun.userData.trueRadius, MIN_DOT_PX * worldPerPx);
-  glowMesh.scale.setScalar(apparentWorld * SUN_GLOW_MUL); // tight halo, tracks the Sun's apparent size
+  const sunPx = sun.userData.trueRadius / worldPerPx; // true on-screen disc radius
+  // Fixed-pixel ball when zoomed out; a rim around the disc when zoomed right in.
+  const glowPx = Math.max(SUN_GLOW_FAR_PX, SUN_GLOW_RIM_MUL * sunPx);
+  glowMesh.scale.setScalar(glowPx * worldPerPx * 2);
   // Brightest at the Sun, fading slowly across the whole zoom range (log scale so
   // it eases off immediately as you pull back, not all at once far out).
   const t = Math.min(1, Math.max(0,
