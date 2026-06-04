@@ -1,3 +1,6 @@
+import { ctx } from './core/engine.js';
+import { viewManager } from './viewManager.js';
+
 const scene = new THREE.Scene();
 
 const camera = new THREE.PerspectiveCamera(75, innerWidth/innerHeight, 0.1, 1000000);
@@ -16,6 +19,13 @@ document.body.appendChild(renderer.domElement);
 
 // Controls
 const controls = new THREE.OrbitControls(camera, renderer.domElement);
+
+// Publish the core handles to the shared engine context so room modules
+// (rooms/*.js) can render with them. `speed` is exposed as a live getter so
+// rooms always read the current slider value.
+Object.assign(ctx, { THREE, scene, camera, renderer, controls, domElement: renderer.domElement });
+Object.defineProperty(ctx, 'speed', { configurable: true, get: () => speed });
+
 controls.enablePan = false;
 controls.maxDistance = 1000000;
 
@@ -3546,6 +3556,11 @@ document.getElementById('andromedaBtn').onclick = () => { enterAndromedaView(); 
 
 function animate(){
   requestAnimationFrame(animate);
+
+  // Strangler hook: while a migrated room (rooms/*.js) is active, let it drive
+  // this frame and skip all legacy view code. Dormant until a room is registered.
+  const _room = viewManager.active;
+  if (_room) { _room.update(ctx); return; }
 
   // Andromeda view takes over the renderer entirely (its own galaxy + starfield)
   if (andromedaViewActive) {
