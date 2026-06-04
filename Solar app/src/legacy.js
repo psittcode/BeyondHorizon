@@ -96,6 +96,11 @@ let galaxyVisualRadius = 0;   // half the galaxy's XZ extent in scene units
 
 // Black hole galactic-core transition
 let blackHoleModel      = null;
+// The procedural BH + lensing composer are the heaviest GPU work at startup
+// (shader compilation + render targets). They are built lazily on the first
+// galaxy-scale frame instead of at boot — see ensureBH().
+let bhBuilder           = null;  // assigned in the GLB callback; invoked by ensureBH()
+let bhBuilt             = false;
 let bhTransitionT       = 0;     // 0 = normal galaxy view, 1 = full black hole environment
 let BH_CLOSE_DIST       = 0;     // camera-to-core distance at which transition reaches 100%
 let BH_FAR_DIST         = 0;     // camera-to-core distance at which transition begins
@@ -322,8 +327,10 @@ loadGLB('need_some_space.glb').then(function(gltf) {
   BH_CLOSE_DIST = galaxyVisualRadius * 0.10;
   BH_FAR_DIST   = galaxyVisualRadius * 0.55;
 
-  // Procedural black hole — flat RingGeometry layers + Fresnel event horizon
-  (function buildProceduralBH() {
+  // Procedural black hole — flat RingGeometry layers + Fresnel event horizon.
+  // Deferred: defined here but built lazily on the first galaxy-scale frame
+  // (ensureBH), keeping its shader compilation + EffectComposer off the boot path.
+  bhBuilder = function buildProceduralBH() {
     var bhR = galaxyVisualRadius * 0.04;
 
     // DISK — complete rewrite. One flat mesh, zero noise, zero directional streak functions.
@@ -666,12 +673,22 @@ loadGLB('need_some_space.glb').then(function(gltf) {
 
     scene.add(bhSpin);
     blackHoleModel = bhSpin;
-  })();
+  };
 
   console.log('Milky Way GLB loaded successfully');
-}, undefined, function(error) {
+}).catch(function(error) {
   console.error('GLB load error:', error);
 });
+
+// Build the procedural black hole + lensing composer the first time we reach
+// galaxy scale (deferred from boot to cut startup GPU/shader-compile cost).
+// Idempotent; a no-op until the GLB callback has assigned bhBuilder.
+function ensureBH() {
+  if (bhBuilt || !bhBuilder) return;
+  bhBuilt = true;
+  console.log('ensureBH: building black hole + lensing composer (deferred from boot)');
+  bhBuilder();
+}
 
 // SUN CORE (keep emissive low so shading is visible)
 const sun = new THREE.Mesh(
@@ -3394,6 +3411,9 @@ function animate(){
   // hide the skybox itself at galaxy scale so it doesn't appear as a bubble over the galaxy.
   const camDist = camera.position.length();
   const outsideSkybox = camDist > SKYBOX_RADIUS;
+  // Lazily build the procedural BH + lensing composer the first time we reach
+  // galaxy scale (deferred from boot). Runs before any BH render below.
+  if (!bhBuilt && (outsideSkybox || galacticViewActive)) ensureBH();
   // Only drive visibility from here when BH is NOT active — save/restore handles it during BH view
   if (!bhRendererSettings) {
     skybox.visible       = !outsideSkybox;
