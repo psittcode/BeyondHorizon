@@ -732,12 +732,17 @@ const glowMesh = (function() {
   const _gc = document.createElement('canvas');
   _gc.width = _gc.height = 256;
   const _gx = _gc.getContext('2d');
+  // Soft light-source bloom: a small near-white hot core with a smooth, rapid
+  // falloff into a faint coloured halo — no opaque plateau, so it reads as a glow
+  // blending into space rather than a hard-edged orange ball.
   const _gd = _gx.createRadialGradient(128, 128, 0, 128, 128, 128);
-  _gd.addColorStop(0.00, 'rgba(255, 240, 170, 1.00)');
-  _gd.addColorStop(0.20, 'rgba(255, 215, 110, 0.95)');
-  _gd.addColorStop(0.45, 'rgba(255, 175,  60, 0.75)');
-  _gd.addColorStop(0.75, 'rgba(235, 120,  20, 0.40)');
-  _gd.addColorStop(1.00, 'rgba(180,  70,   0, 0.00)');
+  _gd.addColorStop(0.00, 'rgba(255, 250, 235, 1.00)');
+  _gd.addColorStop(0.07, 'rgba(255, 238, 185, 0.80)');
+  _gd.addColorStop(0.16, 'rgba(255, 208, 125, 0.48)');
+  _gd.addColorStop(0.30, 'rgba(255, 165,  75, 0.22)');
+  _gd.addColorStop(0.50, 'rgba(245, 125,  40, 0.085)');
+  _gd.addColorStop(0.74, 'rgba(210,  88,  18, 0.025)');
+  _gd.addColorStop(1.00, 'rgba(170,  60,   0, 0.00)');
   _gx.fillStyle = _gd;
   _gx.fillRect(0, 0, 256, 256);
   const _sprite = new THREE.Sprite(new THREE.SpriteMaterial({
@@ -1150,15 +1155,19 @@ function minDotScale(obj, trueRadius) {
 // still-bright floor far away.
 const SUN_GLOW_FAR_PX  = 34;   // fixed glow-ball radius (px) when zoomed out — stays this size
 const SUN_GLOW_RIM_MUL = 1.5;  // glow radius as a multiple of the disc when zoomed right in
-const SUN_GLOW_NEAR = 0.4;     // distance (units) at/under which the glow is fully bright (≈ the fly-to-Sun view)
+const SUN_GLOW_NEAR = 0.06;    // distance (units) at/under which the glow is fully bright (≈ Sun filling the screen); fades the moment you pull back
 const SUN_GLOW_FAR  = 300;     // distance (units) at which the glow reaches its faint floor
 const SUN_GLOW_MAX  = 1.0;     // opacity right at the Sun
 const SUN_GLOW_MIN  = 0.22;    // opacity far away — faded, just a faint ember
+const SUN_CORE_MIN_PX = 1.3;   // Sun core min-dot (smaller than planets' 2.6) so the soft glow, not a hard disc, dominates far away
 function updateSunGlow() {
   const tanHalf = Math.tan((camera.fov * Math.PI / 180) / 2);
   const dSun = camera.position.length();           // Sun sits at the origin
   const worldPerPx = (2 * dSun * tanHalf) / window.innerHeight;
   const sunPx = sun.userData.trueRadius / worldPerPx; // true on-screen disc radius
+  // Sun core: a small min-dot so when far the Sun is a tiny hot point inside the
+  // soft bloom (reads as a light source) rather than a hard 2.6px orange disc.
+  sun.scale.setScalar(Math.max(1, (SUN_CORE_MIN_PX * worldPerPx) / sun.userData.trueRadius));
   // Fixed-pixel ball when zoomed out; a rim around the disc when zoomed right in.
   const glowPx = Math.max(SUN_GLOW_FAR_PX, SUN_GLOW_RIM_MUL * sunPx);
   glowMesh.scale.setScalar(glowPx * worldPerPx * 2);
@@ -1169,8 +1178,8 @@ function updateSunGlow() {
   glowMesh.material.opacity = SUN_GLOW_MAX - (SUN_GLOW_MAX - SUN_GLOW_MIN) * t;
 }
 function applyMinDots() {
-  minDotScale(sun, sun.userData.trueRadius);
-  updateSunGlow();
+  updateSunGlow(); // scales the Sun core (smaller min-dot) + its glow
+
   meshes.forEach(m => minDotScale(m, m.userData.size));
   if (moon) minDotScale(moon, moon.userData.trueRadius);
   jupiterMoons.forEach(jm => minDotScale(jm.mesh, jm.mesh.userData.trueRadius));
