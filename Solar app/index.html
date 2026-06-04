@@ -1,0 +1,908 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Beyond Horizons</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Exo+2:wght@200;300;400;500;600&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #000; overflow: hidden; }
+    canvas { display: block; }
+
+    /* ─────────── MAIN MENU OVERLAY ─────────── */
+    #mainMenu {
+      position: fixed;
+      inset: 0;
+      z-index: 9999;
+      background: #05050f;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      font-family: 'Exo 2', system-ui, sans-serif;
+      color: #e8eef9;
+      overflow: hidden;
+      transition: opacity 0.9s ease, visibility 0.9s ease;
+    }
+    #mainMenu.hidden {
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+    }
+
+    /* Real Milky Way skybox background — same texture & camera as the 3D view */
+    #menuSky {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
+      z-index: 0;
+    }
+    /* Animated starfield twinkle layer */
+    #starField {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
+      z-index: 1;
+    }
+
+    /* Outer card holding the two halves */
+    .menuCard {
+      position: relative;
+      z-index: 2;
+      display: flex;
+      width: min(1280px, 92vw);
+      height: min(640px, 72vh);
+      border-radius: 24px;
+      overflow: hidden;
+      background: transparent;
+      border: 1px solid rgba(180, 205, 255, 0.16);
+      box-shadow:
+        0 0 60px rgba(80, 130, 220, 0.18),
+        0 0 140px rgba(40, 70, 140, 0.12),
+        inset 0 1px 0 rgba(255, 255, 255, 0.18),
+        inset 0 0 1px rgba(255, 255, 255, 0.12);
+    }
+
+    /* Left half — mini Three.js render */
+    .menuLeft {
+      position: relative;
+      flex: 1.05;
+      background: transparent;
+      overflow: hidden;
+      border-top-left-radius: 24px;
+      border-bottom-left-radius: 24px;
+    }
+    #miniSolar {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+    .leftBadge {
+      position: absolute;
+      top: 24px;
+      left: 24px;
+      z-index: 3;
+      font-family: 'Exo 2', sans-serif;
+    }
+    .leftBadge .badgeTitle {
+      font-size: 13px;
+      font-weight: 500;
+      letter-spacing: 0.28em;
+      text-transform: uppercase;
+      color: rgba(225, 235, 252, 0.92);
+      margin-bottom: 5px;
+      display: flex;
+      align-items: center;
+    }
+    .leftBadge .badgeTitle::before {
+      content: '';
+      display: inline-block;
+      width: 6px; height: 6px;
+      background: #6da8ff;
+      border-radius: 50%;
+      margin-right: 10px;
+      box-shadow: 0 0 8px #6da8ff;
+      animation: blinkBadge 2.4s ease-in-out infinite;
+    }
+    .leftBadge .badgeSub {
+      font-size: 10px;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: rgba(190, 210, 245, 0.55);
+      padding-left: 16px;
+    }
+    .leftBadge .badgeFact {
+      margin-top: 4px;
+      color: rgba(170, 195, 235, 0.42);
+    }
+    /* extra gap between the speed line and the first fact line */
+    .leftBadge .badgeSub:not(.badgeFact) + .badgeFact {
+      margin-top: 10px;
+    }
+    @keyframes blinkBadge {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.35; }
+    }
+
+    /* Right half — text content */
+    .menuRight {
+      flex: 1;
+      padding: 56px 56px 48px 56px;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-start;
+      position: relative;
+      /* Frost applies to the right (title) half only — the left mini-system
+         half stays sharp so the planets and sky read crisply. */
+      backdrop-filter: blur(3px) saturate(115%) brightness(1.04);
+      -webkit-backdrop-filter: blur(3px) saturate(115%) brightness(1.04);
+      background:
+        linear-gradient(135deg, rgba(180, 205, 255, 0.045) 0%, rgba(255, 255, 255, 0.008) 28%, rgba(10, 12, 30, 0) 58%),
+        linear-gradient(135deg, rgba(40, 55, 95, 0.004), rgba(10, 12, 30, 0.006));
+    }
+
+    .menuTitle {
+      margin-top: 8px;
+      font-family: 'Orbitron', sans-serif;
+      font-weight: 900;
+      font-size: clamp(36px, 4.2vw, 60px);
+      letter-spacing: 0.14em;
+      line-height: 1.05;
+      color: #ffffff;
+      text-shadow: 0 0 30px rgba(120, 170, 255, 0.25);
+      margin-bottom: 14px;
+    }
+    .menuTagline {
+      font-family: 'Exo 2', sans-serif;
+      font-weight: 300;
+      font-size: 14px;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: rgba(200, 215, 245, 0.55);
+      margin-bottom: 28px;
+    }
+
+    .statChips {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 28px;
+      flex-wrap: wrap;
+    }
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 14px;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(150, 180, 240, 0.22);
+      border-radius: 999px;
+      font-family: 'Exo 2', sans-serif;
+      font-size: 12px;
+      font-weight: 400;
+      letter-spacing: 0.08em;
+      color: rgba(220, 230, 250, 0.85);
+    }
+    .chip .chipIcon {
+      width: 12px; height: 12px;
+      opacity: 0.85;
+    }
+
+    .menuDescription {
+      font-family: 'Exo 2', sans-serif;
+      font-weight: 300;
+      font-style: italic;
+      font-size: 11px;
+      line-height: 1.45;
+      color: rgba(214, 224, 244, 0.82);
+      margin-bottom: 14px;
+      max-width: 470px;
+      border-left: 2px solid rgba(150, 180, 255, 0.3);
+      padding-left: 14px;
+    }
+    .menuDescription .quoteCite {
+      display: block;
+      margin-top: 6px;
+      font-style: normal;
+      font-size: 10px;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: rgba(180, 200, 240, 0.55);
+    }
+
+    .menuButtons {
+      display: flex;
+      gap: 14px;
+      margin-bottom: 36px;
+      flex-wrap: wrap;
+    }
+    .btnPrimary, .btnGhost {
+      font-family: 'Exo 2', sans-serif;
+      font-weight: 500;
+      font-size: 13px;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      padding: 14px 28px;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.25s ease;
+      background: transparent;
+    }
+    .btnPrimary {
+      color: #07101e;
+      background: linear-gradient(135deg, #b9d3ff 0%, #6da8ff 100%);
+      border: 1px solid rgba(180, 210, 255, 0.6);
+      box-shadow:
+        0 0 24px rgba(109, 168, 255, 0.45),
+        0 0 60px rgba(109, 168, 255, 0.2),
+        inset 0 1px 0 rgba(255, 255, 255, 0.4);
+    }
+    .btnPrimary:hover {
+      transform: translateY(-1px);
+      box-shadow:
+        0 0 32px rgba(109, 168, 255, 0.65),
+        0 0 80px rgba(109, 168, 255, 0.3),
+        inset 0 1px 0 rgba(255, 255, 255, 0.5);
+    }
+    .btnGhost {
+      color: rgba(220, 230, 250, 0.85);
+      border: 1px solid rgba(180, 200, 240, 0.32);
+    }
+    .btnGhost:hover {
+      border-color: rgba(180, 200, 240, 0.6);
+      background: rgba(255, 255, 255, 0.04);
+      color: #ffffff;
+    }
+
+    .creditLine {
+      position: absolute;
+      bottom: 22px;
+      left: 56px;
+      right: 56px;
+      font-family: 'Exo 2', sans-serif;
+      font-size: 10px;
+      letter-spacing: 0.3em;
+      text-transform: uppercase;
+      color: rgba(180, 195, 230, 0.32);
+    }
+
+    /* Bottom distance strip */
+    .distanceStrip {
+      position: relative;
+      z-index: 2;
+      margin-top: 14px;
+      width: min(1280px, 92vw);
+      height: 92px;
+      padding: 0 40px;
+      border-radius: 14px;
+      /* Same frosted-glass treatment as the main card */
+      background:
+        linear-gradient(135deg, rgba(180, 205, 255, 0.045) 0%, rgba(255, 255, 255, 0.008) 28%, rgba(10, 12, 30, 0) 58%),
+        linear-gradient(135deg, rgba(40, 55, 95, 0.004), rgba(10, 12, 30, 0.006));
+      border: 1px solid rgba(180, 205, 255, 0.16);
+      backdrop-filter: blur(3px) saturate(115%) brightness(1.04);
+      -webkit-backdrop-filter: blur(3px) saturate(115%) brightness(1.04);
+      display: flex;
+      align-items: center;
+      box-shadow:
+        0 0 60px rgba(80, 130, 220, 0.18),
+        0 0 140px rgba(40, 70, 140, 0.12),
+        inset 0 1px 0 rgba(255, 255, 255, 0.18),
+        inset 0 0 1px rgba(255, 255, 255, 0.12);
+    }
+    .stripInner {
+      position: relative;
+      width: 100%;
+      height: 100%;
+    }
+    .stripLine {
+      position: absolute;
+      left: 0; right: 0;
+      top: 36px;
+      transform: translateY(-50%);
+      height: 1px;
+      background: linear-gradient(90deg,
+        rgba(180, 200, 240, 0) 0%,
+        rgba(180, 200, 240, 0.45) 8%,
+        rgba(180, 200, 240, 0.45) 92%,
+        rgba(180, 200, 240, 0) 100%);
+    }
+    .stripPlanet {
+      position: absolute;
+      top: 36px;
+      transform: translate(-50%, -50%);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+    }
+    .stripDot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #cfe0ff;
+      box-shadow: 0 0 8px rgba(180, 210, 255, 0.8);
+    }
+    .stripDot.sun {
+      width: 14px; height: 14px;
+      background: radial-gradient(circle, #ffe9b3 0%, #ffb84d 70%);
+      box-shadow: 0 0 14px rgba(255, 200, 100, 0.8);
+    }
+    .stripLabel {
+      position: absolute;
+      top: 14px;
+      left: 50%;
+      transform: translateX(-50%);
+      text-align: center;
+      font-family: 'Exo 2', sans-serif;
+      font-size: 8px;
+      font-weight: 400;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: rgba(200, 215, 245, 0.65);
+      white-space: nowrap;
+      line-height: 1.5;
+    }
+    .stripLabel .stripAu {
+      display: block;
+      font-size: 7.5px;
+      letter-spacing: 0.02em;
+      text-transform: none;
+      color: rgba(170, 195, 235, 0.45);
+    }
+    /* Hover/selected feedback on each planet in the strip */
+    .stripPlanet { cursor: pointer; }
+    .stripPlanet .stripLabel,
+    .stripPlanet .stripDot { transition: all 0.2s ease; }
+    .stripPlanet:hover .stripLabel,
+    .stripPlanet.selected .stripLabel {
+      color: #ffffff;
+      text-shadow: 0 0 10px rgba(180, 210, 255, 0.85);
+    }
+    .stripPlanet:hover .stripLabel .stripAu,
+    .stripPlanet.selected .stripLabel .stripAu {
+      color: rgba(220, 232, 252, 0.85);
+    }
+    .stripPlanet:hover .stripDot {
+      box-shadow: 0 0 14px rgba(210, 230, 255, 1);
+      transform: scale(1.25);
+    }
+    /* Glowing white V (chevron) that points down at the selected planet */
+    .stripPointer {
+      position: absolute;
+      top: 14px;
+      width: 9px;
+      height: 9px;
+      border-right: 2px solid #ffffff;
+      border-bottom: 2px solid #ffffff;
+      transform: translate(-50%, -50%) rotate(45deg);
+      filter: drop-shadow(0 0 6px rgba(255, 255, 255, 0.95));
+      opacity: 0;
+      pointer-events: none;
+      transition: left 0.35s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.25s ease;
+    }
+    .stripPointer.visible {
+      opacity: 1;
+      animation: pointerBob 1.6s ease-in-out infinite;
+    }
+    @keyframes pointerBob {
+      0%, 100% { top: 14px; }
+      50% { top: 18px; }
+    }
+    /* Glowing white ring that encircles the selected body in the mini 3D scene */
+    #miniPointer {
+      position: absolute;
+      border: 2px solid #ffffff;
+      border-radius: 50%;
+      box-sizing: border-box;
+      box-shadow: 0 0 9px rgba(255, 255, 255, 0.9), inset 0 0 7px rgba(255, 255, 255, 0.45);
+      transform: translate(-50%, -50%);
+      opacity: 0;
+      pointer-events: none;
+      z-index: 4;
+      transition: opacity 0.2s ease;
+    }
+    #miniPointer.visible { opacity: 1; }
+    /* Top-left heading for the distance scale */
+    .stripTitle {
+      position: absolute;
+      top: 6px;
+      left: 0;
+      font-family: 'Exo 2', sans-serif;
+      font-size: 9px;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      color: rgba(200, 215, 245, 0.6);
+    }
+    /* Bottom-left unit definition */
+    .stripLegend {
+      position: absolute;
+      bottom: 4px;
+      left: 0;
+      font-family: 'Exo 2', sans-serif;
+      font-size: 8.5px;
+      letter-spacing: 0.06em;
+      color: rgba(170, 195, 235, 0.4);
+    }
+
+    @media (max-width: 900px) {
+      .menuCard { flex-direction: column; height: auto; }
+      .menuLeft { height: 240px; border-radius: 24px 24px 0 0; }
+      .menuRight { padding: 32px; }
+      .creditLine { position: static; margin-top: 12px; }
+    }
+
+    /* Floating "Main Menu" return button (shown while inside the app) */
+    #returnToMenuBtn {
+      position: fixed;
+      bottom: 20px;
+      left: 20px;
+      z-index: 500;
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      padding: 9px 16px 9px 13px;
+      background: rgba(10, 14, 28, 0.55);
+      color: rgba(220, 230, 250, 0.88);
+      border: 1px solid rgba(150, 180, 255, 0.28);
+      border-radius: 999px;
+      backdrop-filter: blur(10px) saturate(140%);
+      -webkit-backdrop-filter: blur(10px) saturate(140%);
+      cursor: pointer;
+      font-family: 'Exo 2', system-ui, sans-serif;
+      font-size: 11px;
+      font-weight: 500;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      box-shadow: 0 0 18px rgba(80, 130, 220, 0.18);
+      transition: background 0.2s ease, border-color 0.2s ease,
+                  color 0.2s ease, transform 0.2s ease,
+                  box-shadow 0.2s ease;
+    }
+    #returnToMenuBtn:hover {
+      background: rgba(30, 55, 110, 0.6);
+      border-color: rgba(180, 210, 255, 0.55);
+      color: #ffffff;
+      transform: translateY(-1px);
+      box-shadow: 0 0 24px rgba(109, 168, 255, 0.4);
+    }
+    #returnToMenuBtn svg {
+      width: 14px;
+      height: 14px;
+      opacity: 0.85;
+    }
+  </style>
+</head>
+<body>
+
+<!-- ─────────── MAIN MENU OVERLAY ─────────── -->
+<div id="mainMenu">
+  <canvas id="menuSky"></canvas>
+  <canvas id="starField"></canvas>
+
+  <div class="menuCard">
+    <div class="menuLeft">
+      <div class="leftBadge">
+        <div class="badgeTitle">The Solar System</div>
+        <div class="badgeSub" id="miniSpeedLabel">— × real-life orbital speed</div>
+        <div class="badgeSub badgeFact">Age · 4.568 billion years</div>
+        <div class="badgeSub badgeFact">Formed ≈ 9.2 billion years after the Big Bang</div>
+      </div>
+      <canvas id="miniSolar"></canvas>
+    </div>
+
+    <div class="menuRight">
+      <h1 class="menuTitle">Beyond<br>Horizons</h1>
+      <div class="menuTagline">Scientific knowledge, made explorable</div>
+
+      <div class="statChips">
+        <div class="chip">
+          <svg class="chipIcon" viewBox="0 0 12 12"><circle cx="6" cy="6" r="3" fill="#cfe0ff"/><circle cx="6" cy="6" r="5" fill="none" stroke="#6da8ff" stroke-width="0.7"/></svg>
+          8 Planets
+        </div>
+        <div class="chip">
+          <svg class="chipIcon" viewBox="0 0 12 12"><ellipse cx="6" cy="6" rx="5" ry="2" fill="none" stroke="#cfe0ff" stroke-width="0.8"/><circle cx="6" cy="6" r="1.4" fill="#cfe0ff"/></svg>
+          1 Galaxy
+        </div>
+        <div class="chip">
+          <svg class="chipIcon" viewBox="0 0 12 12"><path d="M2 6 Q4 2 6 6 T10 6" fill="none" stroke="#cfe0ff" stroke-width="0.9"/></svg>
+          ∞ Discovery
+        </div>
+      </div>
+
+      <p class="menuDescription">&ldquo;The size and age of the Cosmos are beyond ordinary human understanding. Lost somewhere between immensity and eternity is our tiny planetary home.<br>In a cosmic perspective, most human concerns seem insignificant, even petty. And yet our species is young and curious and brave and shows much promise.&rdquo;<span class="quoteCite">— Carl Sagan</span></p>
+
+      <div class="menuButtons">
+        <button class="btnPrimary" id="btnEnter">Enter Simulation</button>
+        <button class="btnGhost" id="btnGalaxy">Explore the Galaxy</button>
+      </div>
+
+      <div class="creditLine">A Beyond Horizons experience · Built with Three.js</div>
+    </div>
+  </div>
+
+  <div class="distanceStrip">
+    <div class="stripInner" id="stripInner">
+      <div class="stripLine"></div>
+      <div class="stripTitle">Relative distance of each planet from the Sun</div>
+      <div class="stripLegend">AU = astronomical unit&nbsp;&nbsp;·&nbsp;&nbsp;1 AU = 149,597,871 km</div>
+    </div>
+  </div>
+</div>
+
+<!-- RETURN-TO-MENU BUTTON (always visible while inside the app) -->
+<button id="returnToMenuBtn" title="Return to main menu">
+  <svg viewBox="0 0 16 16" aria-hidden="true">
+    <path d="M9.5 3 L4.5 8 L9.5 13" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M4.8 8 L13 8" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+  </svg>
+  <span>Main Menu</span>
+</button>
+
+<!-- INFO PANEL -->
+<div id="panel" style="
+position:absolute; right:20px; top:20px;
+width:260px; background:rgba(0,0,0,0.65);
+color:white; padding:15px; display:none;
+line-height:1.5;
+overflow-y:auto;
+max-height:80vh;
+font-family: sans-serif;">
+  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+    <span id="backToList" style="
+      cursor:pointer;
+      font-size:12px;
+      opacity:0.7;
+      display:none;
+      border: 1px solid rgba(255,255,255,0.4);
+      padding: 2px 8px;
+      border-radius:4px;
+    ">← Back</span>
+    <span style="flex:1"></span>
+    <span id="closePanel" style="
+      cursor:pointer;
+      font-size:18px;
+      opacity:0.7;
+      line-height:1;
+    ">✕</span>
+  </div>
+  <div id="panelContent"></div>
+</div>
+
+<!-- SPEED CONTROL -->
+<div id="speedPanel" style="position:absolute; left:20px; top:20px; color:white; font-family: sans-serif;">
+Speed<br>
+<input id="speed" type="range" min="-4" max="4" step="0.01" value="-4" list="speedTicks">
+<datalist id="speedTicks">
+  <option value="-4"></option>
+  <option value="-3"></option>
+  <option value="-2"></option>
+  <option value="-1"></option>
+  <option value="0"></option>
+  <option value="1"></option>
+  <option value="2"></option>
+  <option value="3"></option>
+  <option value="4"></option>
+</datalist>
+<br>
+<div style="display:flex; align-items:center; gap:8px; margin-top:4px;">
+  <div id="speedLabel" style="font-size:12px; opacity:0.85;"></div>
+  <button id="resetSpeed" style="
+    background: rgba(255,255,255,0.15);
+    color: white;
+    border: 1px solid rgba(255,255,255,0.4);
+    padding: 3px 8px;
+    cursor: pointer;
+    border-radius: 4px;
+    font-size: 11px;
+  ">1×</button>
+</div>
+<br>
+<button id="toggleOrbits" style="
+  background: rgba(255,255,255,0.15);
+  color: white;
+  border: 1px solid rgba(255,255,255,0.4);
+  padding: 6px 12px;
+  cursor: pointer;
+  border-radius: 4px;
+  font-size: 13px;
+">Hide Orbits</button>
+<br><br>
+<button id="toggleList" style="
+  background: rgba(255,255,255,0.15);
+  color: white;
+  border: 1px solid rgba(255,255,255,0.4);
+  padding: 6px 12px;
+  cursor: pointer;
+  border-radius: 4px;
+  font-size: 13px;
+">Show Bodies</button>
+<br><br>
+<div id="simTimeBlock">
+<div style="font-size:11px; opacity:0.6; margin-bottom:2px; text-transform:uppercase; letter-spacing:0.05em;">Simulation Time</div>
+<div id="simDate" style="font-size:13px; font-weight:bold; margin-bottom:1px;"></div>
+<div id="simTime" style="font-size:12px; opacity:0.75; margin-bottom:8px;"></div>
+<button id="resetTime" style="
+  background: rgba(255,255,255,0.15);
+  color: white;
+  border: 1px solid rgba(255,255,255,0.4);
+  padding: 6px 12px;
+  cursor: pointer;
+  border-radius: 4px;
+  font-size: 13px;
+">Reset to Now</button>
+<br><br>
+</div>
+<button id="galacticBtn" style="
+  background: rgba(100,150,255,0.2);
+  color: white;
+  border: 1px solid rgba(100,150,255,0.5);
+  padding: 6px 12px;
+  cursor: pointer;
+  border-radius: 4px;
+  font-size: 13px;
+">Galactic View</button>
+
+<button id="solarSystemBtn" onclick="flyToSolarSystem()" style="
+  display: none;
+  background: rgba(255,200,50,0.2);
+  color: white;
+  border: 1px solid rgba(255,200,50,0.5);
+  padding: 6px 12px;
+  cursor: pointer;
+  border-radius: 4px;
+  font-size: 13px;
+  width: 100%;
+  margin-top: 4px;
+">The Solar System</button>
+
+<button id="milkyWayBtn" onclick="flyToMilkyWay()" style="
+  display: none;
+  background: rgba(100,180,255,0.2);
+  color: white;
+  border: 1px solid rgba(100,180,255,0.5);
+  padding: 6px 12px;
+  cursor: pointer;
+  border-radius: 4px;
+  font-size: 13px;
+  width: 100%;
+  margin-top: 4px;
+">The Milky Way Galaxy</button>
+
+<button id="otherGalaxiesBtn" style="
+  display: none;
+  background: rgba(255,160,80,0.2);
+  color: white;
+  border: 1px solid rgba(255,160,80,0.5);
+  padding: 6px 12px;
+  cursor: pointer;
+  border-radius: 4px;
+  font-size: 13px;
+  width: 100%;
+  margin-top: 4px;
+">The Kepler-22 System</button>
+
+<button id="andromedaBtn" style="
+  display: none;
+  background: rgba(180,140,255,0.2);
+  color: white;
+  border: 1px solid rgba(180,140,255,0.5);
+  padding: 6px 12px;
+  cursor: pointer;
+  border-radius: 4px;
+  font-size: 13px;
+  width: 100%;
+  margin-top: 4px;
+">The Andromeda Galaxy</button>
+</div>
+
+<!-- Spaceship Earth legend panel -->
+<div id="spaceshipLegend" style="
+  display: none;
+  position: absolute;
+  bottom: 24px;
+  right: 24px;
+  background: rgba(10,5,20,0.88);
+  color: #ddeeff;
+  font-family: monospace;
+  font-size: 13px;
+  padding: 16px 20px;
+  border-radius: 8px;
+  border: 1px solid rgba(180,100,255,0.4);
+  line-height: 1.9;
+">
+  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+    <div style="font-size:14px; font-weight:bold; color:#cc99ff;">&#127758; Spaceship Earth</div>
+    <button id="seBackBtn" onclick="spaceshipBackBtn()" style="
+      background: rgba(255,255,255,0.12);
+      color: white;
+      border: 1px solid rgba(255,255,255,0.3);
+      padding: 3px 10px;
+      cursor: pointer;
+      border-radius: 4px;
+      font-size: 12px;
+    ">&#8592; Solar System</button>
+  </div>
+  <div style="border-top:1px solid rgba(255,255,255,0.15); margin-bottom:8px;"></div>
+  <div style="font-size:15px; margin-bottom:6px;">
+    Years elapsed: <b id="seYearDisplay" style="color:#33ccff;">0.0</b>
+  </div>
+  <button id="seResetBtn" style="
+    background: rgba(255,255,255,0.12);
+    color: white;
+    border: 1px solid rgba(255,255,255,0.3);
+    padding: 4px 12px;
+    cursor: pointer;
+    border-radius: 4px;
+    font-size: 12px;
+    margin-bottom: 10px;
+  ">Reset to start</button>
+  <div style="border-top:1px solid rgba(255,255,255,0.1); margin-bottom:8px;"></div>
+  <div><span style="color:#888;">&#9312;</span> Earth spin &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<b>1,670 km/h</b></div>
+  <div><span style="color:#4af;">&#9313;</span> Earth orbits Sun &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<b>108,000 km/h</b> &nbsp;<span style="opacity:0.6;">(23.4° tilt)</span></div>
+  <div><span style="color:#afa;">&#9314;</span> Toward Vega (solar apex) &nbsp;<b>70,000 km/h</b></div>
+  <div><span style="color:#55f;">&#9315;</span> Galactic orbit &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<b>792,000 km/h</b> &nbsp;<span style="opacity:0.6;">(CW, 60° tilt)</span></div>
+  <div><span style="color:#f8f;">&#9316;</span> Toward Great Attractor &nbsp;<b>2,100,000 km/h</b></div>
+</div>
+
+<div id="galacticLegend" style="
+  display: none;
+  position: absolute;
+  top: 8px;
+  right: 20px;
+  background: rgba(5,10,30,0.88);
+  color: #ddeeff;
+  font-family: monospace;
+  font-size: 13px;
+  padding: 16px 20px;
+  border-radius: 8px;
+  border: 1px solid rgba(100,150,255,0.4);
+  line-height: 1.9;
+  width: 200px;
+  box-sizing: border-box;
+">
+  <div id="galLegendHeader" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; cursor:grab; user-select:none;">
+    <div style="font-size:14px; font-weight:bold; color:#88aaff;">&#127757; Galaxy Edit</div>
+    <div style="display:flex; gap:4px;">
+      <button onclick="returnToMainMenu()" style="
+        background: rgba(255,255,255,0.12);
+        color: white;
+        border: 1px solid rgba(255,255,255,0.3);
+        padding: 3px 8px;
+        cursor: pointer;
+        border-radius: 4px;
+        font-size: 11px;
+      ">&#8592; Solar System</button>
+      <button onclick="collapseGalacticLegend()" style="
+        background: rgba(255,255,255,0.1);
+        color: rgba(255,255,255,0.7);
+        border: 1px solid rgba(255,255,255,0.25);
+        padding: 3px 7px;
+        cursor: pointer;
+        border-radius: 4px;
+        font-size: 13px;
+        line-height: 1;
+      ">&#x2715;</button>
+    </div>
+  </div>
+  <div style="border-top:1px solid rgba(255,255,255,0.15); margin-bottom:10px;"></div>
+  <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
+    <input id="galSpeed" type="range" min="-4" max="4" step="0.01" value="-4"
+      list="galSpeedTicks" style="width:130px;">
+    <datalist id="galSpeedTicks">
+      <option value="-4"></option>
+      <option value="-2"></option>
+      <option value="0"></option>
+      <option value="2"></option>
+      <option value="4"></option>
+    </datalist>
+  </div>
+  <div id="galSpeedLabel" style="font-size:12px; color:#aaccff; margin-bottom:4px;"></div>
+  <div id="galElapsedLabel" style="font-size:12px; color:#ffcc88; margin-bottom:6px;">Elapsed: 0 Myr</div>
+  <div style="font-size:11px; opacity:0.5; margin-bottom:10px;">1 galactic orbit = 225 Myr · 1 Earth orbit = 1 yr = 10⁻⁶ Myr</div>
+  <button id="galEarthTrailBtn" style="
+    background: rgba(51,204,255,0.15);
+    color: #33ccff;
+    border: 1px solid rgba(51,204,255,0.4);
+    padding: 5px 14px;
+    cursor: pointer;
+    border-radius: 4px;
+    font-size: 12px;
+    width: 100%;
+    margin-bottom: 4px;
+  ">Hide Earth Trail</button>
+  <button id="galSunTrailBtn" style="
+    background: rgba(255,204,68,0.15);
+    color: #ffcc44;
+    border: 1px solid rgba(255,204,68,0.4);
+    padding: 5px 14px;
+    cursor: pointer;
+    border-radius: 4px;
+    font-size: 12px;
+    width: 100%;
+    margin-bottom: 6px;
+  ">Hide Sun Trail</button>
+  <button id="galGridBtn" style="
+    background: rgba(68,153,204,0.15);
+    color: #66bbdd;
+    border: 1px solid rgba(68,153,204,0.4);
+    padding: 5px 14px;
+    cursor: pointer;
+    border-radius: 4px;
+    font-size: 12px;
+    width: 100%;
+    margin-bottom: 4px;
+  ">Hide Grid &amp; Plane</button>
+  <button id="galResetBtn" style="
+    background: rgba(255,255,255,0.12);
+    color: white;
+    border: 1px solid rgba(255,255,255,0.3);
+    padding: 5px 14px;
+    cursor: pointer;
+    border-radius: 4px;
+    font-size: 12px;
+    width: 100%;
+    margin-bottom: 6px;
+  ">Reset to Start</button>
+  <button id="seFromGalBtn" style="
+    background: rgba(180,100,255,0.2);
+    color: #cc99ff;
+    border: 1px solid rgba(180,100,255,0.5);
+    padding: 5px 14px;
+    cursor: pointer;
+    border-radius: 4px;
+    font-size: 12px;
+    width: 100%;
+  ">Spaceship Earth &#8594;</button>
+  <div id="galLegendResizeGrip" style="
+    position: absolute;
+    bottom: 0;
+    right: 0;
+    width: 16px;
+    height: 16px;
+    cursor: nwse-resize;
+    border-bottom: 2px solid rgba(100,150,255,0.5);
+    border-right: 2px solid rgba(100,150,255,0.5);
+    border-radius: 0 0 7px 0;
+  "></div>
+</div>
+
+<div id="galacticLegendCollapsed" onclick="expandGalacticLegend()" style="
+  display: none;
+  position: absolute;
+  top: 8px;
+  right: 20px;
+  background: rgba(5,10,30,0.88);
+  color: #88aaff;
+  font-family: monospace;
+  font-size: 12px;
+  padding: 6px 16px;
+  border-radius: 20px;
+  border: 1px solid rgba(100,150,255,0.4);
+  cursor: pointer;
+  user-select: none;
+">Show Galaxy Edit Bar</div>
+
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128/examples/js/controls/OrbitControls.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128/examples/js/loaders/GLTFLoader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128/examples/js/shaders/CopyShader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128/examples/js/shaders/LuminosityHighPassShader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128/examples/js/postprocessing/EffectComposer.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128/examples/js/postprocessing/RenderPass.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128/examples/js/postprocessing/ShaderPass.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128/examples/js/postprocessing/UnrealBloomPass.js"></script>
+
+<script type="module" src="./src/main.js"></script>
+
+</body>
+</html>
