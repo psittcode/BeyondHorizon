@@ -1142,9 +1142,27 @@ function minDotScale(obj, trueRadius) {
   obj.scale.setScalar(s);
   return s;
 }
+// Sun glow (NASA Eyes style): the Sun's glow is intense, so when it shrinks to a
+// dot far away we keep a big, bright fixed-pixel halo so it still reads as a
+// blazing point. As you zoom in, the halo shrinks to a thin rim around the disc
+// and fades, so the surface texture (granulation, sunspots) shows through.
+const SUN_GLOW_FAR_PX  = 34;   // halo radius (px) when the Sun is a distant point
+const SUN_GLOW_RIM_MUL = 1.5;  // halo radius as a multiple of the disc when zoomed in
+function updateSunGlow() {
+  const tanHalf = Math.tan((camera.fov * Math.PI / 180) / 2);
+  const dSun = camera.position.length();           // Sun sits at the origin
+  const worldPerPx = (2 * dSun * tanHalf) / window.innerHeight;
+  const sunPx = sun.userData.trueRadius / worldPerPx; // true on-screen radius of the disc
+  const glowPx = Math.max(SUN_GLOW_FAR_PX, SUN_GLOW_RIM_MUL * sunPx);
+  glowMesh.scale.setScalar(glowPx * worldPerPx * 2);  // sprite width ≈ glow diameter
+  // Intense when the disc is small (far), soft once the disc is large (close) so
+  // the texture isn't washed out by additive glow.
+  const closeness = Math.min(1, sunPx / SUN_GLOW_FAR_PX);
+  glowMesh.material.opacity = 1.0 - 0.7 * closeness;  // 1.0 far → 0.3 close
+}
 function applyMinDots() {
-  const sunS = minDotScale(sun, sun.userData.trueRadius);
-  glowMesh.scale.setScalar(sun.userData.trueRadius * sunS * 3.0); // halo tracks the Sun's apparent size
+  minDotScale(sun, sun.userData.trueRadius);
+  updateSunGlow();
   meshes.forEach(m => minDotScale(m, m.userData.size));
   if (moon) minDotScale(moon, moon.userData.trueRadius);
   jupiterMoons.forEach(jm => minDotScale(jm.mesh, jm.mesh.userData.trueRadius));
