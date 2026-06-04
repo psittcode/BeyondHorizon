@@ -1142,23 +1142,30 @@ function minDotScale(obj, trueRadius) {
   obj.scale.setScalar(s);
   return s;
 }
-// Sun glow (NASA Eyes style). The glow tracks the Sun's apparent size so it grows
-// as you zoom out — BUT it's capped at a maximum WORLD size, reached about when
-// Mercury comes into view. Past that, the glow is a fixed-size object that shrinks
-// on screen with the rest of the system (instead of a fixed pixel size that would
-// engulf everything when zoomed way out). Always clearly present; eased back only
-// when the disc is large on screen (zoomed in) so the surface texture reads.
-const SUN_GLOW_MUL       = 3.5;   // glow radius as a multiple of the Sun's apparent radius
-const SUN_GLOW_MAX_WORLD = 0.22;  // cap on glow radius (world units) — ~the size it reaches when Mercury appears
+// Sun glow (NASA Eyes style). The glow ball keeps a fixed on-screen size as you
+// zoom out (a bright point that doesn't grow) — but its OPACITY fades slowly with
+// distance, the way a real light source dims with range, so it never looks like a
+// solid ball engulfing the system. When zoomed right in it becomes a rim around
+// the disc and eases back so the surface texture reads through it.
+const SUN_GLOW_FAR_PX    = 34;    // glow ball radius (px) when the Sun is far — stays this size as you zoom out
+const SUN_GLOW_RIM_MUL   = 1.5;   // glow radius as a multiple of the disc when zoomed right in
+const SUN_GLOW_FADE_NEAR = 15;    // distance (units) where the far-fade begins
+const SUN_GLOW_FADE_FAR  = 340;   // distance (units) where the far-fade reaches its floor
+const SUN_GLOW_FADE_MIN  = 0.12;  // opacity floor when very far away
 function updateSunGlow() {
   const tanHalf = Math.tan((camera.fov * Math.PI / 180) / 2);
-  const worldPerPx = (2 * camera.position.length() * tanHalf) / window.innerHeight; // Sun is at the origin
-  const sunApparentWorld = Math.max(sun.userData.trueRadius, MIN_DOT_PX * worldPerPx);
-  const glowWorld = Math.min(SUN_GLOW_MAX_WORLD, SUN_GLOW_MUL * sunApparentWorld);
-  glowMesh.scale.setScalar(glowWorld * 2); // sprite width ≈ glow diameter
+  const dSun = camera.position.length();           // Sun sits at the origin
+  const worldPerPx = (2 * dSun * tanHalf) / window.innerHeight;
   const sunPx = sun.userData.trueRadius / worldPerPx; // true on-screen disc radius
-  const closeness = Math.min(1, Math.max(0, (sunPx - 30) / 200));
-  glowMesh.material.opacity = 1.0 - 0.4 * closeness;  // 1.0 far → 0.6 when zoomed right in
+  // Size: fixed-pixel ball when far, a rim around the disc when zoomed in.
+  const glowPx = Math.max(SUN_GLOW_FAR_PX, SUN_GLOW_RIM_MUL * sunPx);
+  glowMesh.scale.setScalar(glowPx * worldPerPx * 2);
+  // Opacity: ease back when zoomed right in (so the texture reads), and fade
+  // slowly with distance as you zoom out, the way a light source dims with range.
+  const closeOpacity = 1.0 - 0.7 * Math.min(1, sunPx / SUN_GLOW_FAR_PX);
+  const t = Math.min(1, Math.max(0, (dSun - SUN_GLOW_FADE_NEAR) / (SUN_GLOW_FADE_FAR - SUN_GLOW_FADE_NEAR)));
+  const farFade = 1 - (1 - SUN_GLOW_FADE_MIN) * t;
+  glowMesh.material.opacity = closeOpacity * farFade;
 }
 function applyMinDots() {
   minDotScale(sun, sun.userData.trueRadius);
