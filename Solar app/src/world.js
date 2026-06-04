@@ -1554,17 +1554,16 @@ function resetSimulation() {
     ringUniforms.saturnPos.value.copy(saturnMesh.position);
   }
 
-  // Orient Earth so Japan (135°E) faces the sun at the correct UTC time.
-  // At UTC noon, Greenwich (0°) faces the sun.  Sub-solar longitude:
-  //   SSP = (12 − utcHours) × 15°
-  // Earth's texture: Greenwich faces +X at rotation.y = 0.
-  // For longitude L to face sun (at world angle = orbitalAngle + π):
-  //   rotation.y = orbitalAngle + π + SSP_rad
+  // Orient Earth so the sub-solar point sits at longitude (12 − UTC)×15°E.
+  // Three.js sphere UVs put Greenwich at +X when rotation.y=0, and a +Y turn maps
+  // azimuth φ→φ−R, so the correct orientation is:
+  //   rotation.y = −(orbitalAngle + π) − SSP_rad
+  // (animate() recomputes this every frame; this just pre-seeds it on reset.)
   const earthMesh = meshes.find(m => m.userData.name === 'Earth');
   if (earthMesh) {
     const utcH = now.getUTCHours() + now.getUTCMinutes() / 60 + now.getUTCSeconds() / 3600;
     const sspRad = (12 - utcH) * (Math.PI / 12);
-    earthMesh.rotation.y = earthMesh.userData.angle + Math.PI + sspRad;
+    earthMesh.rotation.y = -(earthMesh.userData.angle + Math.PI) - sspRad;
     cloudMesh.rotation.y = earthMesh.rotation.y;
   }
 
@@ -2925,7 +2924,19 @@ function animate(){
       m.rotation.z = 177 * (Math.PI / 180);
     }
     if (m.userData.name === "Earth") {
-      m.rotation.y += 0.01212 * speed * deltaScale;
+      // Orient Earth from the simulation clock so the day/night terminator tracks
+      // the real time-of-day instead of free-running (which drifts off real time).
+      // Sub-solar longitude = (12 − UTC hours)×15°; same formula resetSimulation()
+      // and the Spaceship-Earth view use. Advances naturally when time is sped up,
+      // since simulationDate advances faster.
+      const utcH = simulationDate.getUTCHours()
+                 + simulationDate.getUTCMinutes() / 60
+                 + simulationDate.getUTCSeconds() / 3600;
+      // Three.js sphere UVs: Greenwich faces +X at rotation.y=0 and a +Y turn maps
+      // surface azimuth φ→φ−R, so to put sub-solar longitude (12−UTC)×15°E onto the
+      // Sun (which lies at world azimuth angle+π from Earth):
+      //   rotation.y = −(angle + π) − (12 − UTC)·15°
+      m.rotation.y = -(m.userData.angle + Math.PI) - (12 - utcH) * (Math.PI / 12);
       m.rotation.z = 23.4 * (Math.PI / 180);
       cloudMesh.rotation.y += 0.01224 * speed * deltaScale;
     }
