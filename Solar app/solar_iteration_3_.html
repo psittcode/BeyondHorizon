@@ -4218,6 +4218,102 @@ let andromedaCamera     = null;
 let andromedaControls   = null;
 let andromedaGalaxyPivot = null;  // spins the galaxy (model + disc) slowly
 let andromedaRadius      = 3780;  // galaxy visual radius (refined once the GLB loads)
+let andromedaStarfield   = null;  // custom procedural star field (replaces the 8K skybox)
+
+// Build a custom, resolution-independent star field: thousands of additive,
+// soft-edged star points (varied colour/size, with a denser galactic band) plus a
+// few faint coloured nebula clouds for depth. Because the stars are GL points with
+// a smooth sprite they stay crisp at any zoom — no fixed-resolution image to soften.
+function buildAndromedaStarfield() {
+  const group = new THREE.Group();
+  const R = SKYBOX_RADIUS * 0.9;
+
+  // Soft round star sprite (radial gradient → glowing dot, not a square)
+  const sc = document.createElement('canvas'); sc.width = sc.height = 64;
+  const sx = sc.getContext('2d');
+  const sg = sx.createRadialGradient(32, 32, 0, 32, 32, 32);
+  sg.addColorStop(0.00, 'rgba(255,255,255,1)');
+  sg.addColorStop(0.25, 'rgba(255,255,255,0.85)');
+  sg.addColorStop(0.55, 'rgba(255,255,255,0.25)');
+  sg.addColorStop(1.00, 'rgba(255,255,255,0)');
+  sx.fillStyle = sg; sx.fillRect(0, 0, 64, 64);
+  const starTex = new THREE.CanvasTexture(sc);
+
+  const COUNT = 16000;
+  const pos = new Float32Array(COUNT * 3);
+  const col = new Float32Array(COUNT * 3);
+  const siz = new Float32Array(COUNT);
+  // Stellar colours: weighted toward white, with blue, yellow, orange and red
+  const palette = [
+    [1.00, 1.00, 1.00], [1.00, 1.00, 1.00], [1.00, 1.00, 1.00], [0.96, 0.98, 1.00],
+    [0.74, 0.83, 1.00], [0.60, 0.72, 1.00],
+    [1.00, 0.96, 0.82], [1.00, 0.86, 0.62], [1.00, 0.72, 0.62],
+  ];
+  for (let i = 0; i < COUNT; i++) {
+    // Uniform on a sphere, but pull ~45% of stars toward y≈0 for a faint band
+    let u = Math.random() * 2 - 1;
+    if (Math.random() < 0.45) u *= 0.16;
+    const th = Math.random() * Math.PI * 2;
+    const s = Math.sqrt(Math.max(0, 1 - u * u));
+    const rr = R * (0.95 + Math.random() * 0.1);
+    pos[i*3]     = s * Math.cos(th) * rr;
+    pos[i*3 + 1] = u * rr;
+    pos[i*3 + 2] = s * Math.sin(th) * rr;
+    const c = palette[(Math.random() * palette.length) | 0];
+    const b = 0.55 + Math.random() * 0.45;
+    col[i*3] = c[0]*b; col[i*3+1] = c[1]*b; col[i*3+2] = c[2]*b;
+    const r = Math.random();
+    siz[i] = r < 0.86 ? (1.0 + Math.random()*1.8)
+           : r < 0.985 ? (3.0 + Math.random()*2.6)
+                        : (6.5 + Math.random()*4.5); // a few bright beacons
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  geo.setAttribute('color',    new THREE.BufferAttribute(col, 3));
+  geo.setAttribute('size',     new THREE.BufferAttribute(siz, 1));
+  const mat = new THREE.ShaderMaterial({
+    uniforms: { uTex: { value: starTex }, uPix: { value: Math.min(window.devicePixelRatio || 1, 2) } },
+    vertexShader: `
+      attribute float size; attribute vec3 color; varying vec3 vColor; uniform float uPix;
+      void main(){ vColor = color; gl_PointSize = size * uPix;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+    fragmentShader: `
+      uniform sampler2D uTex; varying vec3 vColor;
+      void main(){ vec4 t = texture2D(uTex, gl_PointCoord); if (t.a < 0.01) discard;
+        gl_FragColor = vec4(vColor * t.rgb, t.a); }`,
+    transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, depthTest: false
+  });
+  const stars = new THREE.Points(geo, mat);
+  stars.frustumCulled = false;
+  stars.renderOrder = -2;
+  group.add(stars);
+
+  // Faint coloured nebula clouds for depth and colour
+  const nebColors = ['80,120,255', '150,90,230', '60,180,200', '220,90,180', '90,140,255', '120,80,210'];
+  for (let n = 0; n < 8; n++) {
+    const nc = document.createElement('canvas'); nc.width = nc.height = 256;
+    const nx = nc.getContext('2d');
+    const cc = nebColors[n % nebColors.length];
+    const ng = nx.createRadialGradient(128, 128, 0, 128, 128, 128);
+    ng.addColorStop(0.0, 'rgba(' + cc + ',0.55)');
+    ng.addColorStop(0.4, 'rgba(' + cc + ',0.18)');
+    ng.addColorStop(1.0, 'rgba(' + cc + ',0)');
+    nx.fillStyle = ng; nx.fillRect(0, 0, 256, 256);
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: new THREE.CanvasTexture(nc), transparent: true,
+      blending: THREE.AdditiveBlending, depthWrite: false, depthTest: false,
+      opacity: 0.10 + Math.random() * 0.12
+    }));
+    let u = Math.random() * 2 - 1; const th = Math.random() * Math.PI * 2;
+    const s = Math.sqrt(Math.max(0, 1 - u * u));
+    sp.position.set(s * Math.cos(th) * R * 0.95, u * R * 0.55, s * Math.sin(th) * R * 0.95);
+    const sz = R * (0.5 + Math.random() * 0.9);
+    sp.scale.set(sz, sz, 1);
+    sp.renderOrder = -3;
+    group.add(sp);
+  }
+  return group;
+}
 
 const ANDROMEDA_INFO = `<b>The Andromeda Galaxy (M31)</b><br><br>
 The nearest large galaxy to the Milky Way — a spiral about 2.5 million light-years
@@ -4237,12 +4333,11 @@ function frameAndromedaCamera() {
 function initAndromedaScene() {
   if (andromedaScene) return;
   andromedaScene = new THREE.Scene();
+  andromedaScene.background = new THREE.Color(0x01010a); // deep-space near-black
 
-  // Skybox — intergalactic starfield backdrop
-  andromedaScene.add(new THREE.Mesh(
-    new THREE.SphereGeometry(SKYBOX_RADIUS, 64, 64),
-    new THREE.MeshBasicMaterial({ map: milkyWayTexture, side: THREE.BackSide })
-  ));
+  // Custom procedural star field (replaces the 8K image skybox)
+  andromedaStarfield = buildAndromedaStarfield();
+  andromedaScene.add(andromedaStarfield);
   andromedaScene.add(new THREE.AmbientLight(0xffffff, 0.6));
 
   andromedaCamera = new THREE.PerspectiveCamera(75, innerWidth / innerHeight, 0.1, SKYBOX_RADIUS * 2);
@@ -4330,9 +4425,17 @@ document.getElementById('andromedaBtn').onclick = () => { enterAndromedaView(); 
 function animate(){
   requestAnimationFrame(animate);
 
-  // Andromeda view takes over the renderer entirely (its own galaxy + skybox)
+  // Andromeda view takes over the renderer entirely (its own galaxy + starfield)
   if (andromedaViewActive) {
-    if (andromedaGalaxyPivot) andromedaGalaxyPivot.rotation.y += 0.0004;
+    const aNow = performance.now();
+    const aDelta = Math.min(aNow - lastFrameMs, 100);
+    lastFrameMs = aNow;
+    const aScale = aDelta / (1000 / 60);
+    // Same spin rate as the Milky Way galaxy — static at 1× real-life speed,
+    // ramping up with the speed slider.
+    if (andromedaGalaxyPivot) andromedaGalaxyPivot.rotation.y += 0.000000395 * speed * aScale;
+    // Star field follows the camera so it reads as an infinitely distant sky.
+    if (andromedaStarfield) andromedaStarfield.position.copy(andromedaCamera.position);
     andromedaControls.update();
     renderer.render(andromedaScene, andromedaCamera);
     return;
