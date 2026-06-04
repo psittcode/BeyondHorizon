@@ -689,6 +689,19 @@ Speed<br>
   width: 100%;
   margin-top: 4px;
 ">The Kepler-22 System</button>
+
+<button id="andromedaBtn" style="
+  display: none;
+  background: rgba(180,140,255,0.2);
+  color: white;
+  border: 1px solid rgba(180,140,255,0.5);
+  padding: 6px 12px;
+  cursor: pointer;
+  border-radius: 4px;
+  font-size: 13px;
+  width: 100%;
+  margin-top: 4px;
+">The Andromeda Galaxy</button>
 </div>
 
 <!-- Spaceship Earth legend panel -->
@@ -1167,6 +1180,8 @@ gltfLoader.load('need_some_space.glb', function(gltf) {
   if (mwBtn) mwBtn.style.display = 'block';
   const ogBtn = document.getElementById('otherGalaxiesBtn');
   if (ogBtn) ogBtn.style.display = 'block';
+  const andBtn = document.getElementById('andromedaBtn');
+  if (andBtn) andBtn.style.display = 'block';
 
   // --- galaxyDiamond1 fix1.png flat galaxy disc (4096×4096 square, no UV correction needed) ---
   const beauGaTex = new THREE.TextureLoader().load('galaxyDiamond1 fix1.png');
@@ -2706,7 +2721,7 @@ window.addEventListener("click", e => {
   // Spaceship Earth has no clickable bodies; galactic view handles its own
   // clickable marker below, so only bail out here for spaceship view.
   // The Kepler system scene has its own dedicated click handler.
-  if (spaceshipViewActive || keplerSystemViewActive) return;
+  if (spaceshipViewActive || keplerSystemViewActive || andromedaViewActive) return;
 
   mouse.x = (e.clientX / innerWidth) * 2 - 1;
   mouse.y = -(e.clientY / innerHeight) * 2 + 1;
@@ -3142,6 +3157,7 @@ let galEarthZoomedIn = false;      // true when camera is locked on Earth in gal
 
 function enterGalacticView() {
   // Leave the Kepler-22 system scene if it's showing (it takes over the renderer)
+  if (andromedaViewActive) exitAndromedaView();
   if (keplerSystemViewActive) exitKeplerSystem();
   // Fully exit spaceship view first — the two views are independent
   if (spaceshipViewActive) exitSpaceshipView();
@@ -3305,6 +3321,7 @@ function exitGalacticView() {
 // Fly the camera from wherever it is back into the solar system (triggered by the
 // "The Solar System" button that appears when zoomed out to galaxy scale).
 function flyToSolarSystem() {
+  if (andromedaViewActive) exitAndromedaView();
   if (keplerSystemViewActive) exitKeplerSystem();
   renderer.setClearColor(0x000000, 1); // TEST: restore default clear colour when leaving Milky Way view
   showBodiesList();
@@ -3444,6 +3461,7 @@ function showMilkyWayPanel() {
 function flyToMilkyWay() {
   if (!galacticCorePos) return; // GLB not yet loaded
 
+  if (andromedaViewActive) exitAndromedaView();
   if (keplerSystemViewActive) exitKeplerSystem();
   renderer.setClearColor(0x000005, 1); // TEST: force near-black canvas background for Milky Way view
 
@@ -3798,6 +3816,7 @@ let seSavedHelioVis     = null;
 
 function enterSpaceshipView() {
   spaceshipEnteredFrom = 'main';
+  if (andromedaViewActive) exitAndromedaView();
   if (keplerSystemViewActive) exitKeplerSystem();
   if (galacticViewActive) exitGalacticView();
   document.getElementById('panel').style.display = 'none';
@@ -4139,6 +4158,7 @@ function escapeKeplerToGalaxy() {
 function flyToKeplerDot() {
   if (!galacticCorePos) return; // GLB not yet loaded
 
+  if (andromedaViewActive) exitAndromedaView();
   if (keplerSystemViewActive) exitKeplerSystem();
   renderer.setClearColor(0x000005, 1); // near-black background, as in the Milky Way view
   showMilkyWayPanel();
@@ -4189,8 +4209,82 @@ function flyToKeplerDot() {
 
 document.getElementById('otherGalaxiesBtn').onclick = () => { flyToKeplerDot(); };
 
+// ── The Andromeda Galaxy view ─────────────────────────────────────────────────
+// A standalone scene with its own skybox. The Andromeda galaxy itself will be
+// added here later; for now it's just the starfield backdrop you can look around.
+let andromedaViewActive = false;
+let andromedaScene      = null;
+let andromedaCamera     = null;
+let andromedaControls   = null;
+
+const ANDROMEDA_INFO = `<b>The Andromeda Galaxy (M31)</b><br><br>
+The nearest large galaxy to the Milky Way — a spiral about 2.5 million light-years
+away in the constellation Andromeda, and the most distant object visible to the
+naked eye. It is on a slow collision course with our own galaxy, set to merge with
+it in roughly 4–5 billion years.<br><br>
+<span style="opacity:0.6;">(The galaxy model will be added to this view soon.)</span>`;
+
+function initAndromedaScene() {
+  if (andromedaScene) return;
+  andromedaScene = new THREE.Scene();
+
+  // Skybox — starfield for now; the Andromeda galaxy will be added in this scene
+  andromedaScene.add(new THREE.Mesh(
+    new THREE.SphereGeometry(SKYBOX_RADIUS, 64, 64),
+    new THREE.MeshBasicMaterial({ map: milkyWayTexture, side: THREE.BackSide })
+  ));
+  andromedaScene.add(new THREE.AmbientLight(0xffffff, 0.6));
+
+  andromedaCamera = new THREE.PerspectiveCamera(75, innerWidth / innerHeight, 0.1, SKYBOX_RADIUS * 2);
+  andromedaCamera.position.set(0, 0, 60);
+
+  andromedaControls = new THREE.OrbitControls(andromedaCamera, renderer.domElement);
+  andromedaControls.enableDamping = true;
+  andromedaControls.dampingFactor = 0.08;
+  andromedaControls.minDistance   = 1;
+  andromedaControls.maxDistance   = SKYBOX_RADIUS * 0.9;
+  andromedaControls.target.set(0, 0, 0);
+  andromedaControls.update();
+}
+
+function enterAndromedaView() {
+  initAndromedaScene();
+  // Leave any other active view first
+  if (keplerSystemViewActive) exitKeplerSystem();
+  if (galacticViewActive) exitGalacticView();
+  if (spaceshipViewActive) exitSpaceshipView();
+  andromedaViewActive = true;
+  controls.enabled = false; // stop the main OrbitControls from consuming input
+
+  // Hide the button — we're already here
+  document.getElementById('andromedaBtn').style.display = 'none';
+
+  document.getElementById('panel').style.display = 'block';
+  document.getElementById('panelContent').innerHTML = ANDROMEDA_INFO;
+  document.getElementById('backToList').style.display = 'none';
+
+  andromedaCamera.position.set(0, 0, 60);
+  andromedaControls.target.set(0, 0, 0);
+  andromedaControls.update();
+}
+
+function exitAndromedaView() {
+  andromedaViewActive = false;
+  controls.enabled = true;
+  document.getElementById('andromedaBtn').style.display = 'block';
+}
+
+document.getElementById('andromedaBtn').onclick = () => { enterAndromedaView(); };
+
 function animate(){
   requestAnimationFrame(animate);
+
+  // Andromeda view takes over the renderer entirely — just its skybox for now
+  if (andromedaViewActive) {
+    andromedaControls.update();
+    renderer.render(andromedaScene, andromedaCamera);
+    return;
+  }
 
   // Kepler-22 system takes over the renderer entirely — skip all solar-system logic
   if (keplerSystemViewActive) {
@@ -5451,6 +5545,10 @@ window.addEventListener("resize", ()=>{
     if (typeof keplerSystemViewActive !== 'undefined' && keplerSystemViewActive
         && typeof exitKeplerSystem === 'function') {
       try { exitKeplerSystem(); } catch (e) { console.warn('exitKeplerSystem failed:', e); }
+    }
+    if (typeof andromedaViewActive !== 'undefined' && andromedaViewActive
+        && typeof exitAndromedaView === 'function') {
+      try { exitAndromedaView(); } catch (e) { console.warn('exitAndromedaView failed:', e); }
     }
     // Close any open info panel
     const ipanel = document.getElementById('panel');
