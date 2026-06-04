@@ -12,6 +12,7 @@ import { KEPLER_22B_INFO } from '../data/info.js';
 
 const SKYBOX_RADIUS = 20000;
 const KEPLER_B_ORBIT_R = 8;
+const KEPLER_B_RADIUS  = 0.55 * 2.1;
 const KEPLER_B_SPEED   = 0.00009;
 const KEPLER_INTRO_FROM = new THREE.Vector3(0, 5, 90); // far: star is a tiny point
 const KEPLER_INTRO_TO   = new THREE.Vector3(0, 6, 18); // settled system view
@@ -21,7 +22,7 @@ const _mouse = new THREE.Vector2();
 
 const room = {
   scene: null, camera: null, controls: null,
-  bPivot: null, b: null, star: null, orbit: null,
+  bPivot: null, b: null, bClouds: null, star: null, orbit: null,
   lockedObject: null, flying: false,
   listVisible: false, orbitsVisible: true,
   introActive: false, introT: 0,
@@ -70,12 +71,28 @@ const room = {
     this.bPivot = new THREE.Group();
     scene.add(this.bPivot);
     this.b = new THREE.Mesh(
-      new THREE.SphereGeometry(0.55 * 2.1, 64, 64),
+      new THREE.SphereGeometry(KEPLER_B_RADIUS, 64, 64),
       new THREE.MeshStandardMaterial({ map: kTex })
     );
     this.b.position.set(KEPLER_B_ORBIT_R, 0, 0);
-    this.b.userData = { name: "Kepler-22b", size: 0.55 * 2.1, info: KEPLER_22B_INFO };
+    this.b.userData = { name: "Kepler-22b", size: KEPLER_B_RADIUS, info: KEPLER_22B_INFO };
     this.bPivot.add(this.b);
+
+    // Cloud layer — same logic as Earth: a slightly larger additive sphere
+    // (~3.6% over the surface, matching Earth's 0.57/0.55 shell) parented to the
+    // planet so it inherits the orbit, then spun independently in update().
+    const cloudTex = loadTexture("clouds.png");
+    this.bClouds = new THREE.Mesh(
+      new THREE.SphereGeometry(KEPLER_B_RADIUS * (0.57 / 0.55), 64, 64),
+      new THREE.MeshBasicMaterial({
+        map: cloudTex,
+        transparent: true,
+        opacity: 0.4,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false
+      })
+    );
+    this.b.add(this.bClouds);
     this.orbit = new THREE.Mesh(
       new THREE.RingGeometry(KEPLER_B_ORBIT_R - 0.03, KEPLER_B_ORBIT_R + 0.03, 128),
       new THREE.MeshBasicMaterial({ color: 0x88aaff, transparent: true, opacity: 0.25, side: THREE.DoubleSide })
@@ -211,6 +228,8 @@ const room = {
     this._lastT = now;
     this.bPivot.rotation.y += KEPLER_B_SPEED * ctx.speed * kScale;
     this.b.rotation.y      += 0.01 * ctx.speed * kScale;
+    // Clouds drift slightly faster than the surface — Earth's cloud logic.
+    if (this.bClouds) this.bClouds.rotation.y += 0.0101 * ctx.speed * kScale;
 
     if (this.introActive) {
       // ease-OUT zoom-in, continuing the galaxy dive
