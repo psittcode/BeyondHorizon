@@ -13,7 +13,11 @@ import('./rooms/kepler.js'); // preload so entry stays instant (continuous zoom-
 
 const scene = new THREE.Scene();
 
-const camera = new THREE.PerspectiveCamera(75, innerWidth/innerHeight, 0.1, 1000000);
+// True-scale model: bodies are real radii at real distances, spanning ~9 orders
+// of magnitude (a moon ~1e-4 units vs the galaxy skybox ~2e4 units). A tiny near
+// plane lets you approach a planet until it fills the screen at true size; the
+// logarithmic depth buffer (set on the renderer below) keeps that range usable.
+const camera = new THREE.PerspectiveCamera(75, innerWidth/innerHeight, 0.0004, 1000000);
 camera.position.set(0, 22, 110);
 
 // Tilt the camera's "up" vector by 23.4° so the ecliptic plane appears inclined
@@ -21,7 +25,7 @@ camera.position.set(0, 22, 110);
 const ECLIPTIC_TILT = 23.4 * Math.PI / 180;
 camera.up.set(Math.sin(ECLIPTIC_TILT), Math.cos(ECLIPTIC_TILT), 0);
 
-const renderer = new THREE.WebGLRenderer({ antialias:true });
+const renderer = new THREE.WebGLRenderer({ antialias:true, logarithmicDepthBuffer:true });
 renderer.setSize(innerWidth, innerHeight);
 renderer.shadowMap.enabled = true;
 
@@ -41,6 +45,7 @@ ctx.keplerEscapeToGalaxy = () => escapeKeplerToGalaxy();
 
 controls.enablePan = false;
 controls.maxDistance = 1000000;
+controls.minDistance = 0.0008;   // true-scale: allow approaching a focused body to ~just outside the near plane
 
 // Lights
 const ambientLight = new THREE.AmbientLight(0xffffff, 0.15);
@@ -699,9 +704,10 @@ function ensureBH() {
   bhBuilder();
 }
 
-// SUN CORE (keep emissive low so shading is visible)
+// SUN CORE — true radius 696,340 km = 0.04655 units (keep emissive low so shading is visible)
+const SUN_TRUE_RADIUS = 696340 / 14959787.07;
 const sun = new THREE.Mesh(
-  new THREE.SphereGeometry(2, 64, 64),
+  new THREE.SphereGeometry(SUN_TRUE_RADIUS, 64, 64),
   new THREE.MeshBasicMaterial({
     map: sunTexture
   })
@@ -711,7 +717,8 @@ scene.add(sun);
 // 👇 ADD THIS BLOCK HERE
 sun.userData = {
   name: "Sun",
-  info: SUN_INFO
+  info: SUN_INFO,
+  trueRadius: SUN_TRUE_RADIUS
 };
 
 // 👇 ADD THIS LINE HERE
@@ -794,10 +801,13 @@ data.forEach(p=>{
       vertexShader: `
         varying vec2 vUv;
         varying vec3 vNormal;
+        #include <common>
+        #include <logdepthbuf_pars_vertex>
         void main() {
           vUv = uv;
           vNormal = normalize((modelMatrix * vec4(normal, 0.0)).xyz);
           gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+          #include <logdepthbuf_vertex>
         }
       `,
       fragmentShader: `
@@ -806,7 +816,9 @@ data.forEach(p=>{
         uniform vec3 sunDirection;
         varying vec2 vUv;
         varying vec3 vNormal;
+        #include <logdepthbuf_pars_fragment>
         void main() {
+          #include <logdepthbuf_fragment>
           float intensity = dot(vNormal, sunDirection);
           float blend = smoothstep(-0.1, 0.1, intensity);
           vec4 day = texture2D(dayTexture, vUv);
@@ -843,10 +855,11 @@ let terraformedMarsModel = null;
 let marsCloudMesh = null;
 let terraformedMarsMaterial = null;
 
-// Cloud layer
+// Cloud layer — sized to Earth's true radius (it's a child of earth, so it
+// inherits earth's min-dot scale and stays the same ~3.6% shell at any zoom).
 const cloudTexture = textureLoader.load("2k_earth_clouds.jpg");
 const cloudMesh = new THREE.Mesh(
-  new THREE.SphereGeometry(0.57, 32, 32),
+  new THREE.SphereGeometry(earth.userData.size * (0.57 / 0.55), 32, 32),
   new THREE.MeshBasicMaterial({
     map: cloudTexture,
     transparent: true,
@@ -862,12 +875,15 @@ const moonGroup = new THREE.Object3D();
 moonGroup.rotation.x = 5.1 * (Math.PI / 180);
 scene.add(moonGroup);
 
-// Moon mesh
+// Moon mesh — true radius 1,737 km; orbits Earth at 384,400 km (0.0257 units)
+const MOON_TRUE_RADIUS = 1737 / 14959787.07;
+const MOON_ORBIT_DIST  = 384400 / 14959787.07;
 const moon = new THREE.Mesh(
-  new THREE.SphereGeometry(0.15, 32, 32),
+  new THREE.SphereGeometry(MOON_TRUE_RADIUS, 32, 32),
   new THREE.MeshStandardMaterial({ map: moonTexture })
 );
-moon.position.set(1.5, 0, 0);
+moon.position.set(MOON_ORBIT_DIST, 0, 0);
+moon.userData.trueRadius = MOON_TRUE_RADIUS;
 moonGroup.add(moon);
 
 // 🪐 ORBIT LINES
@@ -894,7 +910,7 @@ meshes.forEach(m => {
 const moonOrbitPoints = [];
 for (let i = 0; i <= 128; i++) {
   const angle = (i / 128) * Math.PI * 2;
-  moonOrbitPoints.push(new THREE.Vector3(Math.cos(angle) * 1.5, 0, Math.sin(angle) * 1.5));
+  moonOrbitPoints.push(new THREE.Vector3(Math.cos(angle) * MOON_ORBIT_DIST, 0, Math.sin(angle) * MOON_ORBIT_DIST));
 }
 const moonOrbitLine = new THREE.Line(
   new THREE.BufferGeometry().setFromPoints(moonOrbitPoints),
@@ -905,7 +921,7 @@ orbitLines.push(moonOrbitLine);
 
 // 🪐 Jupiter moon orbit lines
 const jupiterMoonOrbitLines = [];
-[2.1, 3.3, 5.25, 9.24].forEach(dist => {
+[0.028189, 0.044856, 0.071553, 0.125851].forEach(dist => {
   const pts = [];
   for (let i = 0; i <= 128; i++) {
     const a = (i / 128) * Math.PI * 2;
@@ -949,7 +965,7 @@ function createMoon(size, distance, speed, color, infoText, texture, startAngle)
   );
 
   moonMesh.position.set(distance, 0, 0);
-  moonMesh.userData = { info: infoText };
+  moonMesh.userData = { info: infoText, trueRadius: size };
   group.userData = { info: infoText };
   group.add(moonMesh);
 
@@ -957,8 +973,8 @@ function createMoon(size, distance, speed, color, infoText, texture, startAngle)
 }
 
 const io = createMoon(
-  0.18,
-  2.1,   // 5.9 Jupiter radii × 0.35 scale
+  0.0001217,   // true radius 1,821 km
+  0.028189,    // true orbit 421,700 km
   0.006852,  // Io: 1.769 day orbit
   0xffcc66,
   `<b>Io</b><br><br>
@@ -971,8 +987,8 @@ const io = createMoon(
 );
 
 const europa = createMoon(
-  0.16,
-  3.3,   // 9.4 Jupiter radii × 0.35 scale
+  0.0001044,   // true radius 1,561 km
+  0.044856,    // true orbit 671,034 km
   0.003413,  // Europa: 3.551 day orbit
   0xaad4ff,
   `<b>Europa</b><br><br>
@@ -985,8 +1001,8 @@ const europa = createMoon(
 );
 
 const ganymede = createMoon(
-  0.22,
-  5.25,  // 15.0 Jupiter radii × 0.35 scale
+  0.0001759,   // true radius 2,631 km
+  0.071553,    // true orbit 1,070,412 km
   0.001695,  // Ganymede: 7.155 day orbit
   0x999999,
   `<b>Ganymede</b><br><br>
@@ -998,8 +1014,8 @@ const ganymede = createMoon(
 );
 
 const callisto = createMoon(
-  0.2,
-  9.24,  // 26.4 Jupiter radii × 0.35 scale
+  0.0001611,   // true radius 2,410 km
+  0.125851,    // true orbit 1,882,709 km
   0.000726,  // Callisto: 16.689 day orbit
   0x666666,
   `<b>Callisto</b><br><br>
@@ -1031,19 +1047,25 @@ scene.add(saturnTiltGroup);
 const ringUniforms = {
   map:           { value: ringTexture },
   saturnPos:     { value: new THREE.Vector3() },
-  saturnRadius:  { value: 1.0 }
+  saturnRadius:  { value: saturn.userData.size }   // updated each frame to Saturn's apparent radius
 };
 
-const ringGeometry = new THREE.RingGeometry(1.5, 2.5, 64);
+// Ring span keeps the old 1.5×–2.5× body-radius proportions (matches the texture),
+// now relative to Saturn's true radius. saturnTiltGroup is scaled to Saturn's
+// min-dot factor each frame so the rings track the body's on-screen size.
+const ringGeometry = new THREE.RingGeometry(saturn.userData.size * 1.5, saturn.userData.size * 2.5, 64);
 const ringMaterial = new THREE.ShaderMaterial({
   uniforms: ringUniforms,
   vertexShader: `
     varying vec2 vUv;
     varying vec3 vWorldPos;
+    #include <common>
+    #include <logdepthbuf_pars_vertex>
     void main() {
       vUv = uv;
       vWorldPos = (modelMatrix * vec4(position, 1.0)).xyz;
       gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      #include <logdepthbuf_vertex>
     }
   `,
   fragmentShader: `
@@ -1052,7 +1074,9 @@ const ringMaterial = new THREE.ShaderMaterial({
     uniform float saturnRadius;
     varying vec2 vUv;
     varying vec3 vWorldPos;
+    #include <logdepthbuf_pars_fragment>
     void main() {
+      #include <logdepthbuf_fragment>
       vec4 texColor = texture2D(map, vUv);
       if (texColor.a < 0.01) discard;
 
@@ -1088,6 +1112,35 @@ meshes.forEach(m => {
   m.castShadow = true;
   m.receiveShadow = true;
 });
+
+// ── Min-dot visibility (NASA Eyes) ──────────────────────────────────────────
+// Every body is built at its TRUE radius, so at solar-system zoom each one is far
+// smaller than a pixel. Each frame we scale a body up so its on-screen radius is
+// at least MIN_DOT_PX, then relax back toward scale 1 (true size) as you approach
+// — a dot from afar, a real sphere up close. Children (e.g. Earth's clouds) ride
+// the parent's scale; the Moon, Jupiter's moons and Saturn's rings are scaled
+// against their own true size so they keep correct proportions to their planet.
+const MIN_DOT_PX = 2.6;
+const _mdPos = new THREE.Vector3();
+function minDotScale(obj, trueRadius) {
+  obj.getWorldPosition(_mdPos);
+  const d = camera.position.distanceTo(_mdPos);
+  const worldPerPx = (2 * d * Math.tan((camera.fov * Math.PI / 180) / 2)) / window.innerHeight;
+  const s = Math.max(1, (worldPerPx * MIN_DOT_PX) / trueRadius);
+  obj.scale.setScalar(s);
+  return s;
+}
+function applyMinDots() {
+  const sunS = minDotScale(sun, sun.userData.trueRadius);
+  glowMesh.scale.setScalar(sun.userData.trueRadius * sunS * 3.0); // halo tracks the Sun's apparent size
+  meshes.forEach(m => minDotScale(m, m.userData.size));
+  if (moon) minDotScale(moon, moon.userData.trueRadius);
+  jupiterMoons.forEach(jm => minDotScale(jm.mesh, jm.mesh.userData.trueRadius));
+  // Saturn's rings: match the body's apparent size and keep the shadow term correct.
+  const saturnS = saturn.scale.x; // set by the meshes loop above
+  saturnTiltGroup.scale.setScalar(saturnS);
+  ringUniforms.saturnRadius.value = saturn.userData.size * saturnS;
+}
 
 // Explicit list of every heliocentric object that should be hidden in alternate views.
 // Using an explicit array (not scene.children sweep) so lights are never accidentally touched
@@ -1262,7 +1315,9 @@ function flyToObject(obj) {
   const startPos = camera.position.clone();
   const startTarget = controls.target.clone();
 
-  const size = obj.userData.size || 0.2;
+  // Frame at a fixed multiple of the body's TRUE radius (offset scales with the
+  // real size, so planets and the Sun are all nicely framed at true scale).
+  const size = obj.userData.size || obj.userData.trueRadius || 0.2;
   const offset = new THREE.Vector3(0, size * 2, size * 8);
   const endPos = targetPos.clone().add(offset);
 
@@ -2900,6 +2955,10 @@ function animate(){
       line.position.copy(jupiterWorldPos);
     });
   }
+
+  // True-scale visibility: size every body for the current zoom (dot when far,
+  // real size up close). Runs after all positions are set this frame.
+  applyMinDots();
 
 // Galactic view — advance solar system + Earth dot along corkscrew path
   if (galacticViewActive) {

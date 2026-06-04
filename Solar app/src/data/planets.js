@@ -1,11 +1,19 @@
 // Planet data — pure content (no logic): name, orbital distance, size, colour,
-// orbital speed, and the info-panel HTML for each body. Imported by legacy.js
+// orbital speed, and the info-panel HTML for each body. Imported by world.js
 // (and, later, the solar room) to build the meshes and panels.
+//
+// TRUE SCALE (NASA Eyes style). The unit is anchored so Earth's orbit = 10 units
+// = 1 AU, i.e. 1 unit = 14,959,787 km. Therefore:
+//   dist = real semi-major axis (AU) × 10
+//   size = real equatorial radius (km) ÷ 14,959,787   (so it is a true radius)
+// At this scale planets are far smaller than their spacing, so world.js renders
+// any body too small to see at a minimum on-screen "dot" size, growing it to its
+// real size as you zoom in (see the min-dot scaler in animate()).
 
 export const data = [
 {
 name:"Mercury",
-dist:4,size:0.3,color:0x888888,speed:0.0001379,
+dist:3.87,size:0.0001631,color:0x888888,speed:0.0001379,
 info:`<b>Mercury</b><br><br>
 
 <b>General Overview</b><br>
@@ -66,7 +74,7 @@ These missions have revealed Mercury as a complex planet shaped by both solar pr
 },
 {
 name:"Venus",
-dist:7,size:0.5,color:0xffaa33,speed:0.00005394,
+dist:7.23,size:0.0004046,color:0xffaa33,speed:0.00005394,
 info:`<b>Venus</b><br><br>
 
 <b>General Overview</b><br>
@@ -126,7 +134,7 @@ Venus remains a major target for understanding planetary climate evolution and r
 },
 {
 name:"Earth",
-dist:10,size:0.55,color:0x3399ff,speed:0.00003319,
+dist:10,size:0.0004259,color:0x3399ff,speed:0.00003319,
 info:`<b>Earth</b><br><br>
 
 <b>General Overview</b><br>
@@ -170,7 +178,7 @@ Earth has one natural satellite, the Moon, which stabilizes axial tilt and influ
 },
 {
 name:"Mars",
-dist:14,size:0.4,color:0xff3300,speed:0.00001765,
+dist:15.24,size:0.0002266,color:0xff3300,speed:0.00001765,
 info:`<b>Mars</b><br><br>
 
 <b>General Overview</b><br>
@@ -217,7 +225,7 @@ Mars has a moderately eccentric orbit, causing noticeable seasonal variations, e
 },
 {
 name:"Jupiter",
-dist:24,size:1.2,color:0xffaa88,speed:0.000002798,
+dist:52.04,size:0.0046732,color:0xffaa88,speed:0.000002798,
 info:`<b>Jupiter</b><br><br>
 
 <b>General Overview</b><br>
@@ -276,7 +284,7 @@ Jupiter remains a key target for understanding gas giant formation and early Sol
 },
 {
 name:"Saturn",
-dist:35,size:1.0,color:0xffddaa,speed:0.000001127,
+dist:95.83,size:0.0038925,color:0xffddaa,speed:0.000001127,
 info:`
 <b>Saturn</b><br><br>
 
@@ -342,7 +350,7 @@ It has been known since ancient times and is visible to the naked eye, appearing
 },
 {
 name:"Uranus",
-dist:48,size:0.8,color:0x66ccff,speed:0.000000395,
+dist:191.91,size:0.0016953,color:0x66ccff,speed:0.000000395,
 info:`<b>Uranus</b><br><br>
 
 <b>General Overview</b><br>
@@ -393,7 +401,7 @@ All current knowledge of Uranus comes from this single flyby, leaving many aspec
 },
 {
 name:"Neptune",
-dist:62,size:0.8,color:0x3366ff,speed:0.0000002014,
+dist:300.70,size:0.0016458,color:0x3366ff,speed:0.0000002014,
 info:`<b>Neptune</b><br><br>
 
 <b>General Overview</b><br>
