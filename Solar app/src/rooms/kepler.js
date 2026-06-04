@@ -94,7 +94,7 @@ const room = {
       new THREE.MeshBasicMaterial({
         map: cloudTex,
         transparent: true,
-        opacity: 0.6,
+        opacity: 0.75,
         blending: THREE.NormalBlending,
         depthWrite: false
       })
