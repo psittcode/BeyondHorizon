@@ -2,7 +2,7 @@ import { ctx } from './core/engine.js';
 import { viewManager } from './viewManager.js';
 import { loadGLB } from './core/assets.js';
 import { data } from './data/planets.js';
-import { MILKY_WAY_INFO, KEPLER_22B_INFO, marsTransformedInfo } from './data/info.js';
+import { MILKY_WAY_INFO, KEPLER_22B_INFO, marsTransformedInfo, SUN_INFO, MOON_INFO } from './data/info.js';
 
 // Rooms (lazy-loaded). register() only stores a factory; the module is import()-ed
 // on first entry, so its code + assets don't load until you visit it.
@@ -704,59 +704,7 @@ scene.add(sun);
 // 👇 ADD THIS BLOCK HERE
 sun.userData = {
   name: "Sun",
-  info: `
-<b>Sun</b><br><br>
-
-<b>General Overview</b><br>
-• Type: G-type main-sequence star (G2V)<br>
-• Age: ~4.6 billion years<br>
-• Diameter: ~1.39 million km (≈109× Earth)<br>
-• Mass: 1.989 × 10^30 kg (≈99.86% of total Solar System mass)<br>
-• Surface Temperature: ~5,500°C<br>
-• Core Temperature: ~15 million °C<br><br>
-
-The Sun is the central star of the Solar System and the dominant source of energy for all planetary bodies. Its immense gravity holds the entire system together, governing the motion of planets, asteroids, and comets.<br><br>
-
-<b>Structure and Layers</b><br>
-The Sun is composed of several distinct layers:<br>
-• Core: Region where nuclear fusion occurs<br>
-• Radiative Zone: Energy moves outward via radiation<br>
-• Convective Zone: Heat transferred by plasma movement<br>
-• Photosphere: Visible “surface” of the Sun<br>
-• Chromosphere: Thin atmospheric layer above the surface<br>
-• Corona: Outer atmosphere extending millions of kilometers<br><br>
-
-The corona is significantly hotter than the surface, a phenomenon that remains an active area of astrophysical research.<br><br>
-
-<b>Energy Production (Nuclear Fusion)</b><br>
-At its core, the Sun produces energy through nuclear fusion, where hydrogen nuclei combine to form helium. This process releases enormous amounts of energy according to Einstein’s equation E = mc².<br><br>
-
-Every second, the Sun converts approximately 600 million tons of hydrogen into helium, releasing energy that travels outward and eventually radiates into space as sunlight.<br><br>
-
-<b>Solar Activity</b><br>
-The Sun is not static—it is highly dynamic and exhibits various forms of activity:<br>
-• Sunspots: Cooler, darker regions caused by magnetic activity<br>
-• Solar Flares: Sudden bursts of radiation<br>
-• Coronal Mass Ejections (CMEs): Massive plasma eruptions<br><br>
-
-These events can affect space weather and impact satellites, communication systems, and power grids on Earth.<br><br>
-
-<b>Distance and Scale</b><br>
-• Average distance from Earth: ~149.6 million km (1 AU)<br>
-• Light travel time to Earth: ~8 minutes 20 seconds<br><br>
-
-If the Sun were hollow, approximately 1.3 million Earths could fit inside it, illustrating its immense scale relative to planets.<br><br>
-
-<b>Lifecycle and Future</b><br>
-The Sun is currently in a stable phase of its lifecycle known as the main sequence. In about 5 billion years, it will exhaust its hydrogen fuel and expand into a red giant, potentially engulfing the inner planets.<br><br>
-
-Eventually, it will shed its outer layers and become a white dwarf, leaving behind a dense stellar remnant.<br><br>
-
-<b>Importance to Life</b><br>
-The Sun provides the energy necessary for photosynthesis, climate systems, and the water cycle on Earth. Without it, life as we know it would not exist.<br><br>
-
-Its stability over billions of years has been a key factor in allowing complex life to develop.<br>
-`
+  info: SUN_INFO
 };
 
 // 👇 ADD THIS LINE HERE
@@ -1067,50 +1015,7 @@ const jupiterMoons = [io, europa, ganymede, callisto];
 
 moon.userData = {
   name: "Moon",
-  info: `
-<b>Moon</b><br><br>
-
-<b>General Overview</b><br>
-• Type: Natural satellite of Earth<br>
-• Average distance from Earth: ~384,400 km<br>
-• Diameter: 3,474 km (≈27% of Earth’s size)<br>
-• Gravity: ~16.6% of Earth’s gravity<br>
-• Orbital period: ~27.3 days<br><br>
-
-The Moon is Earth’s only permanent natural satellite and is the fifth largest moon in the Solar System relative to its parent planet. It plays a critical role in stabilizing Earth’s axial tilt and influencing ocean tides.<br><br>
-
-<b>Orbital Behavior</b><br>
-The Moon is tidally locked to Earth, meaning it rotates once on its axis in the same time it takes to complete one orbit. As a result, the same side of the Moon always faces Earth.<br><br>
-
-Its orbit is slightly elliptical, causing variations in distance (perigee and apogee), which influence the apparent size of the Moon seen from Earth.<br><br>
-
-<b>Surface and Geology</b><br>
-The Moon’s surface is covered by:<br>
-• Regolith: Fine layer of dust and rock fragments<br>
-• Impact craters: Formed by billions of years of asteroid impacts<br>
-• Maria: Large basaltic plains formed by ancient volcanic activity<br><br>
-
-Because it lacks an atmosphere, the Moon has no erosion processes, preserving geological features for billions of years.<br><br>
-
-<b>Atmosphere</b><br>
-The Moon has an extremely thin exosphere composed of trace elements such as helium, neon, and hydrogen. It is not dense enough to support weather, wind, or breathable conditions.<br><br>
-
-<b>Formation Theory</b><br>
-The most widely accepted theory is the Giant Impact Hypothesis, which suggests the Moon formed from debris after a Mars-sized object collided with early Earth approximately 4.5 billion years ago.<br><br>
-
-<b>Role in Earth System</b><br>
-The Moon significantly influences Earth in several ways:<br>
-• Stabilizes Earth’s axial tilt, contributing to long-term climate stability<br>
-• Generates ocean tides through gravitational interaction<br>
-• Gradually slows Earth’s rotation over geological time<br><br>
-
-<b>Exploration</b><br>
-The Moon is the only extraterrestrial body visited by humans.<br>
-• Apollo program: First human landings (1969–1972)<br>
-• Robotic missions: LRO, Chang’e program, Chandrayaan missions<br><br>
-
-Future exploration focuses on establishing lunar bases and using the Moon as a platform for deep space missions.<br>
-`
+  info: MOON_INFO
 };
 
 const saturn = meshes.find(m => m.userData.name === "Saturn");
