@@ -1150,10 +1150,10 @@ function minDotScale(obj, trueRadius) {
 // still-bright floor far away.
 const SUN_GLOW_FAR_PX  = 34;   // fixed glow-ball radius (px) when zoomed out — stays this size
 const SUN_GLOW_RIM_MUL = 1.5;  // glow radius as a multiple of the disc when zoomed right in
-const SUN_GLOW_NEAR = 0.3;     // distance (units) at/under which the glow is fully bright
-const SUN_GLOW_FAR  = 300;     // distance (units) at which the glow reaches its (still-bright) floor
-const SUN_GLOW_MAX  = 1.0;     // opacity closest to the Sun
-const SUN_GLOW_MIN  = 0.55;    // opacity far away — still clearly a bright orange ball
+const SUN_GLOW_NEAR = 0.4;     // distance (units) at/under which the glow is fully bright (≈ the fly-to-Sun view)
+const SUN_GLOW_FAR  = 300;     // distance (units) at which the glow reaches its faint floor
+const SUN_GLOW_MAX  = 1.0;     // opacity right at the Sun
+const SUN_GLOW_MIN  = 0.22;    // opacity far away — faded, just a faint ember
 function updateSunGlow() {
   const tanHalf = Math.tan((camera.fov * Math.PI / 180) / 2);
   const dSun = camera.position.length();           // Sun sits at the origin
