@@ -889,13 +889,21 @@ moonGroup.add(moon);
 // 🪐 ORBIT LINES
 const orbitLines = [];
 meshes.forEach(m => {
+  // Segment count is chosen per orbit so the polygon's chord stays within ~0.1×
+  // the planet's (true-scale, tiny) radius of the real circle — otherwise the
+  // chord-vs-arc gap (which grows with orbit radius) leaves big outer planets
+  // visibly floating off their ring. sagitta ≈ dist·π²/(2N²) ≤ 0.1·radius.
+  const dist = m.userData.dist;
+  const targetSagitta = (m.userData.size || 0.001) * 0.1;
+  const segs = Math.min(4096, Math.max(256,
+    Math.ceil(Math.PI * Math.sqrt(dist / (2 * targetSagitta)))));
   const points = [];
-  for (let i = 0; i <= 128; i++) {
-    const angle = (i / 128) * Math.PI * 2;
+  for (let i = 0; i <= segs; i++) {
+    const angle = (i / segs) * Math.PI * 2;
     points.push(new THREE.Vector3(
-      Math.cos(angle) * m.userData.dist,
+      Math.cos(angle) * dist,
       0,
-      Math.sin(angle) * m.userData.dist
+      Math.sin(angle) * dist
     ));
   }
   const orbit = new THREE.Line(
