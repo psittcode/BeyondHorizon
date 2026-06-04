@@ -90,7 +90,7 @@ const room = {
       new THREE.MeshBasicMaterial({
         map: cloudTex,
         transparent: true,
-        opacity: 0.4,
+        opacity: 0.65,   // raised from Earth's 0.4 so clouds stay visible on the bright star-facing side
         blending: THREE.AdditiveBlending,
         depthWrite: false
       })
