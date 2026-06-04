@@ -902,6 +902,7 @@ meshes.forEach(m => {
     new THREE.BufferGeometry().setFromPoints(points),
     new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.15 })
   );
+  orbit.userData.ownerMesh = m;   // hide this ring when zoomed in close to its planet
   scene.add(orbit);
   orbitLines.push(orbit);
 });
@@ -916,6 +917,7 @@ const moonOrbitLine = new THREE.Line(
   new THREE.BufferGeometry().setFromPoints(moonOrbitPoints),
   new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.15 })
 );
+moonOrbitLine.userData.ownerMesh = earth;   // hide the Moon's ring when zoomed in close to Earth
 moonGroup.add(moonOrbitLine);
 orbitLines.push(moonOrbitLine);
 
@@ -931,6 +933,7 @@ const jupiterMoonOrbitLines = [];
     new THREE.BufferGeometry().setFromPoints(pts),
     new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.15 })
   );
+  orbitLine.userData.ownerMesh = jupiter;   // hide these rings when zoomed in close to Jupiter
   scene.add(orbitLine);
   orbitLines.push(orbitLine);
   jupiterMoonOrbitLines.push(orbitLine);
@@ -1033,7 +1036,8 @@ const jupiterMoons = [io, europa, ganymede, callisto];
 
 moon.userData = {
   name: "Moon",
-  info: MOON_INFO
+  info: MOON_INFO,
+  trueRadius: MOON_TRUE_RADIUS   // needed by the min-dot scaler and fly-to framing
 };
 
 const saturn = meshes.find(m => m.userData.name === "Saturn");
@@ -1140,6 +1144,26 @@ function applyMinDots() {
   const saturnS = saturn.scale.x; // set by the meshes loop above
   saturnTiltGroup.scale.setScalar(saturnS);
   ringUniforms.saturnRadius.value = saturn.userData.size * saturnS;
+}
+
+// Hide a body's orbit ring once you've zoomed in close enough that the body is
+// large on screen (NASA Eyes behaviour) — a thin ring cutting through a big
+// planet looks wrong, and at true scale the planet sits exactly on the line so
+// it reads as "floating off" the ring. The ring returns as you zoom out. Respects
+// the global orbitsVisible toggle; callers run it only in the heliocentric view.
+const ORBIT_HIDE_ABOVE_PX = 22;     // hide a ring when its body's on-screen radius exceeds this
+const _orbPos = new THREE.Vector3();
+function updateOrbitRingProximity() {
+  const tanHalf = Math.tan((camera.fov * Math.PI / 180) / 2);
+  for (const line of orbitLines) {
+    const owner = line.userData.ownerMesh;
+    if (!owner) continue;
+    owner.getWorldPosition(_orbPos);
+    const d = camera.position.distanceTo(_orbPos);
+    const worldPerPx = (2 * d * tanHalf) / window.innerHeight;
+    const apparentPx = (owner.userData.size || owner.userData.trueRadius || 0) / worldPerPx;
+    line.visible = orbitsVisible && apparentPx < ORBIT_HIDE_ABOVE_PX;
+  }
 }
 
 // Explicit list of every heliocentric object that should be hidden in alternate views.
@@ -2959,6 +2983,9 @@ function animate(){
   // True-scale visibility: size every body for the current zoom (dot when far,
   // real size up close). Runs after all positions are set this frame.
   applyMinDots();
+  // Hide a body's orbit ring when zoomed in close to it (solar view only — the
+  // alternate views manage orbit-line visibility themselves).
+  if (!galacticViewActive && !spaceshipViewActive) updateOrbitRingProximity();
 
 // Galactic view — advance solar system + Earth dot along corkscrew path
   if (galacticViewActive) {
