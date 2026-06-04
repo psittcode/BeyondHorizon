@@ -4250,9 +4250,8 @@ function buildAndromedaStarfield() {
     [1.00, 0.96, 0.82], [1.00, 0.86, 0.62], [1.00, 0.72, 0.62],
   ];
   for (let i = 0; i < COUNT; i++) {
-    // Uniform on a sphere, but pull ~45% of stars toward y≈0 for a faint band
-    let u = Math.random() * 2 - 1;
-    if (Math.random() < 0.45) u *= 0.16;
+    // Uniform spread over the whole sphere (no band/cluster)
+    const u = Math.random() * 2 - 1;
     const th = Math.random() * Math.PI * 2;
     const s = Math.sqrt(Math.max(0, 1 - u * u));
     const rr = R * (0.95 + Math.random() * 0.1);
@@ -4263,9 +4262,9 @@ function buildAndromedaStarfield() {
     const b = 0.55 + Math.random() * 0.45;
     col[i*3] = c[0]*b; col[i*3+1] = c[1]*b; col[i*3+2] = c[2]*b;
     const r = Math.random();
-    siz[i] = r < 0.86 ? (1.0 + Math.random()*1.8)
-           : r < 0.985 ? (3.0 + Math.random()*2.6)
-                        : (6.5 + Math.random()*4.5); // a few bright beacons
+    siz[i] = r < 0.87 ? (0.4 + Math.random()*0.7)
+           : r < 0.98 ? (1.0 + Math.random()*1.0)
+                       : (2.2 + Math.random()*1.8); // a few brighter beacons
   }
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
