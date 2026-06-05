@@ -136,12 +136,17 @@ const room = {
     this.orbit.visible = this.orbitsVisible;
     scene.add(this.orbit);
 
-    this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, SKYBOX_RADIUS * 2);
+    // Near plane lowered to 0.05 so getting close to the small bodies (planet
+    // radius 0.28, star radius 0.6) doesn't clip into their surfaces.
+    this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.05, SKYBOX_RADIUS * 2);
     this.camera.position.set(0, 6, 18);
     this.controls = new THREE.OrbitControls(this.camera, ctx.domElement);
     this.controls.enableDamping = true;
     this.controls.dampingFactor = 0.08;
-    this.controls.minDistance   = 1.8;
+    // Allow a much closer look at Kepler-22b (was 1.8). 0.7 keeps the camera just
+    // outside the star's 0.6 radius so you can approach its surface without
+    // entering it, while letting the 0.28-radius planet fill the view up close.
+    this.controls.minDistance   = 0.7;
     this.controls.maxDistance   = 200;
     this.controls.target.set(0, 0, 0);
     this.controls.update();
