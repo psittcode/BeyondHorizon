@@ -13,25 +13,35 @@ import { AU_KM } from '../core/scale.js';
 
 const SKYBOX_RADIUS = 20000;
 const KEPLER_B_ORBIT_R = 8;          // 0.849 AU — Kepler-22b's real semi-major axis
-// Kepler-22b is enlarged for visibility (true radius would be a sub-pixel dot at
-// this orbit scale), but kept clearly smaller than its host star.
-const KEPLER_B_RADIUS  = 0.28;
+const KM_PER_UNIT = (0.849 * AU_KM) / KEPLER_B_ORBIT_R; // true scale: km per scene unit
+
+// TRUE SCALE (like the Solar System view). Real radii (NASA): Kepler-22 ≈ 0.979
+// R_sun, Kepler-22b ≈ 2.4 R_earth. At this scale both are sub-pixel, so the
+// min-dot scaler (updateScales) draws them at a floor size when far and grows
+// them to real size as you approach — exactly as the Solar view does. The orbit
+// stays at the real 0.849 AU (8 units), so orbit/star ≈ 186 — the true ratio —
+// and Kepler-22b sits as far from its star, proportionally, as Earth from the Sun.
+const R_SUN_KM   = 696340;
+const R_EARTH_KM = 6371;
+const STAR_RADIUS     = (0.979 * R_SUN_KM)   / KM_PER_UNIT; // ≈ 0.0429 units
+const KEPLER_B_RADIUS = (2.4   * R_EARTH_KM) / KM_PER_UNIT; // ≈ 0.00096 units
 const KEPLER_B_SPEED   = 0.00009;
 const KEPLER_INTRO_FROM = new THREE.Vector3(0, 5, 90); // far: star is a tiny point
 const KEPLER_INTRO_TO   = new THREE.Vector3(0, 6, 18); // settled system view
 
-// Star glow — mirrors the Sun's glow logic in world.js. A filled additive bloom
+// Min-dot floors (px) — smallest on-screen radius a body is drawn at when true
+// scale would make it sub-pixel. Same values as the Solar view.
+const MIN_DOT_PX       = 2.6;   // the planet
+const STAR_CORE_MIN_PX = 1.3;   // the star core (smaller so the glow dominates far away)
+
+// Star glow — mirrors the Sun's glow logic AND constants in world.js (the star is
+// now the Sun's true size, so the same numbers apply). A filled additive bloom
 // that holds a fixed on-screen size when zoomed out and scales with the disc when
-// zoomed in, parked just in front of the star (along the camera ray) so the star's
-// own face never occludes it while a transiting planet still does.
-// Star rendered well below true scale (~0.043 units would be a sub-pixel dot) but
-// small enough that Kepler-22b's real 0.849 AU orbit reads as properly far out:
-// orbit/star ≈ 13 star-radii (true is ~186, which isn't viewable with a visible star).
-const STAR_RADIUS      = 0.6;  // matches the star SphereGeometry radius below
+// zoomed in, parked just in front of the star so its own face never occludes it.
 const KEP_GLOW_FAR_PX  = 34;   // fixed glow-ball radius (px) when zoomed out
 const KEP_GLOW_RIM_MUL = 2.0;  // glow radius as a multiple of the disc when zoomed in
-const KEP_GLOW_NEAR    = 2.5;   // distance (units) at/under which the glow is fully bright
-const KEP_GLOW_FAR     = 200;   // distance (units) at which the glow reaches its faint floor
+const KEP_GLOW_NEAR    = 0.06;  // distance (units) at/under which the glow is fully bright
+const KEP_GLOW_FAR     = 300;   // distance (units) at which the glow reaches its faint floor
 const KEP_GLOW_MAX     = 1.0;   // opacity near the star
 const KEP_GLOW_MIN     = 0.22;  // opacity far away
 
@@ -41,7 +51,7 @@ const _mouse = new THREE.Vector2();
 const room = {
   scene: null, camera: null, controls: null,
   // Map-scale anchor: Kepler-22b orbits at KEPLER_B_ORBIT_R units ≈ 0.849 AU.
-  kmPerUnit: (0.849 * AU_KM) / KEPLER_B_ORBIT_R,
+  kmPerUnit: KM_PER_UNIT,
   bPivot: null, b: null, bClouds: null, star: null, starGlow: null, orbit: null,
   lockedObject: null, flying: false,
   listVisible: false, orbitsVisible: true,
@@ -72,7 +82,7 @@ const room = {
     };
     scene.add(this.star);
     // Star glow — same filled-bloom sprite as the Sun; sized/positioned per frame
-    // by updateStarGlow().
+    // by updateScales().
     {
       const _gc = document.createElement('canvas'); _gc.width = _gc.height = 256;
       const _gx = _gc.getContext('2d');
@@ -136,17 +146,17 @@ const room = {
     this.orbit.visible = this.orbitsVisible;
     scene.add(this.orbit);
 
-    // Near plane lowered to 0.05 so getting close to the small bodies (planet
-    // radius 0.28, star radius 0.6) doesn't clip into their surfaces.
-    this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.05, SKYBOX_RADIUS * 2);
+    // True-scale near plane (matches the Solar view) so you can approach the now
+    // sub-pixel-true bodies without clipping into them.
+    this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.0004, SKYBOX_RADIUS * 2);
     this.camera.position.set(0, 6, 18);
     this.controls = new THREE.OrbitControls(this.camera, ctx.domElement);
     this.controls.enableDamping = true;
     this.controls.dampingFactor = 0.08;
-    // Allow a much closer look at Kepler-22b (was 1.8). 0.7 keeps the camera just
-    // outside the star's 0.6 radius so you can approach its surface without
-    // entering it, while letting the 0.28-radius planet fill the view up close.
-    this.controls.minDistance   = 0.7;
+    // True scale: let the camera approach Kepler-22b (true radius ≈ 0.00096) to
+    // just outside its surface for a real-size close-up. 0.0015 stays clear of the
+    // planet and the near plane; the star (≈ 0.0429) can be entered, as the Sun can.
+    this.controls.minDistance   = 0.0015;
     this.controls.maxDistance   = 200;
     this.controls.target.set(0, 0, 0);
     this.controls.update();
@@ -262,34 +272,49 @@ const room = {
     this._isActive = true;
   },
 
-  // Size, position and fade the star glow for the current zoom — the Sun's logic
-  // (world.js updateSunGlow), adapted to this fixed-size star at the scene origin.
-  updateStarGlow() {
-    if (!this.starGlow) return;
+  // Per-frame true-scale sizing — mirrors the Solar view (world.js applyMinDots +
+  // updateSunGlow). Keeps the star core and planet at a min-dot floor when they'd
+  // be sub-pixel and grows them to real size up close, then sizes/positions/fades
+  // the star glow exactly as the Sun's.
+  updateScales() {
     const cam = this.camera;
-    const dStar = cam.position.length(); // star sits at the origin
-    if (dStar <= 0) return;
     const tanHalf = Math.tan((cam.fov * Math.PI / 180) / 2);
-    const worldPerPx = (2 * dStar * tanHalf) / window.innerHeight;
-    const starPx = STAR_RADIUS / worldPerPx; // on-screen disc radius (px)
-    // Park the glow strictly IN FRONT of the whole star sphere (not tangent to its
-    // near pole). At offset = STAR_RADIUS the flat billboard just touches the near
-    // pole, and under the log depth buffer the additive glow z-fights the surface
-    // over a circular cap and drops out — a dark "bite" in the disc. Sitting it
-    // 10% nearer than the star's closest point keeps it clear of the sphere while
-    // still behind any planet transiting in front (depthTest is on).
-    const offset = dStar - (dStar - STAR_RADIUS) * 0.9;
-    this.starGlow.position.copy(cam.position).setLength(offset);
-    // Fixed-pixel ball when zoomed out; scales with the disc when zoomed in.
-    // Convert to world size at the sprite's own (closer) depth so the offset
-    // doesn't change its apparent on-screen size.
-    const spriteWorldPerPx = (2 * (dStar - offset) * tanHalf) / window.innerHeight;
-    const glowPx = Math.max(KEP_GLOW_FAR_PX, KEP_GLOW_RIM_MUL * starPx);
-    this.starGlow.scale.setScalar(glowPx * spriteWorldPerPx * 2);
-    // Brightest near the star, fading on a log scale to a faint floor far away.
-    const t = Math.min(1, Math.max(0,
-      (Math.log(dStar) - Math.log(KEP_GLOW_NEAR)) / (Math.log(KEP_GLOW_FAR) - Math.log(KEP_GLOW_NEAR))));
-    this.starGlow.material.opacity = KEP_GLOW_MAX - (KEP_GLOW_MAX - KEP_GLOW_MIN) * t;
+    const H = window.innerHeight;
+
+    // ── Star core (at the origin) + its glow ──
+    const dStar = cam.position.length();
+    if (dStar > 0 && this.star) {
+      const wpp = (2 * dStar * tanHalf) / H;
+      const starPx = STAR_RADIUS / wpp; // true on-screen disc radius (px)
+      // Min-dot the core so the star never vanishes when far (the glow dominates).
+      this.star.scale.setScalar(Math.max(1, (STAR_CORE_MIN_PX * wpp) / STAR_RADIUS));
+      if (this.starGlow) {
+        // Park the glow strictly IN FRONT of the whole star sphere (10% nearer than
+        // its closest point) using the RENDERED radius — not tangent to the near
+        // pole, which makes the additive glow z-fight the surface under the log
+        // depth buffer and drop out in a circular "bite". dStar*0.9 caps it in
+        // front of the camera for extreme close-ups.
+        const renderedR = STAR_RADIUS * this.star.scale.x;
+        const offset = Math.min(dStar - (dStar - renderedR) * 0.9, dStar * 0.9);
+        this.starGlow.position.copy(cam.position).setLength(offset);
+        const spriteWpp = (2 * (dStar - offset) * tanHalf) / H;
+        const glowPx = Math.max(KEP_GLOW_FAR_PX, KEP_GLOW_RIM_MUL * starPx);
+        this.starGlow.scale.setScalar(glowPx * spriteWpp * 2);
+        const t = Math.min(1, Math.max(0,
+          (Math.log(dStar) - Math.log(KEP_GLOW_NEAR)) / (Math.log(KEP_GLOW_FAR) - Math.log(KEP_GLOW_NEAR))));
+        this.starGlow.material.opacity = KEP_GLOW_MAX - (KEP_GLOW_MAX - KEP_GLOW_MIN) * t;
+      }
+    }
+
+    // ── Planet min-dot (its cloud shell is a child and inherits the scale) ──
+    if (this.b) {
+      const pPos = this.b.getWorldPosition(new THREE.Vector3());
+      const dP = cam.position.distanceTo(pPos);
+      if (dP > 0) {
+        const wppP = (2 * dP * tanHalf) / H;
+        this.b.scale.setScalar(Math.max(1, (MIN_DOT_PX * wppP) / KEPLER_B_RADIUS));
+      }
+    }
   },
 
   update(ctx) {
@@ -325,7 +350,7 @@ const room = {
         return;
       }
     }
-    this.updateStarGlow();
+    this.updateScales();
     ctx.renderer.render(this.scene, this.camera);
   },
 
