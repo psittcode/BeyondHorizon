@@ -724,6 +724,19 @@ sun.userData = {
 // 👇 ADD THIS LINE HERE
 sun.castShadow = true;
 
+// ── TEMP: size-comparison Earth beside the Sun (user-requested, remove later) ──
+// A true-size Earth (daymap only, no clouds) parked just off the Sun's limb so the
+// ~109x radius ratio is visible by eye. Unlit MeshBasicMaterial so the texture
+// always shows, and deliberately NOT added to the min-dot scaler so it stays at
+// true scale (zoom in to the Sun to see how tiny Earth is next to it).
+const TEMP_EARTH_TRUE_RADIUS = 6371 / 14959787.07;
+const tempCompareEarth = new THREE.Mesh(
+  new THREE.SphereGeometry(TEMP_EARTH_TRUE_RADIUS, 48, 48),
+  new THREE.MeshBasicMaterial({ map: earthTexture })
+);
+tempCompareEarth.position.set(SUN_TRUE_RADIUS * 1.05, 0, 0);
+scene.add(tempCompareEarth);
+
 
 // SUN GLOW — light-orb sprite (matches the galactic-core glow style)
 // Camera-facing canvas sprite with a soft radial gradient, so the Sun reads
