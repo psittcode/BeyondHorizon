@@ -1182,7 +1182,12 @@ function updateSunGlow() {
   // camera and the Sun still does. A billboard's whole quad lies at one depth,
   // so occlusion by a transiting planet is clean and per-pixel.
   const renderedR = sun.userData.trueRadius * sun.scale.x;
-  const offset = Math.min(renderedR, dSun * 0.9);
+  // Sit the glow strictly IN FRONT of the whole Sun sphere (10% nearer than its
+  // closest point), not tangent to its near pole. At offset = renderedR the flat
+  // billboard just touches the pole and the additive glow z-fights the surface
+  // under the log depth buffer, dropping out in a circular patch (a dark "bite").
+  // dSun*0.9 caps it in front of the camera for the extreme true-scale close-ups.
+  const offset = Math.min(dSun - (dSun - renderedR) * 0.9, dSun * 0.9);
   glowMesh.position.copy(camera.position).setLength(offset);
   // Fixed-pixel ball when zoomed out; scales with the disc when zoomed in.
   // Convert to world size at the sprite's own (closer) depth so the offset

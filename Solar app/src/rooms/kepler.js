@@ -272,10 +272,13 @@ const room = {
     const tanHalf = Math.tan((cam.fov * Math.PI / 180) / 2);
     const worldPerPx = (2 * dStar * tanHalf) / window.innerHeight;
     const starPx = STAR_RADIUS / worldPerPx; // on-screen disc radius (px)
-    // Park the glow just in front of the star's near surface along the camera ray
-    // so the star's own face never occludes it, while a planet passing in front
-    // still does (depthTest is on). A billboard's whole quad lies at one depth.
-    const offset = Math.min(STAR_RADIUS, dStar * 0.9);
+    // Park the glow strictly IN FRONT of the whole star sphere (not tangent to its
+    // near pole). At offset = STAR_RADIUS the flat billboard just touches the near
+    // pole, and under the log depth buffer the additive glow z-fights the surface
+    // over a circular cap and drops out — a dark "bite" in the disc. Sitting it
+    // 10% nearer than the star's closest point keeps it clear of the sphere while
+    // still behind any planet transiting in front (depthTest is on).
+    const offset = dStar - (dStar - STAR_RADIUS) * 0.9;
     this.starGlow.position.copy(cam.position).setLength(offset);
     // Fixed-pixel ball when zoomed out; scales with the disc when zoomed in.
     // Convert to world size at the sprite's own (closer) depth so the offset
