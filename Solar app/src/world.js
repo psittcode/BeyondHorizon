@@ -735,6 +735,7 @@ const tempCompareEarth = new THREE.Mesh(
   new THREE.MeshBasicMaterial({ map: earthTexture })
 );
 tempCompareEarth.position.set(SUN_TRUE_RADIUS * 1.05, 0, 0);
+tempCompareEarth.visible = false; // off by default; toggled from the Sun's info panel
 scene.add(tempCompareEarth);
 
 
@@ -1263,6 +1264,22 @@ const helioObjects = [
 const raycaster = new THREE.Raycaster();
 const mouse = new THREE.Vector2();
 
+// TEMP (size-comparison Earth): Sun panel with a button to toggle the true-size
+// Earth parked beside the Sun. Mirrors the Mars terraform-toggle pattern. Remove
+// alongside the tempCompareEarth block.
+function refreshSunPanel() {
+  const pc = document.getElementById("panelContent");
+  const label = tempCompareEarth.visible ? "Hide Earth (size comparison)" : "Show Earth (size comparison)";
+  const btnHtml = `<button id="sunCompareEarthBtn" style="background:rgba(255,255,255,0.15);color:white;border:1px solid rgba(255,255,255,0.4);padding:6px 12px;cursor:pointer;border-radius:4px;font-size:13px;margin-bottom:10px;width:100%;display:block">${label}</button>`;
+  const splitAt = SUN_INFO.indexOf('<br><br>') + '<br><br>'.length;
+  pc.innerHTML = SUN_INFO.substring(0, splitAt) + btnHtml + SUN_INFO.substring(splitAt);
+  document.getElementById("sunCompareEarthBtn").addEventListener("click", (e) => {
+    e.stopPropagation();
+    tempCompareEarth.visible = !tempCompareEarth.visible;
+    refreshSunPanel(); // update the button label
+  });
+}
+
 function refreshMarsPanel() {
   const pc = document.getElementById("panelContent");
   const info = marsTransformed ? marsTransformedInfo : marsOriginalInfo;
@@ -1389,6 +1406,8 @@ function flyToObject(obj) {
   document.getElementById("panel").style.display = "block";
   if (infoObj.userData.name === "Mars") {
     refreshMarsPanel();
+  } else if (infoObj.userData.name === "Sun") {
+    refreshSunPanel();
   } else {
     document.getElementById("panelContent").innerHTML = infoObj.userData.info;
   }
