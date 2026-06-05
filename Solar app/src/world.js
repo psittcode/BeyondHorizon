@@ -2816,7 +2816,16 @@ function animate(){
   // Active only once fully arrived at the Milky Way page view — not during fly animations
   // and not inside any other mode. isFlyingTo gates out the transition that would otherwise
   // fire prematurely as the camera crosses SKYBOX_RADIUS on its way to the galaxy.
-  const inMilkyWayView = outsideSkybox && !galacticViewActive && !spaceshipViewActive && !isFlyingTo;
+  //
+  // The BH belongs to the Milky Way view reached via the galaxy button, where the orbit
+  // target IS the galactic core. Gate on the target sitting near the core so an ordinary
+  // solar-system zoom-out — where the target is the Sun at the origin, ~0.52R from the
+  // core — never reveals the BH just because the camera's zoom path happens to pass near
+  // the core's world position.
+  const targetNearCore = galacticCorePos &&
+    controls.target.distanceTo(galacticCorePos) < galaxyVisualRadius * 0.30;
+  const inMilkyWayView = outsideSkybox && !galacticViewActive && !spaceshipViewActive &&
+    !isFlyingTo && targetNearCore;
   if (inMilkyWayView && galacticCorePos && BH_CLOSE_DIST > 0) {
     const camToCore = camera.position.distanceTo(galacticCorePos);
     const rawFrac = (camToCore - BH_CLOSE_DIST) / (BH_FAR_DIST - BH_CLOSE_DIST);
