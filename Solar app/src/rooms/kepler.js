@@ -33,6 +33,7 @@ const KEPLER_INTRO_TO   = new THREE.Vector3(0, 6, 18); // settled system view
 // scale would make it sub-pixel. Same values as the Solar view.
 const MIN_DOT_PX       = 2.6;   // the planet
 const STAR_CORE_MIN_PX = 1.3;   // the star core (smaller so the glow dominates far away)
+const ORBIT_HIDE_ABOVE_PX = 22; // hide the orbit line once the planet's on-screen radius exceeds this (Solar-view value)
 
 // Star glow — mirrors the Sun's glow logic AND constants in world.js (the star is
 // now the Sun's true size, so the same numbers apply). A filled additive bloom
@@ -138,11 +139,22 @@ const room = {
       })
     );
     this.b.add(this.bClouds);
-    this.orbit = new THREE.Mesh(
-      new THREE.RingGeometry(KEPLER_B_ORBIT_R - 0.03, KEPLER_B_ORBIT_R + 0.03, 128),
-      new THREE.MeshBasicMaterial({ color: 0x88aaff, transparent: true, opacity: 0.25, side: THREE.DoubleSide })
+    // Orbit line — a 1px-wide THREE.Line circle (constant on-screen width at any
+    // zoom), exactly like the Solar view, instead of a flat RingGeometry whose
+    // fixed 0.06-unit world thickness became enormous at true-scale close-ups.
+    // Segment count from the Solar view's sagitta rule so the polygon hugs the
+    // true circle (the tiny planet sits right on it). Hidden up close in updateScales.
+    const orbitSegs = Math.min(4096, Math.max(256,
+      Math.ceil(Math.PI * Math.sqrt(KEPLER_B_ORBIT_R / (2 * (KEPLER_B_RADIUS * 0.1))))));
+    const orbitPts = [];
+    for (let i = 0; i <= orbitSegs; i++) {
+      const a = (i / orbitSegs) * Math.PI * 2;
+      orbitPts.push(new THREE.Vector3(Math.cos(a) * KEPLER_B_ORBIT_R, 0, Math.sin(a) * KEPLER_B_ORBIT_R));
+    }
+    this.orbit = new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints(orbitPts),
+      new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.15 })
     );
-    this.orbit.rotation.x = -Math.PI / 2;
     this.orbit.visible = this.orbitsVisible;
     scene.add(this.orbit);
 
@@ -312,7 +324,12 @@ const room = {
       const dP = cam.position.distanceTo(pPos);
       if (dP > 0) {
         const wppP = (2 * dP * tanHalf) / H;
-        this.b.scale.setScalar(Math.max(1, (MIN_DOT_PX * wppP) / KEPLER_B_RADIUS));
+        const planetPx = KEPLER_B_RADIUS / wppP; // true on-screen radius (px)
+        this.b.scale.setScalar(Math.max(1, MIN_DOT_PX / planetPx));
+        // Hide the orbit line once the planet is large on screen — same as the
+        // Solar view (a thin ring through a big planet looks wrong; the planet
+        // also sits exactly on the line at true scale).
+        if (this.orbit) this.orbit.visible = this.orbitsVisible && planetPx < ORBIT_HIDE_ABOVE_PX;
       }
     }
   },
