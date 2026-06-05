@@ -749,7 +749,12 @@ const glowMesh = (function() {
     map: new THREE.CanvasTexture(_gc),
     transparent: true,
     blending: THREE.AdditiveBlending,
-    depthWrite: false
+    depthWrite: false,
+    // The glow sprite is centred on the Sun's centre, so the Sun's near
+    // hemisphere (opaque, depth-writing) would occlude it as you zoom in —
+    // leaving only a vanishing rim. Disable depth testing so the additive
+    // bloom always draws over the disc and stays visible right up close.
+    depthTest: false
   }));
   // Sun core diameter is 4 (radius 2); glow sits as a thin halo at 1.5× → 6.
   _sprite.scale.set(6, 6, 1);
