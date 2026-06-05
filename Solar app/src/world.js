@@ -751,12 +751,11 @@ const glowMesh = (function() {
     map: new THREE.CanvasTexture(_gc),
     transparent: true,
     blending: THREE.AdditiveBlending,
-    depthWrite: false,
-    // The glow sprite is centred on the Sun's centre, so the Sun's near
-    // hemisphere (opaque, depth-writing) would occlude it as you zoom in —
-    // leaving only a vanishing rim. Disable depth testing so the additive
-    // bloom always draws over the disc and stays visible right up close.
-    depthTest: false
+    depthWrite: false
+    // depthTest stays ON so objects between the camera and the Sun (e.g. a
+    // planet transiting in front) correctly occlude the glow. The Sun's own
+    // front face would otherwise hide it too — updateSunGlow() avoids that by
+    // parking this sprite just in front of the Sun's near surface each frame.
   }));
   // Sun core diameter is 4 (radius 2); glow sits as a thin halo at 1.5× → 6.
   _sprite.scale.set(6, 6, 1);
@@ -1177,9 +1176,20 @@ function updateSunGlow() {
   // Sun core: a small min-dot so when far the Sun is a tiny hot point inside the
   // soft bloom (reads as a light source) rather than a hard 2.6px orange disc.
   sun.scale.setScalar(Math.max(1, (SUN_CORE_MIN_PX * worldPerPx) / sun.userData.trueRadius));
-  // Fixed-pixel ball when zoomed out; a rim around the disc when zoomed right in.
+  // Park the glow just in front of the Sun's near surface, along the camera ray.
+  // With depthTest on, this stops the Sun's own front face from occluding the
+  // glow (the sprite sits ahead of it) while any object passing between the
+  // camera and the Sun still does. A billboard's whole quad lies at one depth,
+  // so occlusion by a transiting planet is clean and per-pixel.
+  const renderedR = sun.userData.trueRadius * sun.scale.x;
+  const offset = Math.min(renderedR, dSun * 0.9);
+  glowMesh.position.copy(camera.position).setLength(offset);
+  // Fixed-pixel ball when zoomed out; scales with the disc when zoomed in.
+  // Convert to world size at the sprite's own (closer) depth so the offset
+  // doesn't change its apparent on-screen size.
+  const spriteWorldPerPx = (2 * (dSun - offset) * tanHalf) / window.innerHeight;
   const glowPx = Math.max(SUN_GLOW_FAR_PX, SUN_GLOW_RIM_MUL * sunPx);
-  glowMesh.scale.setScalar(glowPx * worldPerPx * 2);
+  glowMesh.scale.setScalar(glowPx * spriteWorldPerPx * 2);
   // Brightest at the Sun, fading slowly across the whole zoom range (log scale so
   // it eases off immediately as you pull back, not all at once far out).
   const t = Math.min(1, Math.max(0,
