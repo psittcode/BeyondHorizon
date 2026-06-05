@@ -12,8 +12,10 @@ import { KEPLER_22B_INFO } from '../data/info.js';
 import { AU_KM } from '../core/scale.js';
 
 const SKYBOX_RADIUS = 20000;
-const KEPLER_B_ORBIT_R = 8;
-const KEPLER_B_RADIUS  = 0.55 * 2.1;
+const KEPLER_B_ORBIT_R = 8;          // 0.849 AU — Kepler-22b's real semi-major axis
+// Kepler-22b is enlarged for visibility (true radius would be a sub-pixel dot at
+// this orbit scale), but kept clearly smaller than its host star.
+const KEPLER_B_RADIUS  = 0.28;
 const KEPLER_B_SPEED   = 0.00009;
 const KEPLER_INTRO_FROM = new THREE.Vector3(0, 5, 90); // far: star is a tiny point
 const KEPLER_INTRO_TO   = new THREE.Vector3(0, 6, 18); // settled system view
@@ -22,10 +24,13 @@ const KEPLER_INTRO_TO   = new THREE.Vector3(0, 6, 18); // settled system view
 // that holds a fixed on-screen size when zoomed out and scales with the disc when
 // zoomed in, parked just in front of the star (along the camera ray) so the star's
 // own face never occludes it while a transiting planet still does.
-const STAR_RADIUS      = 2;    // matches the star SphereGeometry radius below
+// Star rendered well below true scale (~0.043 units would be a sub-pixel dot) but
+// small enough that Kepler-22b's real 0.849 AU orbit reads as properly far out:
+// orbit/star ≈ 13 star-radii (true is ~186, which isn't viewable with a visible star).
+const STAR_RADIUS      = 0.6;  // matches the star SphereGeometry radius below
 const KEP_GLOW_FAR_PX  = 34;   // fixed glow-ball radius (px) when zoomed out
 const KEP_GLOW_RIM_MUL = 2.0;  // glow radius as a multiple of the disc when zoomed in
-const KEP_GLOW_NEAR    = 4;     // distance (units) at/under which the glow is fully bright
+const KEP_GLOW_NEAR    = 2.5;   // distance (units) at/under which the glow is fully bright
 const KEP_GLOW_FAR     = 200;   // distance (units) at which the glow reaches its faint floor
 const KEP_GLOW_MAX     = 1.0;   // opacity near the star
 const KEP_GLOW_MIN     = 0.22;  // opacity far away
@@ -58,11 +63,11 @@ const room = {
     scene.add(kLight);
 
     this.star = new THREE.Mesh(
-      new THREE.SphereGeometry(2, 64, 64),
+      new THREE.SphereGeometry(STAR_RADIUS, 64, 64),
       new THREE.MeshBasicMaterial({ map: ctx.sunTexture, color: 0xfff0d8 })
     );
     this.star.userData = {
-      name: "Kepler-22", size: 2,
+      name: "Kepler-22", size: STAR_RADIUS,
       info: `<b>Kepler-22</b><br><br>The Sun-like G-type host star of this system, about 644 light-years away in the constellation Cygnus. It is roughly 3% less massive than the Sun with a surface temperature of 5,518 K. Its one confirmed planet, Kepler-22b, orbits within the habitable zone — click it to learn more.`
     };
     scene.add(this.star);
