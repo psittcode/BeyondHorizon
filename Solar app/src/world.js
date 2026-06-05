@@ -732,20 +732,19 @@ const glowMesh = (function() {
   const _gc = document.createElement('canvas');
   _gc.width = _gc.height = 256;
   const _gx = _gc.getContext('2d');
-  // Corona profile: faint over the centre (so the Sun's textured disc stays
-  // visible underneath, not blown white), brightest in a ring at ~half radius —
-  // which is sized to land on the disc's edge — then fading outward into space.
-  // This makes the glow *surround* the Sun at every zoom instead of collapsing
-  // to a bright dot in the disc's centre when you zoom in close.
+  // Filled bloom (NASA-Eyes style): brightest at the centre, alpha decreasing
+  // monotonically to fully transparent at the rim — a solid glowing point of
+  // light, never a hollow ring. The falloff is broad (still bright across the
+  // inner half) so when zoomed in it covers the whole disc and its halo extends
+  // past the edge to surround the Sun, rather than collapsing to a centre dot.
   const _gd = _gx.createRadialGradient(128, 128, 0, 128, 128, 128);
-  _gd.addColorStop(0.00, 'rgba(255, 248, 228, 0.14)');
-  _gd.addColorStop(0.30, 'rgba(255, 240, 200, 0.22)');
-  _gd.addColorStop(0.44, 'rgba(255, 226, 165, 0.36)');
-  _gd.addColorStop(0.50, 'rgba(255, 212, 140, 0.48)'); // corona peak — sits on the disc edge when zoomed in
-  _gd.addColorStop(0.60, 'rgba(255, 178, 102, 0.32)');
-  _gd.addColorStop(0.74, 'rgba(242, 134,  66, 0.15)');
-  _gd.addColorStop(0.88, 'rgba(208,  96,  42, 0.05)');
-  _gd.addColorStop(1.00, 'rgba(176,  80,  32, 0.00)');
+  _gd.addColorStop(0.00, 'rgba(255, 250, 238, 0.50)');
+  _gd.addColorStop(0.16, 'rgba(255, 244, 212, 0.42)');
+  _gd.addColorStop(0.32, 'rgba(255, 228, 170, 0.30)');
+  _gd.addColorStop(0.48, 'rgba(255, 198, 122, 0.185)');
+  _gd.addColorStop(0.64, 'rgba(252, 158,  85, 0.090)');
+  _gd.addColorStop(0.80, 'rgba(225, 115,  55, 0.033)');
+  _gd.addColorStop(1.00, 'rgba(185,  88,  42, 0.000)');
   _gx.fillStyle = _gd;
   _gx.fillRect(0, 0, 256, 256);
   const _sprite = new THREE.Sprite(new THREE.SpriteMaterial({
@@ -1156,14 +1155,15 @@ function minDotScale(obj, trueRadius) {
   return s;
 }
 // Sun glow — the Sun is a light source. SIZE: a fixed on-screen ball that keeps
-// the same size as you zoom out (it does NOT shrink), and a corona that scales
-// with the disc when you zoom in — always surrounding it, never a centre dot.
+// the same size as you zoom out (it does NOT shrink), and a filled bloom that
+// scales with the disc when you zoom in — surrounding it, never a centre dot or
+// a hollow ring (the gradient is a solid point of light, brightest at centre).
 // BRIGHTNESS
 // carries the effect: highest right at the Sun (a blinding orange bloom) and
 // fading gradually (log-smooth, starting the moment you pull back) to a
 // still-bright floor far away.
 const SUN_GLOW_FAR_PX  = 34;   // fixed glow-ball radius (px) when zoomed out — stays this size
-const SUN_GLOW_RIM_MUL = 2.0;  // glow radius as a multiple of the disc when zoomed in: puts the disc edge at gradient fraction 0.5 (the corona peak), so a full disc-radius of halo surrounds the Sun
+const SUN_GLOW_RIM_MUL = 2.0;  // glow radius as a multiple of the disc when zoomed in: disc edge lands at gradient fraction 0.5, so the bloom covers the disc and a full disc-radius of halo surrounds the Sun
 const SUN_GLOW_NEAR = 0.06;    // distance (units) at/under which the glow is fully bright (≈ Sun filling the screen); fades the moment you pull back
 const SUN_GLOW_FAR  = 300;     // distance (units) at which the glow reaches its faint floor
 const SUN_GLOW_MAX  = 1.0;     // opacity right at the Sun
