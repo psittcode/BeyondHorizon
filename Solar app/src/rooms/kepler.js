@@ -18,6 +18,18 @@ const KEPLER_B_SPEED   = 0.00009;
 const KEPLER_INTRO_FROM = new THREE.Vector3(0, 5, 90); // far: star is a tiny point
 const KEPLER_INTRO_TO   = new THREE.Vector3(0, 6, 18); // settled system view
 
+// Star glow — mirrors the Sun's glow logic in world.js. A filled additive bloom
+// that holds a fixed on-screen size when zoomed out and scales with the disc when
+// zoomed in, parked just in front of the star (along the camera ray) so the star's
+// own face never occludes it while a transiting planet still does.
+const STAR_RADIUS      = 2;    // matches the star SphereGeometry radius below
+const KEP_GLOW_FAR_PX  = 34;   // fixed glow-ball radius (px) when zoomed out
+const KEP_GLOW_RIM_MUL = 2.0;  // glow radius as a multiple of the disc when zoomed in
+const KEP_GLOW_NEAR    = 4;     // distance (units) at/under which the glow is fully bright
+const KEP_GLOW_FAR     = 200;   // distance (units) at which the glow reaches its faint floor
+const KEP_GLOW_MAX     = 1.0;   // opacity near the star
+const KEP_GLOW_MIN     = 0.22;  // opacity far away
+
 const _ray = new THREE.Raycaster();
 const _mouse = new THREE.Vector2();
 
@@ -25,7 +37,7 @@ const room = {
   scene: null, camera: null, controls: null,
   // Map-scale anchor: Kepler-22b orbits at KEPLER_B_ORBIT_R units ≈ 0.849 AU.
   kmPerUnit: (0.849 * AU_KM) / KEPLER_B_ORBIT_R,
-  bPivot: null, b: null, bClouds: null, star: null, orbit: null,
+  bPivot: null, b: null, bClouds: null, star: null, starGlow: null, orbit: null,
   lockedObject: null, flying: false,
   listVisible: false, orbitsVisible: true,
   introActive: false, introT: 0,
@@ -54,24 +66,32 @@ const room = {
       info: `<b>Kepler-22</b><br><br>The Sun-like G-type host star of this system, about 644 light-years away in the constellation Cygnus. It is roughly 3% less massive than the Sun with a surface temperature of 5,518 K. Its one confirmed planet, Kepler-22b, orbits within the habitable zone — click it to learn more.`
     };
     scene.add(this.star);
-    // Soft star glow
-    (function() {
+    // Star glow — same filled-bloom sprite as the Sun; sized/positioned per frame
+    // by updateStarGlow().
+    {
       const _gc = document.createElement('canvas'); _gc.width = _gc.height = 256;
       const _gx = _gc.getContext('2d');
+      // Filled bloom (NASA-Eyes style): brightest at centre, alpha decreasing
+      // monotonically to transparent — a solid point of light, never a hollow
+      // ring; broad enough to cover the disc and surround it when zoomed in.
       const _gd = _gx.createRadialGradient(128, 128, 0, 128, 128, 128);
-      _gd.addColorStop(0.00, 'rgba(255, 244, 200, 1.00)');
-      _gd.addColorStop(0.20, 'rgba(255, 222, 140, 0.95)');
-      _gd.addColorStop(0.45, 'rgba(255, 185,  80, 0.70)');
-      _gd.addColorStop(0.75, 'rgba(235, 130,  30, 0.35)');
-      _gd.addColorStop(1.00, 'rgba(180,  80,   0, 0.00)');
+      _gd.addColorStop(0.00, 'rgba(255, 250, 238, 0.50)');
+      _gd.addColorStop(0.16, 'rgba(255, 244, 212, 0.42)');
+      _gd.addColorStop(0.32, 'rgba(255, 228, 170, 0.30)');
+      _gd.addColorStop(0.48, 'rgba(255, 198, 122, 0.185)');
+      _gd.addColorStop(0.64, 'rgba(252, 158,  85, 0.090)');
+      _gd.addColorStop(0.80, 'rgba(225, 115,  55, 0.033)');
+      _gd.addColorStop(1.00, 'rgba(185,  88,  42, 0.000)');
       _gx.fillStyle = _gd; _gx.fillRect(0, 0, 256, 256);
-      const _sprite = new THREE.Sprite(new THREE.SpriteMaterial({
+      this.starGlow = new THREE.Sprite(new THREE.SpriteMaterial({
         map: new THREE.CanvasTexture(_gc), transparent: true,
         blending: THREE.AdditiveBlending, depthWrite: false
+        // depthTest stays ON so a transiting planet occludes the glow; the star's
+        // own face is handled by parking the sprite in front of it each frame.
       }));
-      _sprite.scale.set(6, 6, 1);
-      scene.add(_sprite);
-    })();
+      this.starGlow.scale.set(6, 6, 1);
+      scene.add(this.starGlow);
+    }
 
     const kTex = loadTexture("Kepler 22b_0.jpeg");
     this.bPivot = new THREE.Group();
@@ -232,6 +252,33 @@ const room = {
     this._isActive = true;
   },
 
+  // Size, position and fade the star glow for the current zoom — the Sun's logic
+  // (world.js updateSunGlow), adapted to this fixed-size star at the scene origin.
+  updateStarGlow() {
+    if (!this.starGlow) return;
+    const cam = this.camera;
+    const dStar = cam.position.length(); // star sits at the origin
+    if (dStar <= 0) return;
+    const tanHalf = Math.tan((cam.fov * Math.PI / 180) / 2);
+    const worldPerPx = (2 * dStar * tanHalf) / window.innerHeight;
+    const starPx = STAR_RADIUS / worldPerPx; // on-screen disc radius (px)
+    // Park the glow just in front of the star's near surface along the camera ray
+    // so the star's own face never occludes it, while a planet passing in front
+    // still does (depthTest is on). A billboard's whole quad lies at one depth.
+    const offset = Math.min(STAR_RADIUS, dStar * 0.9);
+    this.starGlow.position.copy(cam.position).setLength(offset);
+    // Fixed-pixel ball when zoomed out; scales with the disc when zoomed in.
+    // Convert to world size at the sprite's own (closer) depth so the offset
+    // doesn't change its apparent on-screen size.
+    const spriteWorldPerPx = (2 * (dStar - offset) * tanHalf) / window.innerHeight;
+    const glowPx = Math.max(KEP_GLOW_FAR_PX, KEP_GLOW_RIM_MUL * starPx);
+    this.starGlow.scale.setScalar(glowPx * spriteWorldPerPx * 2);
+    // Brightest near the star, fading on a log scale to a faint floor far away.
+    const t = Math.min(1, Math.max(0,
+      (Math.log(dStar) - Math.log(KEP_GLOW_NEAR)) / (Math.log(KEP_GLOW_FAR) - Math.log(KEP_GLOW_NEAR))));
+    this.starGlow.material.opacity = KEP_GLOW_MAX - (KEP_GLOW_MAX - KEP_GLOW_MIN) * t;
+  },
+
   update(ctx) {
     const now = performance.now();
     const kScale = Math.min(now - this._lastT, 100) / (1000 / 60);
@@ -265,6 +312,7 @@ const room = {
         return;
       }
     }
+    this.updateStarGlow();
     ctx.renderer.render(this.scene, this.camera);
   },
 
