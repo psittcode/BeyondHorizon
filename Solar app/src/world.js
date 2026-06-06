@@ -1402,11 +1402,14 @@ function refreshMercuryPanel() {
 function toggleMercuryTrail() {
   mercuryTrailMode = !mercuryTrailMode;
   const normalBar = document.getElementById('normalSpeedControls');
+  const simBlock  = document.getElementById('simTimeBlock');
   if (mercuryTrailMode) {
     // The demo drives Mercury's orbit + precession on its own (see animate), so the
-    // sim clock is left alone. Hide the normal speed bar; the precession bar is the
-    // only speed control while the trail shows.
+    // sim clock is left alone. Hide the normal speed bar (precession bar is the only
+    // speed control) and the Simulation Time block (the demo shows its own elapsed
+    // time in the Mercury panel) while the trail is on.
     if (normalBar) normalBar.style.display = 'none';
+    if (simBlock)  simBlock.style.display  = 'none';
     mercuryPerihelion = 0;   // fresh rosette
     mercuryTrailCount = 0;
     mercuryPrevNu = mercuryMesh.userData.angle;
@@ -1415,6 +1418,7 @@ function toggleMercuryTrail() {
     if (mercuryOrbitLine) mercuryOrbitLine.visible = false;
   } else {
     if (normalBar) normalBar.style.display = 'block';
+    if (simBlock)  simBlock.style.display  = '';
     mercuryTrail.visible = false;
     if (mercuryOrbitLine) mercuryOrbitLine.visible = orbitsVisible;
   }
@@ -3610,6 +3614,9 @@ function showList() {
 // Back to list button
 document.getElementById("backToList").addEventListener("click", () => {
   if (viewManager.activeName === 'kepler') { viewManager.active.showList(); return; }
+  // If Mercury's precession trail is on, Back first exits that mode and returns to
+  // the normal Mercury panel (rather than jumping straight to the bodies list).
+  if (mercuryTrailMode) { toggleMercuryTrail(); return; }
   showList();
 });
 
