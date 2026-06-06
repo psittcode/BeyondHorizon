@@ -1402,14 +1402,14 @@ function refreshMercuryPanel() {
 function toggleMercuryTrail() {
   mercuryTrailMode = !mercuryTrailMode;
   const normalBar = document.getElementById('normalSpeedControls');
-  const simBlock  = document.getElementById('simTimeBlock');
+  const simDisplay = document.getElementById('simTimeDisplay');
   if (mercuryTrailMode) {
     // The demo drives Mercury's orbit + precession on its own (see animate), so the
     // sim clock is left alone. Hide the normal speed bar (precession bar is the only
-    // speed control) and the Simulation Time block (the demo shows its own elapsed
-    // time in the Mercury panel) while the trail is on.
+    // speed control) and the Simulation Time readout (the demo shows its own elapsed
+    // time in the Mercury panel) while the trail is on — the Reset to Now button stays.
     if (normalBar) normalBar.style.display = 'none';
-    if (simBlock)  simBlock.style.display  = 'none';
+    if (simDisplay) simDisplay.style.display = 'none';
     mercuryPerihelion = 0;   // fresh rosette
     mercuryTrailCount = 0;
     mercuryPrevNu = mercuryMesh.userData.angle;
@@ -1418,7 +1418,7 @@ function toggleMercuryTrail() {
     if (mercuryOrbitLine) mercuryOrbitLine.visible = false;
   } else {
     if (normalBar) normalBar.style.display = 'block';
-    if (simBlock)  simBlock.style.display  = '';
+    if (simDisplay) simDisplay.style.display = '';
     mercuryTrail.visible = false;
     if (mercuryOrbitLine) mercuryOrbitLine.visible = orbitsVisible;
   }
