@@ -928,6 +928,10 @@ const MERC_PRECESS_PER_ORBIT_RAD =
 // Real years one radian of precession represents — for the honest elapsed-time
 // readout (one full rosette ≈ 3 million years, exactly as in reality).
 const MERC_YEARS_PER_RAD = 100 / (MERCURY_PRECESS_ARCSEC_PER_CENTURY * MERC_ARCSEC_TO_RAD);
+// While the trail demo is on, Mercury orbits at this fixed gentle rate, INDEPENDENT
+// of the simulation clock — so the demo runs without touching the normal sim time.
+// (~0.29 orbits/sec — a calm pace, not the blur it was at before.)
+const MERC_DEMO_ORBIT_SPEED = 0.03;
 let mercuryPerihelion = 0;   // accumulated argument of perihelion (radians)
 let mercuryDOmega     = 0;   // precession added this frame (for smooth trail sampling)
 let mercuryTrailMode  = false;
@@ -1359,13 +1363,13 @@ function refreshSunPanel() {
   });
 }
 
-// Mercury panel: toggle the precession trail + set the time fast-forward. 1× is
-// real-time (Mercury ~static, like the normal speed bar); higher fast-forwards the
-// whole thing — orbit, precession and the elapsed clock — at the real ratio.
+// Mercury panel: toggle the precession trail + set how far to fast-forward the
+// precession. 1× is the real 43″/century rate (imperceptible); higher exaggerates
+// it so the rosette builds up. The normal simulation clock is never touched.
 function mercuryDemoLabel() {
   return mercuryDemoMult === 1
-    ? "1× — real time (Mercury ~static)"
-    : mercuryDemoMult.toExponential(0).replace('e+', 'e') + "× fast-forward";
+    ? "1× — real rate (43″/century)"
+    : mercuryDemoMult.toLocaleString() + "× fast-forward";
 }
 function refreshMercuryPanel() {
   const pc = document.getElementById("panelContent");
@@ -1379,7 +1383,7 @@ function refreshMercuryPanel() {
     const exp = Math.round(Math.log10(mercuryDemoMult));
     ctrl +=
       `<div style="font-size:12px;opacity:0.85;margin-bottom:4px">Precession speed: <span id="mercDemoLabel">${mercuryDemoLabel()}</span></div>` +
-      `<input id="mercDemoSlider" type="range" min="0" max="12" step="1" value="${exp}" style="width:100%;margin-bottom:6px">` +
+      `<input id="mercDemoSlider" type="range" min="0" max="7" step="1" value="${exp}" style="width:100%;margin-bottom:6px">` +
       `<div id="mercElapsed" style="font-size:12px;opacity:0.85;margin-bottom:10px"></div>`;
   }
   const splitAt = info.indexOf('<br><br>') + '<br><br>'.length;
@@ -3166,14 +3170,13 @@ function animate(){
   simulationDate = new Date(simulationDate.getTime() + simMsPerFrame);
   updateSimTimeDisplay();
 
-  // Mercury perihelion precession (Einstein's GR effect). In trail mode the whole
-  // thing is a pure TIME fast-forward: Mercury orbits at real-time × mercuryDemoMult
-  // (so 1× ≈ frozen, like the normal speed bar) and the perihelion drifts the REAL
-  // amount per orbit — no exaggeration. Outside trail mode it tracks 43″/century vs
-  // the sim clock. Tying precession to the orbital advance keeps the ratio exact.
+  // Mercury perihelion precession (Einstein's GR effect). While the trail demo is
+  // on, it's tied to the demo's own orbital advance (independent of the sim clock)
+  // and fast-forwarded by mercuryDemoMult so the rosette is visible; otherwise it
+  // tracks the real 43″/century against simulated time (an imperceptible drift).
   if (mercuryTrailMode) {
-    const dNu = mercuryMesh.userData.speed * SPEED_REALLIFE * mercuryDemoMult * deltaScale;
-    mercuryDOmega = (dNu / (2 * Math.PI)) * MERC_PRECESS_PER_ORBIT_RAD;
+    const dNu = MERC_DEMO_ORBIT_SPEED * deltaScale;
+    mercuryDOmega = (dNu / (2 * Math.PI)) * MERC_PRECESS_PER_ORBIT_RAD * mercuryDemoMult;
   } else {
     mercuryDOmega = MERCURY_PRECESS_ARCSEC_PER_CENTURY * MERC_ARCSEC_TO_RAD
       * (simMsPerFrame / MERC_CENTURY_MS);
@@ -3195,9 +3198,9 @@ function animate(){
   meshes.forEach(m=>{
     if (m.userData.name === "Mercury") {
       // Elliptical orbit (Sun at the focus) whose perihelion precesses. While the
-      // trail demo runs, Mercury orbits at real-time × the fast-forward factor
-      // (1× ≈ frozen, like the normal speed bar); otherwise it follows the speed bar.
-      m.userData.angle += (mercuryTrailMode ? m.userData.speed * SPEED_REALLIFE * mercuryDemoMult
+      // trail demo runs, Mercury orbits at its own fixed rate so the demo doesn't
+      // depend on (or disturb) the sim clock; otherwise it follows the speed bar.
+      m.userData.angle += (mercuryTrailMode ? MERC_DEMO_ORBIT_SPEED
                                             : m.userData.speed * speed) * deltaScale;
       const e = MERCURY_ECC, nu = m.userData.angle;
       const r = m.userData.dist * (1 - e * e) / (1 + e * Math.cos(nu));
