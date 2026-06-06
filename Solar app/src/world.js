@@ -1364,11 +1364,13 @@ function refreshSunPanel() {
 }
 
 // Mercury panel: toggle the precession trail + set how far to fast-forward the
-// precession. 1× is the real 43″/century rate (imperceptible); higher exaggerates
-// it so the rosette builds up. The normal simulation clock is never touched.
+// precession. This is the PRECESSION rate per orbit — 1× is the true ~0.1″/orbit
+// (43″/century) drift, NOT real-time playback (Mercury is sped up to a watchable
+// pace so the trail can trace out). Higher exaggerates the drift to build the
+// rosette. The normal simulation clock is never touched.
 function mercuryDemoLabel() {
   return mercuryDemoMult === 1
-    ? "1× — real rate (43″/century)"
+    ? "1× — true rate (~0.1″/orbit)"
     : mercuryDemoMult.toLocaleString() + "× fast-forward";
 }
 function refreshMercuryPanel() {
