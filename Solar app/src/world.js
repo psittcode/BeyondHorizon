@@ -924,8 +924,11 @@ const MERC_CENTURY_MS = 100 * 365.25 * 86400 * 1000;
 let mercuryPerihelion = 0;   // accumulated argument of perihelion (radians)
 let mercuryDOmega     = 0;   // precession added this frame (for smooth trail sampling)
 let mercuryTrailMode  = false;
-let mercuryDemoMult   = 1e5; // precession speed-up while the trail demo is on (1 = exact)
 let mercuryPrevNu     = 0;
+// Fixed exaggeration of the real 43″/century rate applied only while the trail is
+// shown. The true rate is ~0.0001°/orbit (≈3.4M orbits for one rosette — undrawable),
+// so we bake in a visible rate and let the main speed bar control how fast it builds.
+const MERCURY_PRECESS_DEMO = 1e5;
 
 // 🪐 ORBIT LINES
 const orbitLines = [];
@@ -1350,32 +1353,18 @@ function refreshSunPanel() {
   });
 }
 
-// Mercury panel: toggle the precession trail + dial the demo speed-up.
-function mercuryDemoLabel() {
-  return mercuryDemoMult === 1
-    ? "1× (exact 43″/century)"
-    : mercuryDemoMult.toLocaleString() + "× of 43″/century";
-}
+// Mercury panel: toggle the precession trail. Build speed is the main speed bar.
 function refreshMercuryPanel() {
   const pc = document.getElementById("panelContent");
   const info = mercuryMesh.userData.info;
-  const btnStyle = "background:rgba(255,255,255,0.15);color:white;border:1px solid rgba(255,255,255,0.4);padding:6px 12px;cursor:pointer;border-radius:4px;font-size:13px;margin-bottom:8px;width:100%;display:block";
-  const trailLabel = mercuryTrailMode ? "Hide precession trail" : "Show precession trail (Einstein)";
-  const exp = Math.round(Math.log10(mercuryDemoMult));
-  const ctrl =
-    `<button id="mercTrailBtn" style="${btnStyle}">${trailLabel}</button>` +
-    `<div style="font-size:12px;opacity:0.85;margin-bottom:4px">Precession demo speed: <span id="mercDemoLabel">${mercuryDemoLabel()}</span></div>` +
-    `<input id="mercDemoSlider" type="range" min="0" max="6" step="1" value="${exp}" style="width:100%;margin-bottom:10px">`;
+  const btnStyle = "background:rgba(255,255,255,0.15);color:white;border:1px solid rgba(255,255,255,0.4);padding:6px 12px;cursor:pointer;border-radius:4px;font-size:13px;margin-bottom:10px;width:100%;display:block";
+  const trailLabel = mercuryTrailMode ? "Hide Precession Trail" : "Show Precession Trail";
+  const ctrl = `<button id="mercTrailBtn" style="${btnStyle}">${trailLabel}</button>`;
   const splitAt = info.indexOf('<br><br>') + '<br><br>'.length;
   pc.innerHTML = info.substring(0, splitAt) + ctrl + info.substring(splitAt);
   document.getElementById("mercTrailBtn").addEventListener("click", (e) => {
     e.stopPropagation();
     toggleMercuryTrail();
-  });
-  document.getElementById("mercDemoSlider").addEventListener("input", (e) => {
-    e.stopPropagation();
-    mercuryDemoMult = Math.pow(10, parseFloat(e.target.value));
-    document.getElementById("mercDemoLabel").textContent = mercuryDemoLabel();
   });
 }
 function toggleMercuryTrail() {
@@ -3129,7 +3118,7 @@ function animate(){
   // accelerated by the demo factor only while the trail demo is active so the
   // rosette is actually visible. Rotate the ring to match (negligible when exact).
   mercuryDOmega = MERCURY_PRECESS_ARCSEC_PER_CENTURY * MERC_ARCSEC_TO_RAD
-    * (mercuryTrailMode ? mercuryDemoMult : 1) * (simMsPerFrame / MERC_CENTURY_MS);
+    * (mercuryTrailMode ? MERCURY_PRECESS_DEMO : 1) * (simMsPerFrame / MERC_CENTURY_MS);
   mercuryPerihelion += mercuryDOmega;
   if (mercuryOrbitLine) mercuryOrbitLine.rotation.y = -mercuryPerihelion;
 
