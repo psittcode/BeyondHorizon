@@ -78,7 +78,10 @@ const ganymedeTexture = textureLoader.load("Ganymede.jpeg");
 const ioTexture = textureLoader.load("Io.jpeg");
 
 // 🌌 MILKY WAY SKYBOX
-const SKYBOX_RADIUS = 20000;
+// Threshold where the view hands off to the galaxy. Well inside the galaxy model
+// (radius ~126k, core ~66k from the Sun), so there's plenty of solar-system
+// zoom-out room before the galaxy takes over.
+const SKYBOX_RADIUS = 50000;
 const skyGeometry = new THREE.SphereGeometry(SKYBOX_RADIUS, 64, 64);
 const skyMaterial = new THREE.MeshBasicMaterial({
   map: milkyWayTexture,
@@ -109,13 +112,15 @@ scene.add(galaxySkybox);
 // galaxy scale (the galaxy backdrop takes over).
 const STARFIELD_COUNT = 1800;
 const STARFIELD_R_MIN  = 450;     // just beyond Neptune's orbit (~300) so it doesn't clutter the planets
-const STARFIELD_R_MAX  = 16000;   // inside the 20000 skybox
+const STARFIELD_R_MAX  = 45000;   // fills most of the (now larger) skybox so dots parallax all the way out
 const _starPos = new Float32Array(STARFIELD_COUNT * 3);
 for (let i = 0; i < STARFIELD_COUNT; i++) {
   const u = Math.random() * 2 - 1;            // uniform cos(latitude)
   const phi = Math.random() * Math.PI * 2;
   const s = Math.sqrt(1 - u * u);
-  const r = STARFIELD_R_MIN + (STARFIELD_R_MAX - STARFIELD_R_MIN) * Math.random();
+  // Bias toward nearer distances (random²) so the inner view where you spend most
+  // time stays populated, while still scattering some far out for the big zoom-out.
+  const r = STARFIELD_R_MIN + (STARFIELD_R_MAX - STARFIELD_R_MIN) * Math.random() * Math.random();
   _starPos[i*3]     = r * s * Math.cos(phi);
   _starPos[i*3 + 1] = r * u;
   _starPos[i*3 + 2] = r * s * Math.sin(phi);
@@ -123,11 +128,11 @@ for (let i = 0; i < STARFIELD_COUNT; i++) {
 const starfieldGeom = new THREE.BufferGeometry();
 starfieldGeom.setAttribute('position', new THREE.BufferAttribute(_starPos, 3));
 const starfield = new THREE.Points(starfieldGeom, new THREE.PointsMaterial({
-  color: 0xc8ccd4,          // pale cool-grey, not stark white
+  color: 0xdde1e8,          // soft white — visible but not stark
   size: 1.0,
   sizeAttenuation: false,   // constant on-screen size; parallax comes from position
   transparent: true,
-  opacity: 0.4,             // faint, just a subtle backdrop
+  opacity: 0.62,            // a touch more present than before, still a backdrop
   depthWrite: false
 }));
 starfield.frustumCulled = false;
