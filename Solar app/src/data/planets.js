@@ -13,7 +13,7 @@
 export const data = [
 {
 name:"Mercury",
-dist:3.87,size:0.0001631,color:0x888888,speed:0.0001379,
+dist:3.87,size:0.0001631,color:0x888888,speed:0.0001379,e:0.2056,i:7.00,Om:48.33,w:29.12,period:0.2408,
 info:`<b>Mercury</b><br><br>
 
 <b>General Overview</b><br>
@@ -74,7 +74,7 @@ These missions have revealed Mercury as a complex planet shaped by both solar pr
 },
 {
 name:"Venus",
-dist:7.23,size:0.0004046,color:0xffaa33,speed:0.00005394,
+dist:7.23,size:0.0004046,color:0xffaa33,speed:0.00005394,e:0.0068,i:3.39,Om:76.68,w:54.88,period:0.6152,
 info:`<b>Venus</b><br><br>
 
 <b>General Overview</b><br>
@@ -134,7 +134,7 @@ Venus remains a major target for understanding planetary climate evolution and r
 },
 {
 name:"Earth",
-dist:10,size:0.0004259,color:0x3399ff,speed:0.00003319,
+dist:10,size:0.0004259,color:0x3399ff,speed:0.00003319,e:0.0167,i:0.00,Om:0,w:102.94,period:1.000,
 info:`<b>Earth</b><br><br>
 
 <b>General Overview</b><br>
@@ -178,7 +178,7 @@ Earth has one natural satellite, the Moon, which stabilizes axial tilt and influ
 },
 {
 name:"Mars",
-dist:15.24,size:0.0002266,color:0xff3300,speed:0.00001765,
+dist:15.24,size:0.0002266,color:0xff3300,speed:0.00001765,e:0.0934,i:1.85,Om:49.56,w:286.5,period:1.881,
 info:`<b>Mars</b><br><br>
 
 <b>General Overview</b><br>
@@ -224,8 +224,32 @@ Mars is considered one of the most promising candidates for future human explora
 Mars has a moderately eccentric orbit, causing noticeable seasonal variations, especially in the southern hemisphere.<br>`
 },
 {
+name:"Ceres",
+dist:27.675,size:0.0000314,color:0x9a8f80,speed:0.000007215,e:0.0758,i:10.59,Om:80.33,w:73.6,period:4.60,
+kind:"dwarf",texture:"4k_ceres_fictional.jpg",ellipsoid:[1,0.923,1],tilt:4,spinY:0.032,
+info:`<b>Ceres</b><br><br>
+
+<b>General Overview</b><br>
+• Discovered: 1801 (Giuseppe Piazzi)<br>
+• Type: dwarf planet — the only one in the inner Solar System<br>
+• Distance from Sun: ~2.77 AU (in the main asteroid belt)<br>
+• Length of day: ~9.1 hours<br>
+• Length of year: ~4.6 Earth years<br>
+• Mean radius: ~470 km (about 1/4 the width of our Moon)<br><br>
+
+Ceres is the largest object in the asteroid belt between Mars and Jupiter — so large and round that it qualifies as a dwarf planet, holding about a third of the belt's total mass. It is slightly flattened (oblate) by its rotation.<br><br>
+
+<b>Water and Surface</b><br>
+• Likely holds large amounts of water ice — possibly a subsurface briny layer<br>
+• Bright carbonate/salt deposits (e.g. in Occator crater) hint at past liquid<br>
+• Studied up close by NASA's Dawn spacecraft (orbited 2015–2018)<br><br>
+
+<b>Orbital Characteristics</b><br>
+Ceres has a mildly eccentric orbit inclined ~10.6° to the ecliptic, noticeably more tilted than the major planets.<br>`
+},
+{
 name:"Jupiter",
-dist:52.04,size:0.0046732,color:0xffaa88,speed:0.000002798,
+dist:52.04,size:0.0046732,color:0xffaa88,speed:0.000002798,e:0.0489,i:1.30,Om:100.46,w:273.87,period:11.86,
 info:`<b>Jupiter</b><br><br>
 
 <b>General Overview</b><br>
@@ -284,7 +308,7 @@ Jupiter remains a key target for understanding gas giant formation and early Sol
 },
 {
 name:"Saturn",
-dist:95.83,size:0.0038925,color:0xffddaa,speed:0.000001127,
+dist:95.83,size:0.0038925,color:0xffddaa,speed:0.000001127,e:0.0565,i:2.49,Om:113.66,w:339.39,period:29.45,
 info:`
 <b>Saturn</b><br><br>
 
@@ -350,7 +374,7 @@ It has been known since ancient times and is visible to the naked eye, appearing
 },
 {
 name:"Uranus",
-dist:191.91,size:0.0016953,color:0x66ccff,speed:0.000000395,
+dist:191.91,size:0.0016953,color:0x66ccff,speed:0.000000395,e:0.0457,i:0.77,Om:74.00,w:96.99,period:84.02,
 info:`<b>Uranus</b><br><br>
 
 <b>General Overview</b><br>
@@ -401,7 +425,7 @@ All current knowledge of Uranus comes from this single flyby, leaving many aspec
 },
 {
 name:"Neptune",
-dist:300.70,size:0.0016458,color:0x3366ff,speed:0.0000002014,
+dist:300.70,size:0.0016458,color:0x3366ff,speed:0.0000002014,e:0.0113,i:1.77,Om:131.78,w:276.34,period:164.8,
 info:`<b>Neptune</b><br><br>
 
 <b>General Overview</b><br>
@@ -452,5 +476,113 @@ Triton is expected to eventually be torn apart or collide with Neptune due to or
 • Voyager 2 (1989): Only spacecraft to visit Neptune<br><br>
 
 All current detailed knowledge of Neptune comes from this single flyby, making it one of the least explored major planets in the Solar System.<br>`
+},
+{
+name:"Pluto",
+dist:394.80,size:0.0000794,color:0xccb39a,speed:0.0000001339,e:0.2488,i:17.16,Om:110.30,w:113.76,period:247.94,
+kind:"dwarf",texture:"pluto.png",tilt:122.5,spinY:0.0019,
+moons:[
+  {name:"Charon",  size:0.0000405,dist:0.00131,speed:0.001896,color:0xb9b4ad,
+   info:`<b>Charon</b><br><br>Pluto's largest moon — about half Pluto's diameter, making the pair almost a double dwarf planet. The two are mutually tidally locked, always showing the same face to each other, and orbit a common point (barycenter) that lies in the space between them.<br>`},
+  {name:"Styx",    size:0.00000053,dist:0.00285,speed:0.000601,color:0x999999,
+   info:`<b>Styx</b><br><br>A tiny, irregular moon of Pluto (~16 km across), discovered in 2012. It orbits beyond Charon in a near-circular path and tumbles chaotically.<br>`},
+  {name:"Nix",     size:0.00000167,dist:0.00326,speed:0.000487,color:0xb0a89c,
+   info:`<b>Nix</b><br><br>A small, elongated moon of Pluto (~50 km), discovered in 2005. Like Pluto's other small moons it rotates chaotically rather than being tidally locked.<br>`},
+  {name:"Kerberos",size:0.00000060,dist:0.00386,speed:0.000376,color:0x8f8f8f,
+   info:`<b>Kerberos</b><br><br>A small, dark, double-lobed moon of Pluto (~19 km), discovered in 2011 between the orbits of Nix and Hydra.<br>`},
+  {name:"Hydra",   size:0.00000167,dist:0.00433,speed:0.000317,color:0xb0a89c,
+   info:`<b>Hydra</b><br><br>Pluto's outermost known moon (~51 km), discovered in 2005. Its bright, water-ice surface tumbles unpredictably as it orbits.<br>`}
+],
+info:`<b>Pluto</b><br><br>
+
+<b>General Overview</b><br>
+• Discovered: 1930 (Clyde Tombaugh)<br>
+• Type: dwarf planet — the largest known body in the Kuiper Belt<br>
+• Distance from Sun: ~39.5 AU (average)<br>
+• Length of day: ~6.4 Earth days<br>
+• Length of year: ~248 Earth years<br>
+• Radius: ~1,188 km (about 2/3 the width of our Moon)<br><br>
+
+Pluto was the ninth planet from 1930 until 2006, when the discovery of similar-sized bodies (like Eris) led the IAU to define "dwarf planet" and reclassify it. It is a world of nitrogen-ice plains, water-ice mountains, and a thin, hazy atmosphere.<br><br>
+
+<b>The Heart and New Horizons</b><br>
+• NASA's New Horizons flew past in July 2015, returning the first close images<br>
+• Tombaugh Regio — a vast, bright, heart-shaped nitrogen-ice plain — is its most famous feature<br>
+• Has five known moons; giant Charon makes Pluto effectively a binary system<br><br>
+
+<b>Orbital Characteristics</b><br>
+Pluto's orbit is steeply inclined (~17°) and eccentric enough that it sometimes comes closer to the Sun than Neptune. A stable 3:2 resonance with Neptune keeps the two from ever colliding.<br>`
+},
+{
+name:"Haumea",
+dist:431.30,size:0.0000388,color:0xe8e8ee,speed:0.0000001168,e:0.1955,i:28.21,Om:121.90,w:239.0,period:284.12,
+kind:"dwarf",texture:"4k_haumea_fictional.jpg",ellipsoid:[1,0.442,0.734],tilt:126,spinY:0.075,
+info:`<b>Haumea</b><br><br>
+
+<b>General Overview</b><br>
+• Discovered: 2004–2005<br>
+• Type: dwarf planet in the Kuiper Belt<br>
+• Distance from Sun: ~43 AU (average)<br>
+• Length of day: ~3.9 hours (one of the fastest spins in the Solar System)<br>
+• Length of year: ~284 Earth years<br>
+• Dimensions: ~2,100 × 1,680 × 1,074 km<br><br>
+
+Haumea is one of the strangest worlds known. It spins so fast that it has been stretched into an elongated, rugby-ball (triaxial ellipsoid) shape rather than a sphere. It is named after the Hawaiian goddess of childbirth.<br><br>
+
+<b>Rings and Moons</b><br>
+• Has a thin ring — the first ring discovered around a trans-Neptunian object (2017)<br>
+• Two known moons, Hiʻiaka and Namaka<br>
+• A bright, crystalline water-ice surface<br><br>
+
+<b>Orbital Characteristics</b><br>
+Haumea follows an eccentric orbit inclined ~28° to the ecliptic, far outside Neptune.<br>`
+},
+{
+name:"Makemake",
+dist:454.30,size:0.0000478,color:0xc08a6a,speed:0.0000001087,e:0.1591,i:28.98,Om:79.62,w:295.15,period:305.34,
+kind:"dwarf",texture:"4k_makemake_fictional.jpg",tilt:0,spinY:0.013,
+info:`<b>Makemake</b><br><br>
+
+<b>General Overview</b><br>
+• Discovered: 2005<br>
+• Type: dwarf planet in the Kuiper Belt<br>
+• Distance from Sun: ~45.4 AU (average)<br>
+• Length of day: ~22.5 hours<br>
+• Length of year: ~305 Earth years<br>
+• Radius: ~715 km<br><br>
+
+Makemake is one of the largest Kuiper Belt objects, bright and reddish from a surface of frozen methane and ethane. Its 2005 discovery (along with Eris) helped trigger the redefinition of "planet." It is named after the creator god of the Rapa Nui people of Easter Island.<br><br>
+
+<b>Surface and Moon</b><br>
+• Methane-ice surface gives it a reddish-brown tint<br>
+• Has one small, dark known moon (nicknamed MK 2)<br>
+• Likely little or no atmosphere<br><br>
+
+<b>Orbital Characteristics</b><br>
+Makemake orbits on a path inclined ~29° to the ecliptic, similar in tilt to Haumea.<br>`
+},
+{
+name:"Eris",
+dist:678.60,size:0.0000777,color:0xd8d8d0,speed:0.00000005948,e:0.4407,i:44.04,Om:35.95,w:151.64,period:558.0,
+kind:"dwarf",texture:"4k_eris_fictional.jpg",tilt:78,spinY:0.011,
+info:`<b>Eris</b><br><br>
+
+<b>General Overview</b><br>
+• Discovered: 2005<br>
+• Type: dwarf planet — the most massive known<br>
+• Distance from Sun: ~68 AU average (ranges ~38–97 AU)<br>
+• Length of day: ~25.9 hours<br>
+• Length of year: ~558 Earth years<br>
+• Radius: ~1,163 km (almost exactly Pluto's size, but ~27% more massive)<br><br>
+
+Eris is the most massive dwarf planet and was the spark for Pluto's 2006 reclassification — being slightly heavier than Pluto, it forced astronomers to either call Eris a planet or create the "dwarf planet" category. It is named after the Greek goddess of strife and discord.<br><br>
+
+<b>Surface and Moon</b><br>
+• A highly reflective surface of frozen methane and nitrogen ice<br>
+• Currently near aphelion — one of the most distant known Solar System bodies<br>
+• Has one moon, Dysnomia<br><br>
+
+<b>Orbital Characteristics</b><br>
+Eris has the most extreme orbit of these dwarfs: very eccentric (e≈0.44) and steeply inclined (~44° to the ecliptic), carrying it far above and below the plane of the planets.<br>`
 }
 ];

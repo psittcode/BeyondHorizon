@@ -923,17 +923,22 @@ data.forEach(p=>{
         }
       `
     });
+  } else if (p.kind === "dwarf" && p.texture) {
+    material = new THREE.MeshStandardMaterial({ map: textureLoader.load(p.texture) });
   } else {
     material = new THREE.MeshStandardMaterial({
       color: p.color
     });
   }
 
-  const m = new THREE.Mesh(
-    new THREE.SphereGeometry(p.size,32,32),
-    material
-  );
+  const geo = new THREE.SphereGeometry(p.size,32,32);
+  // Non-spherical dwarfs (Haumea triaxial, Ceres oblate): bake the shape into the
+  // geometry, NOT mesh.scale — the min-dot scaler calls mesh.scale.setScalar() every
+  // frame and would otherwise wipe a non-uniform scale.
+  if (p.ellipsoid) geo.scale(p.ellipsoid[0], p.ellipsoid[1], p.ellipsoid[2]);
+  const m = new THREE.Mesh(geo, material);
 
+  // userData.angle is the MEAN anomaly (Keplerian motion); random start as before.
   m.userData = {...p, angle:Math.random()*Math.PI*2};
   scene.add(m);
   meshes.push(m);
@@ -1007,10 +1012,57 @@ let mercuryPerihelion = 0;   // accumulated argument of perihelion (radians)
 let mercuryDOmega     = 0;   // precession added this frame (for smooth trail sampling)
 let mercuryTrailMode  = false;
 let mercuryTrailPaused = false; // freeze Mercury's orbit, precession and elapsed time
-let mercuryPrevNu     = 0;
+let mercuryPrevM     = 0;
 // Precession fast-forward: 1× = the real 43″/century (an imperceptible drift),
 // higher exaggerates it so the rosette is visible. The sim clock is unaffected.
 let mercuryDemoMult   = 1;
+
+// ── Orbital mechanics: elements → position (Sun at the focus) ──────────────────
+// Convention: ecliptic plane = XZ, ecliptic north = +Y. i/Om/w come from the data in
+// DEGREES; nu (true anomaly) in radians. Degenerates to the old flat circle when
+// e=i=Om=0. `a` is the semi-major axis in scene units (the body's `dist`).
+const _DEG = Math.PI / 180;
+function orbitalToXYZ(a, e, iDeg, OmDeg, wDeg, nu, out) {
+  const i = iDeg * _DEG, Om = OmDeg * _DEG, w = wDeg * _DEG;
+  const r = a * (1 - e * e) / (1 + e * Math.cos(nu));
+  const u = w + nu;                       // argument of latitude
+  const cu = Math.cos(u), su = Math.sin(u);
+  const cO = Math.cos(Om), sO = Math.sin(Om), ci = Math.cos(i), si = Math.sin(i);
+  out.x = r * (cO * cu - sO * su * ci);
+  out.z = r * (sO * cu + cO * su * ci);
+  out.y = r * (su * si);
+  return out;
+}
+// Mean anomaly → true anomaly (Kepler's equation, Newton's method). This gives the
+// real variable speed: fast at perihelion, slow at aphelion.
+function nuFromMean(M, e) {
+  M = ((M % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
+  let E = M;
+  for (let k = 0; k < 5; k++) E -= (E - e * Math.sin(E) - M) / (1 - e * Math.cos(E));
+  return 2 * Math.atan2(Math.sqrt(1 + e) * Math.sin(E / 2),
+                        Math.sqrt(1 - e) * Math.cos(E / 2));
+}
+
+// Points tracing a body's orbit ring from its elements (inclined ellipse, Sun at the
+// focus). Mercury additionally folds in its precessing perihelion so the ring rotates
+// with the demo. Reused both at build time and when rebuilding Mercury's ring.
+function buildOrbitPoints(m, segs) {
+  const dist = m.userData.dist, el = m.userData;
+  const isMercury = m.userData.name === "Mercury";
+  const pts = [];
+  for (let k = 0; k <= segs; k++) {
+    const nu = (k / segs) * Math.PI * 2;
+    const p = new THREE.Vector3();
+    if (el.e !== undefined) {
+      const wEff = isMercury ? (el.w + mercuryPerihelion / _DEG) : el.w;
+      orbitalToXYZ(dist, el.e, el.i, el.Om, wEff, nu, p);
+    } else {
+      p.set(Math.cos(nu) * dist, 0, Math.sin(nu) * dist);
+    }
+    pts.push(p);
+  }
+  return pts;
+}
 
 // 🪐 ORBIT LINES
 const orbitLines = [];
@@ -1023,21 +1075,10 @@ meshes.forEach(m => {
   const targetSagitta = (m.userData.size || 0.001) * 0.1;
   const segs = Math.min(4096, Math.max(256,
     Math.ceil(Math.PI * Math.sqrt(dist / (2 * targetSagitta)))));
-  // Mercury's ring is its real ellipse (Sun at the focus) so the precession shows;
-  // every other planet stays a circle.
-  const isMercury = m.userData.name === "Mercury";
-  const points = [];
-  for (let i = 0; i <= segs; i++) {
-    const angle = (i / segs) * Math.PI * 2;
-    const r = isMercury
-      ? dist * (1 - MERCURY_ECC * MERCURY_ECC) / (1 + MERCURY_ECC * Math.cos(angle))
-      : dist;
-    points.push(new THREE.Vector3(
-      Math.cos(angle) * r,
-      0,
-      Math.sin(angle) * r
-    ));
-  }
+  // Every body's ring is now its real inclined ellipse (Sun at the focus) from its
+  // orbital elements; Mercury's also carries its precessing perihelion.
+  m.userData._segs = segs;
+  const points = buildOrbitPoints(m, segs);
   const orbit = new THREE.Line(
     new THREE.BufferGeometry().setFromPoints(points),
     new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.15 })
@@ -1066,24 +1107,26 @@ mercuryTrail.frustumCulled = false; // grows unbounded; never cull it
 mercuryTrail.visible = false;
 scene.add(mercuryTrail);
 
-// Append Mercury's path from the previous true anomaly to the current one,
-// interpolating both the anomaly and the precession angle so the line is smooth
-// even when many degrees pass per frame.
-function appendMercuryTrail(curNu) {
-  const e = MERCURY_ECC, a = mercuryMesh.userData.dist;
-  const dNu = curNu - mercuryPrevNu;
+// Append Mercury's path from the previous MEAN anomaly to the current one,
+// interpolating both the anomaly and the precession so the line is smooth even when
+// many degrees pass per frame. Mean anomaly is monotonic (no 2π wrap), and each
+// sub-step solves Kepler + the full inclined transform → a real 3D inclined rosette.
+function appendMercuryTrail(curM) {
+  const el = mercuryMesh.userData, e = MERCURY_ECC, a = el.dist;
+  const dM = curM - mercuryPrevM;
   const omegaStart = mercuryPerihelion - mercuryDOmega;
-  const steps = Math.min(1000, Math.max(1, Math.ceil(Math.abs(dNu) / 0.1)));
+  const steps = Math.min(1000, Math.max(1, Math.ceil(Math.abs(dM) / 0.1)));
+  const _tp = new THREE.Vector3();
   for (let s = 1; s <= steps && mercuryTrailCount < MERCURY_TRAIL_MAX; s++) {
     const f = s / steps;
-    const nu = mercuryPrevNu + dNu * f;
-    const om = omegaStart + mercuryDOmega * f;
-    const r = a * (1 - e * e) / (1 + e * Math.cos(nu));
-    const ang = nu + om;
+    const M = mercuryPrevM + dM * f;
+    const nu = nuFromMean(M, e);
+    const om = omegaStart + mercuryDOmega * f;        // precession (radians) at this sub-step
+    orbitalToXYZ(a, e, el.i, el.Om, el.w + om / _DEG, nu, _tp);
     const i3 = mercuryTrailCount * 3;
-    mercuryTrailPositions[i3]     = r * Math.cos(ang);
-    mercuryTrailPositions[i3 + 1] = 0;
-    mercuryTrailPositions[i3 + 2] = r * Math.sin(ang);
+    mercuryTrailPositions[i3]     = _tp.x;
+    mercuryTrailPositions[i3 + 1] = _tp.y;
+    mercuryTrailPositions[i3 + 2] = _tp.z;
     mercuryTrailCount++;
   }
   mercuryTrailGeom.setDrawRange(0, mercuryTrailCount);
@@ -1215,6 +1258,22 @@ const callisto = createMoon(
 
 // store for animation
 const jupiterMoons = [io, europa, ganymede, callisto];
+
+// 🌑 Pluto's moons — Charon + the four small ones (Styx, Nix, Kerberos, Hydra),
+// built from the Pluto data entry. Untextured greys for now. They orbit sub-pixel
+// close to Pluto and only separate from it on a very close zoom (min-dot keeps each
+// visible). Same scene-parented pattern as the Jupiter moons; orbit plane left in
+// the ecliptic for v1 (the real ~119° tilt is invisible at this scale).
+const plutoMesh = meshes.find(m => m.userData.name === "Pluto");
+const plutoMoons = [];
+if (plutoMesh && plutoMesh.userData.moons) {
+  plutoMesh.userData.moons.forEach(mn => {
+    const mo = createMoon(mn.size, mn.dist, mn.speed, mn.color, mn.info, null,
+                          Math.random() * Math.PI * 2);
+    mo.mesh.userData.name = mn.name;
+    plutoMoons.push(mo);
+  });
+}
 
 
 moon.userData = {
@@ -1374,6 +1433,7 @@ function applyMinDots() {
   if (marsTransformed && terraformedMarsModel) minDotScale(terraformedMarsModel, marsMesh.userData.size);
   if (moon) minDotScale(moon, moon.userData.trueRadius);
   jupiterMoons.forEach(jm => minDotScale(jm.mesh, jm.mesh.userData.trueRadius));
+  plutoMoons.forEach(pm => minDotScale(pm.mesh, pm.mesh.userData.trueRadius));
   // Saturn's rings: match the body's apparent size and keep the shadow term correct.
   const saturnS = saturn.scale.x; // set by the meshes loop above
   saturnTiltGroup.scale.setScalar(saturnS);
@@ -1413,6 +1473,7 @@ const helioObjects = [
   ...meshes,
   ...orbitLines,
   ...jupiterMoons.map(jm => jm.group),
+  ...plutoMoons.map(pm => pm.group),
 ];
 
 // Click interaction
@@ -1511,13 +1572,14 @@ function toggleMercuryTrail() {
     mercuryTrailPaused = false; // always start spinning
     mercuryPerihelion = 0;   // fresh rosette
     mercuryTrailCount = 0;
-    mercuryPrevNu = mercuryMesh.userData.angle;
+    mercuryPrevM = mercuryMesh.userData.angle;
     mercuryTrailGeom.setDrawRange(0, 0);
     mercuryTrail.visible = true;
     if (mercuryOrbitLine) mercuryOrbitLine.visible = false;
   } else {
     if (normalBar) normalBar.style.display = 'block';
     if (simDisplay) simDisplay.style.display = '';
+    mercuryPerihelion = 0;        // return Mercury to its base (un-drifted) inclined orbit
     mercuryTrail.visible = false;
     if (mercuryOrbitLine) mercuryOrbitLine.visible = orbitsVisible;
   }
@@ -1780,6 +1842,15 @@ window.addEventListener("click", e => {
     return;
   }
 
+  // Check Pluto's moons (hide Pluto so it can't block the tiny, close ones)
+  if (plutoMoons.length && plutoMesh) {
+    const plutoWasVisible = plutoMesh.visible;
+    plutoMesh.visible = false;
+    const pHits = raycaster.intersectObjects(plutoMoons.map(pm => pm.mesh), false);
+    plutoMesh.visible = plutoWasVisible;
+    if (pHits.length > 0) { flyToObject(pHits[0].object); return; }
+  }
+
   // Check everything else
   const allClickable = [...meshes, sun, moon];
   const hits = raycaster.intersectObjects(allClickable, true);
@@ -1898,6 +1969,13 @@ const PLANET_EPHEMERIS = {
   Saturn:  { L0:  50.077, n: 0.03346 },
   Uranus:  { L0: 313.232, n: 0.01173 },
   Neptune: { L0: 304.880, n: 0.00598 },
+  // Dwarf planets — mean longitude at J2000 (approximate for the distant TNOs) and
+  // mean motion 360/period_days. Gives a roughly real starting configuration.
+  Ceres:   { L0: 267.3, n: 0.2142660 },
+  Pluto:   { L0: 238.9, n: 0.0039753 },
+  Haumea:  { L0: 209.9, n: 0.0034691 },
+  Makemake:{ L0: 167.8, n: 0.0032275 },
+  Eris:    { L0:  31.8, n: 0.0017664 },
 };
 const J2000_MS = new Date('2000-01-01T12:00:00Z').getTime();
 
@@ -1907,15 +1985,16 @@ function resetSimulation() {
 
   const daysSinceJ2000 = (now.getTime() - J2000_MS) / 86400000;
 
-  // Set each planet's orbital angle from real ephemeris data
+  // Set each body's MEAN ANOMALY from real ephemeris data (mean longitude L from
+  // JPL, minus the longitude of perihelion Ω+ω), then place it via its elements.
   meshes.forEach(m => {
     const ep = PLANET_EPHEMERIS[m.userData.name];
     if (!ep) return;
-    const L = ((ep.L0 + ep.n * daysSinceJ2000) % 360 + 360) % 360;
-    m.userData.angle = L * (Math.PI / 180);
-    // Update position immediately so the ring group moves too
-    m.position.x = Math.cos(m.userData.angle) * m.userData.dist;
-    m.position.z = Math.sin(m.userData.angle) * m.userData.dist;
+    const el = m.userData;
+    const L = ep.L0 + ep.n * daysSinceJ2000;          // mean longitude (deg)
+    el.angle = (L - (el.Om + el.w)) * (Math.PI / 180); // mean anomaly (rad)
+    const nu = nuFromMean(el.angle, el.e);
+    orbitalToXYZ(el.dist, el.e, el.i, el.Om, el.w, nu, m.position);
   });
 
   // Sync Saturn's ring group to the new position
@@ -1934,7 +2013,8 @@ function resetSimulation() {
   if (earthMesh) {
     const utcH = now.getUTCHours() + now.getUTCMinutes() / 60 + now.getUTCSeconds() / 3600;
     const sspRad = (12 - utcH) * (Math.PI / 12);
-    earthMesh.rotation.y = -(earthMesh.userData.angle + Math.PI) - sspRad;
+    const _earthAz = Math.atan2(earthMesh.position.z, earthMesh.position.x);
+    earthMesh.rotation.y = -(_earthAz + Math.PI) - sspRad;
     cloudMesh.rotation.y = earthMesh.rotation.y;
   }
 
@@ -1942,7 +2022,7 @@ function resetSimulation() {
   // time readout restart from zero (otherwise the override display wouldn't change).
   mercuryPerihelion = 0;
   mercuryTrailCount = 0;
-  if (mercuryMesh) mercuryPrevNu = mercuryMesh.userData.angle;
+  if (mercuryMesh) mercuryPrevM = mercuryMesh.userData.angle;
   if (mercuryTrailGeom) mercuryTrailGeom.setDrawRange(0, 0);
 
   updateSimTimeDisplay();
@@ -3313,12 +3393,13 @@ function animate(){
     // Paused → freeze the precession (so the drift and the elapsed-time readout stop).
     const dNu = mercuryTrailPaused ? 0 : MERC_DEMO_ORBIT_SPEED * deltaScale;
     mercuryDOmega = (dNu / (2 * Math.PI)) * MERC_PRECESS_PER_ORBIT_RAD * mercuryDemoMult;
+    mercuryPerihelion += mercuryDOmega;
   } else {
-    mercuryDOmega = MERCURY_PRECESS_ARCSEC_PER_CENTURY * MERC_ARCSEC_TO_RAD
-      * (simMsPerFrame / MERC_CENTURY_MS);
+    // Outside the demo Mercury sits exactly on its (static, inclined) ring; the real
+    // 43″/century drift is imperceptible and the inclined ring can't be cheaply
+    // rotated, so we don't accumulate it here (the demo is where precession is shown).
+    mercuryDOmega = 0;
   }
-  mercuryPerihelion += mercuryDOmega;
-  if (mercuryOrbitLine) mercuryOrbitLine.rotation.y = -mercuryPerihelion;
   // Honest elapsed-time readout in the Mercury panel (the precession's real deep
   // time), shown there rather than overriding the normal simulation clock.
   if (mercuryTrailMode) {
@@ -3337,20 +3418,23 @@ function animate(){
       // trail demo runs, Mercury orbits at its own fixed rate so the demo doesn't
       // depend on (or disturb) the sim clock; otherwise it follows the speed bar.
       // Paused → Mercury holds still (orbit advance 0) and the trail stops growing.
+      // angle is Mercury's MEAN anomaly; Keplerian motion + its precessing perihelion
+      // on its real inclined ellipse. Demo mode drives it at a fixed rate.
       const _mercRate = mercuryTrailMode ? (mercuryTrailPaused ? 0 : MERC_DEMO_ORBIT_SPEED)
                                          : m.userData.speed * speed;
       m.userData.angle += _mercRate * deltaScale;
-      const e = MERCURY_ECC, nu = m.userData.angle;
-      const r = m.userData.dist * (1 - e * e) / (1 + e * Math.cos(nu));
-      const ang = nu + mercuryPerihelion;
-      m.position.x = r * Math.cos(ang);
-      m.position.z = r * Math.sin(ang);
-      if (mercuryTrailMode && !mercuryTrailPaused) appendMercuryTrail(nu);
-      mercuryPrevNu = nu;
+      const el = m.userData, e = MERCURY_ECC;
+      const nu = nuFromMean(m.userData.angle, e);
+      orbitalToXYZ(el.dist, e, el.i, el.Om, el.w + mercuryPerihelion / _DEG, nu, m.position);
+      if (mercuryTrailMode && !mercuryTrailPaused) appendMercuryTrail(m.userData.angle);
+      mercuryPrevM = m.userData.angle;
     } else {
-      m.userData.angle += m.userData.speed * speed * deltaScale;
-      m.position.x = Math.cos(m.userData.angle) * m.userData.dist;
-      m.position.z = Math.sin(m.userData.angle) * m.userData.dist;
+      // Every other body: advance MEAN anomaly, solve Kepler, position from its real
+      // orbital elements (eccentric + inclined, Sun at the focus).
+      const el = m.userData;
+      m.userData.angle += el.speed * speed * deltaScale;
+      const nu = nuFromMean(m.userData.angle, el.e);
+      orbitalToXYZ(el.dist, el.e, el.i, el.Om, el.w, nu, m.position);
     }
 
     // Spin each planet around itself
@@ -3374,8 +3458,10 @@ function animate(){
       // Three.js sphere UVs: Greenwich faces +X at rotation.y=0 and a +Y turn maps
       // surface azimuth φ→φ−R, so to put sub-solar longitude (12−UTC)×15°E onto the
       // Sun (which lies at world azimuth angle+π from Earth):
-      //   rotation.y = −(angle + π) − (12 − UTC)·15°
-      m.rotation.y = -(m.userData.angle + Math.PI) - (12 - utcH) * (Math.PI / 12);
+      //   rotation.y = −(azimuth + π) − (12 − UTC)·15°
+      // azimuth = Earth's actual ecliptic longitude from its position (true, not mean).
+      const _earthAz = Math.atan2(m.position.z, m.position.x);
+      m.rotation.y = -(_earthAz + Math.PI) - (12 - utcH) * (Math.PI / 12);
       m.rotation.z = 23.4 * (Math.PI / 180);
       cloudMesh.rotation.y += 0.01224 * speed * deltaScale;
     }
@@ -3410,6 +3496,12 @@ function animate(){
       m.rotation.y += 0.01806 * speed * deltaScale;
       m.rotation.z = 28.3 * (Math.PI / 180);
     }
+    // Dwarf planets: spin + axial tilt from data (Haumea spins fast about its short
+    // axis, Pluto highly tilted, etc.).
+    if (m.userData.kind === "dwarf") {
+      if (m.userData.spinY) m.rotation.y += m.userData.spinY * speed * deltaScale;
+      if (m.userData.tilt != null) m.rotation.z = m.userData.tilt * (Math.PI / 180);
+    }
   });
 
   // 🌕 Moon follows Earth position in world space
@@ -3435,6 +3527,16 @@ function animate(){
 
     jupiterMoonOrbitLines.forEach(line => {
       line.position.copy(jupiterWorldPos);
+    });
+  }
+
+  // 🌑 Pluto's moons follow Pluto in world space
+  if (plutoMoons.length && plutoMesh) {
+    const plutoWorldPos = new THREE.Vector3();
+    plutoMesh.getWorldPosition(plutoWorldPos);
+    plutoMoons.forEach(m => {
+      m.group.position.copy(plutoWorldPos);
+      m.group.rotation.y += m.speed * speed * deltaScale;
     });
   }
 
@@ -3705,6 +3807,7 @@ const bodyList = [
   { label: "• Earth", obj: meshes.find(m => m.userData.name === "Earth") },
   { label: "　 ◦ Moon", obj: moon },
   { label: " • Mars", obj: meshes.find(m => m.userData.name === "Mars") },
+  { label: " • Ceres", obj: meshes.find(m => m.userData.name === "Ceres") },
   { label: " • Jupiter", obj: meshes.find(m => m.userData.name === "Jupiter") },
   { label: "　 ◦ Io", obj: io.mesh },
   { label: "　 ◦ Europa", obj: europa.mesh },
@@ -3713,6 +3816,15 @@ const bodyList = [
   { label: " • Saturn", obj: meshes.find(m => m.userData.name === "Saturn") },
   { label: " • Uranus", obj: meshes.find(m => m.userData.name === "Uranus") },
   { label: " • Neptune", obj: meshes.find(m => m.userData.name === "Neptune") },
+  { label: " • Pluto", obj: meshes.find(m => m.userData.name === "Pluto") },
+  { label: "　 ◦ Charon", obj: (plutoMoons.find(p => p.mesh.userData.name === "Charon") || {}).mesh },
+  { label: "　 ◦ Styx", obj: (plutoMoons.find(p => p.mesh.userData.name === "Styx") || {}).mesh },
+  { label: "　 ◦ Nix", obj: (plutoMoons.find(p => p.mesh.userData.name === "Nix") || {}).mesh },
+  { label: "　 ◦ Kerberos", obj: (plutoMoons.find(p => p.mesh.userData.name === "Kerberos") || {}).mesh },
+  { label: "　 ◦ Hydra", obj: (plutoMoons.find(p => p.mesh.userData.name === "Hydra") || {}).mesh },
+  { label: " • Haumea", obj: meshes.find(m => m.userData.name === "Haumea") },
+  { label: " • Makemake", obj: meshes.find(m => m.userData.name === "Makemake") },
+  { label: " • Eris", obj: meshes.find(m => m.userData.name === "Eris") },
 ];
 
 function showList() {
