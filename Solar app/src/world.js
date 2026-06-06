@@ -935,6 +935,7 @@ const MERC_DEMO_ORBIT_SPEED = 0.03;
 let mercuryPerihelion = 0;   // accumulated argument of perihelion (radians)
 let mercuryDOmega     = 0;   // precession added this frame (for smooth trail sampling)
 let mercuryTrailMode  = false;
+let mercuryTrailPaused = false; // freeze Mercury's orbit, precession and elapsed time
 let mercuryPrevNu     = 0;
 // Precession fast-forward: 1× = the real 43″/century (an imperceptible drift),
 // higher exaggerates it so the rosette is visible. The sim clock is unaffected.
@@ -1379,6 +1380,10 @@ function refreshMercuryPanel() {
   const btnStyle = "background:rgba(255,255,255,0.15);color:white;border:1px solid rgba(255,255,255,0.4);padding:6px 12px;cursor:pointer;border-radius:4px;font-size:13px;margin-bottom:8px;width:100%;display:block";
   const trailLabel = mercuryTrailMode ? "Hide Precession Trail" : "Show Precession Trail";
   let ctrl = `<button id="mercTrailBtn" style="${btnStyle}">${trailLabel}</button>`;
+  // In trail mode, a Pause button (under Hide) freezes Mercury + the elapsed time.
+  if (mercuryTrailMode) {
+    ctrl += `<button id="mercPauseBtn" style="${btnStyle}">${mercuryTrailPaused ? "Resume Spinning" : "Pause Spinning"}</button>`;
+  }
   const boxStyle = "font-size:11.5px;opacity:0.9;line-height:1.55;background:rgba(255,255,255,0.06);border-left:3px solid rgba(255,180,90,0.8);padding:9px 11px;border-radius:4px;margin-bottom:10px";
   if (!mercuryTrailMode) {
     // Short teaser in the normal panel so you know what the button does.
@@ -1408,6 +1413,12 @@ function refreshMercuryPanel() {
     e.stopPropagation();
     toggleMercuryTrail();
   });
+  const pauseBtn = document.getElementById("mercPauseBtn");
+  if (pauseBtn) pauseBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    mercuryTrailPaused = !mercuryTrailPaused;
+    refreshMercuryPanel(); // update the button label
+  });
   const ds = document.getElementById("mercDemoSlider");
   if (ds) ds.addEventListener("input", (e) => {
     e.stopPropagation();
@@ -1426,6 +1437,7 @@ function toggleMercuryTrail() {
     // time in the Mercury panel) while the trail is on — the Reset to Now button stays.
     if (normalBar) normalBar.style.display = 'none';
     if (simDisplay) simDisplay.style.display = 'none';
+    mercuryTrailPaused = false; // always start spinning
     mercuryPerihelion = 0;   // fresh rosette
     mercuryTrailCount = 0;
     mercuryPrevNu = mercuryMesh.userData.angle;
@@ -3191,7 +3203,8 @@ function animate(){
   // and fast-forwarded by mercuryDemoMult so the rosette is visible; otherwise it
   // tracks the real 43″/century against simulated time (an imperceptible drift).
   if (mercuryTrailMode) {
-    const dNu = MERC_DEMO_ORBIT_SPEED * deltaScale;
+    // Paused → freeze the precession (so the drift and the elapsed-time readout stop).
+    const dNu = mercuryTrailPaused ? 0 : MERC_DEMO_ORBIT_SPEED * deltaScale;
     mercuryDOmega = (dNu / (2 * Math.PI)) * MERC_PRECESS_PER_ORBIT_RAD * mercuryDemoMult;
   } else {
     mercuryDOmega = MERCURY_PRECESS_ARCSEC_PER_CENTURY * MERC_ARCSEC_TO_RAD
@@ -3216,14 +3229,16 @@ function animate(){
       // Elliptical orbit (Sun at the focus) whose perihelion precesses. While the
       // trail demo runs, Mercury orbits at its own fixed rate so the demo doesn't
       // depend on (or disturb) the sim clock; otherwise it follows the speed bar.
-      m.userData.angle += (mercuryTrailMode ? MERC_DEMO_ORBIT_SPEED
-                                            : m.userData.speed * speed) * deltaScale;
+      // Paused → Mercury holds still (orbit advance 0) and the trail stops growing.
+      const _mercRate = mercuryTrailMode ? (mercuryTrailPaused ? 0 : MERC_DEMO_ORBIT_SPEED)
+                                         : m.userData.speed * speed;
+      m.userData.angle += _mercRate * deltaScale;
       const e = MERCURY_ECC, nu = m.userData.angle;
       const r = m.userData.dist * (1 - e * e) / (1 + e * Math.cos(nu));
       const ang = nu + mercuryPerihelion;
       m.position.x = r * Math.cos(ang);
       m.position.z = r * Math.sin(ang);
-      if (mercuryTrailMode) appendMercuryTrail(nu);
+      if (mercuryTrailMode && !mercuryTrailPaused) appendMercuryTrail(nu);
       mercuryPrevNu = nu;
     } else {
       m.userData.angle += m.userData.speed * speed * deltaScale;
