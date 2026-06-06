@@ -1379,11 +1379,25 @@ function refreshMercuryPanel() {
   const btnStyle = "background:rgba(255,255,255,0.15);color:white;border:1px solid rgba(255,255,255,0.4);padding:6px 12px;cursor:pointer;border-radius:4px;font-size:13px;margin-bottom:8px;width:100%;display:block";
   const trailLabel = mercuryTrailMode ? "Hide Precession Trail" : "Show Precession Trail";
   let ctrl = `<button id="mercTrailBtn" style="${btnStyle}">${trailLabel}</button>`;
-  // The precession speed bar replaces the normal speed bar, so it only appears
-  // while the trail is showing.
-  if (mercuryTrailMode) {
+  const boxStyle = "font-size:11.5px;opacity:0.9;line-height:1.55;background:rgba(255,255,255,0.06);border-left:3px solid rgba(255,180,90,0.8);padding:9px 11px;border-radius:4px;margin-bottom:10px";
+  if (!mercuryTrailMode) {
+    // Short teaser in the normal panel so you know what the button does.
+    ctrl +=
+      `<div style="${boxStyle}">Mercury's orbit slowly <b>rotates</b> over time — the famous effect Einstein's relativity explained. It's far too slow to see in real life, so click above to draw Mercury's path and fast-forward it into view.</div>`;
+  } else {
+    // Plain-language explanation + the speed control (which replaces the normal
+    // speed bar) and the elapsed-time readout, only while the trail is showing.
     const exp = Math.round(Math.log10(mercuryDemoMult));
     ctrl +=
+      `<div style="${boxStyle}">` +
+        `<b>What you're seeing</b><br>` +
+        `Mercury's orbit is a slightly squashed circle (an ellipse). Over time the whole oval slowly turns, so the point where Mercury swings closest to the Sun keeps shifting. Its path tracing that shift makes this flower-like <b>"rosette."</b><br><br>` +
+        `<b>How slow it really is</b><br>` +
+        `In reality the orbit turns only about <b>43 arcseconds per century</b> — roughly one-hundredth of a degree every 100 years (~0.1″ each lap). One complete turn takes about <b>3 million years</b>. Explaining this tiny extra drift was one of the first great confirmations of Einstein's general relativity.<br><br>` +
+        `<b>The speed slider</b><br>` +
+        `At <b>1×</b> the drift moves at that true real-life rate, so you'd never see it budge. Slide right to <b>fast-forward</b> — bigger numbers pack more centuries into each second, so the rosette fills in faster. (Mercury's own orbit is sped up too, just so you can watch it lap the Sun.)<br><br>` +
+        `<b>"Elapsed"</b> below shows how much real time the drift on screen would actually represent — so even a small twist means many thousands of years.` +
+      `</div>` +
       `<div style="font-size:12px;opacity:0.85;margin-bottom:4px">Precession speed: <span id="mercDemoLabel">${mercuryDemoLabel()}</span></div>` +
       `<input id="mercDemoSlider" type="range" min="0" max="7" step="1" value="${exp}" style="width:100%;margin-bottom:6px">` +
       `<div id="mercElapsed" style="font-size:12px;opacity:0.85;margin-bottom:10px"></div>`;
