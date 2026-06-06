@@ -78,10 +78,11 @@ const ganymedeTexture = textureLoader.load("Ganymede.jpeg");
 const ioTexture = textureLoader.load("Io.jpeg");
 
 // 🌌 MILKY WAY SKYBOX
-// Threshold where the view hands off to the galaxy. Well inside the galaxy model
-// (radius ~126k, core ~66k from the Sun), so there's plenty of solar-system
-// zoom-out room before the galaxy takes over.
-const SKYBOX_RADIUS = 50000;
+// Threshold where the view hands off to the galaxy. Pushed near the galaxy disc's
+// nearest edge to the Sun (~60.6k) so you get the maximum solar-system zoom-out
+// before the galaxy takes over. (Going further would put the camera outside the
+// disc; for that we'd need to scale the galaxy model up.)
+const SKYBOX_RADIUS = 60000;
 const skyGeometry = new THREE.SphereGeometry(SKYBOX_RADIUS, 64, 64);
 const skyMaterial = new THREE.MeshBasicMaterial({
   map: milkyWayTexture,
@@ -106,20 +107,22 @@ galaxySkybox.visible = false;
 scene.add(galaxySkybox);
 
 // 🌟 3D BACKGROUND STARFIELD — white points scattered through a large volume around
-// the solar system (NASA-Eyes style). Unlike the flat skybox (infinitely far, no
-// parallax), these sit at finite distances, so moving/zooming shifts them relative
-// to each other — you feel like you're travelling past real stars. Hidden at
-// galaxy scale (the galaxy backdrop takes over).
-const STARFIELD_COUNT = 1800;
+// the solar system (NASA-Eyes style). They sit at finite distances, so moving/zooming
+// shifts them relative to each other (parallax). A per-point DISTANCE FADE (custom
+// shader) makes each dot fade out as you pull away from it, so distant dots don't pile
+// up into a white blob — you only ever see the stars near you. Hidden at galaxy scale.
+const STARFIELD_COUNT = 3000;
 const STARFIELD_R_MIN  = 450;     // just beyond Neptune's orbit (~300) so it doesn't clutter the planets
-const STARFIELD_R_MAX  = 45000;   // fills most of the (now larger) skybox so dots parallax all the way out
+const STARFIELD_R_MAX  = 55000;   // fills the (now larger) skybox
+const STARFIELD_FADE_NEAR = 5000;  // fully visible within this distance of the camera
+const STARFIELD_FADE_FAR   = 26000; // gone beyond this — kills the far-away pile-up
 const _starPos = new Float32Array(STARFIELD_COUNT * 3);
 for (let i = 0; i < STARFIELD_COUNT; i++) {
   const u = Math.random() * 2 - 1;            // uniform cos(latitude)
   const phi = Math.random() * Math.PI * 2;
   const s = Math.sqrt(1 - u * u);
   // Bias toward nearer distances (random²) so the inner view where you spend most
-  // time stays populated, while still scattering some far out for the big zoom-out.
+  // time stays populated; the distance fade handles what's visible when zoomed out.
   const r = STARFIELD_R_MIN + (STARFIELD_R_MAX - STARFIELD_R_MIN) * Math.random() * Math.random();
   _starPos[i*3]     = r * s * Math.cos(phi);
   _starPos[i*3 + 1] = r * u;
@@ -127,13 +130,40 @@ for (let i = 0; i < STARFIELD_COUNT; i++) {
 }
 const starfieldGeom = new THREE.BufferGeometry();
 starfieldGeom.setAttribute('position', new THREE.BufferAttribute(_starPos, 3));
-const starfield = new THREE.Points(starfieldGeom, new THREE.PointsMaterial({
-  color: 0xdde1e8,          // soft white — visible but not stark
-  size: 1.0,
-  sizeAttenuation: false,   // constant on-screen size; parallax comes from position
+const starfield = new THREE.Points(starfieldGeom, new THREE.ShaderMaterial({
+  uniforms: {
+    uColor:   { value: new THREE.Color(0xdde1e8) },
+    uOpacity: { value: 0.75 },
+    uSize:    { value: 1.4 },
+    uNear:    { value: STARFIELD_FADE_NEAR },
+    uFar:     { value: STARFIELD_FADE_FAR }
+  },
   transparent: true,
-  opacity: 0.62,            // a touch more present than before, still a backdrop
-  depthWrite: false
+  depthWrite: false,
+  vertexShader: `
+    uniform float uSize; uniform float uNear; uniform float uFar;
+    varying float vFade;
+    #include <common>
+    #include <logdepthbuf_pars_vertex>
+    void main() {
+      vec4 mv = modelViewMatrix * vec4(position, 1.0);
+      float d = length(mv.xyz);                  // distance from the camera
+      vFade = 1.0 - smoothstep(uNear, uFar, d);  // 1 near → 0 far (fade as you pull away)
+      gl_PointSize = uSize;
+      gl_Position = projectionMatrix * mv;
+      #include <logdepthbuf_vertex>
+    }
+  `,
+  fragmentShader: `
+    uniform vec3 uColor; uniform float uOpacity;
+    varying float vFade;
+    #include <logdepthbuf_pars_fragment>
+    void main() {
+      #include <logdepthbuf_fragment>
+      if (vFade <= 0.001) discard;
+      gl_FragColor = vec4(uColor, uOpacity * vFade);
+    }
+  `
 }));
 starfield.frustumCulled = false;
 scene.add(starfield);
