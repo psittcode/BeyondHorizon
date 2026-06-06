@@ -107,7 +107,7 @@ scene.add(galaxySkybox);
 // parallax), these sit at finite distances, so moving/zooming shifts them relative
 // to each other — you feel like you're travelling past real stars. Hidden at
 // galaxy scale (the galaxy backdrop takes over).
-const STARFIELD_COUNT = 5000;
+const STARFIELD_COUNT = 1800;
 const STARFIELD_R_MIN  = 450;     // just beyond Neptune's orbit (~300) so it doesn't clutter the planets
 const STARFIELD_R_MAX  = 16000;   // inside the 20000 skybox
 const _starPos = new Float32Array(STARFIELD_COUNT * 3);
@@ -123,11 +123,11 @@ for (let i = 0; i < STARFIELD_COUNT; i++) {
 const starfieldGeom = new THREE.BufferGeometry();
 starfieldGeom.setAttribute('position', new THREE.BufferAttribute(_starPos, 3));
 const starfield = new THREE.Points(starfieldGeom, new THREE.PointsMaterial({
-  color: 0xffffff,
-  size: 1.5,
-  sizeAttenuation: false,   // constant on-screen size (like real stars); parallax comes from position
+  color: 0xc8ccd4,          // pale cool-grey, not stark white
+  size: 1.0,
+  sizeAttenuation: false,   // constant on-screen size; parallax comes from position
   transparent: true,
-  opacity: 0.85,
+  opacity: 0.4,             // faint, just a subtle backdrop
   depthWrite: false
 }));
 starfield.frustumCulled = false;
