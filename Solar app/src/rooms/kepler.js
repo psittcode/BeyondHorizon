@@ -65,6 +65,57 @@ const room = {
       new THREE.SphereGeometry(SKYBOX_RADIUS, 64, 64),
       new THREE.MeshBasicMaterial({ map: ctx.milkyWayTexture, side: THREE.BackSide })
     ));
+
+    // 🌟 3D starfield — same logic as the main Solar view (uniform-density volume,
+    // per-point distance fade + size attenuation), scaled to this room (system ~8
+    // units, camera maxDistance 200): dots grow as you approach and shrink/fade as
+    // you pull away, giving depth and parallax. Self-updating in the shader.
+    {
+      const COUNT = 18000, R_MIN = 40, R_MAX = 4000, FADE_NEAR = 80, FADE_FAR = 2500;
+      const rMin3 = R_MIN ** 3, rMax3 = R_MAX ** 3;
+      const pos = new Float32Array(COUNT * 3);
+      for (let i = 0; i < COUNT; i++) {
+        const u = Math.random() * 2 - 1, phi = Math.random() * Math.PI * 2, s = Math.sqrt(1 - u * u);
+        const r = Math.cbrt(rMin3 + (rMax3 - rMin3) * Math.random());
+        pos[i*3] = r*s*Math.cos(phi); pos[i*3+1] = r*u; pos[i*3+2] = r*s*Math.sin(phi);
+      }
+      const geom = new THREE.BufferGeometry();
+      geom.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+      const stars = new THREE.Points(geom, new THREE.ShaderMaterial({
+        uniforms: {
+          uColor: { value: new THREE.Color(0xdde1e8) }, uOpacity: { value: 0.8 },
+          uSizeScale: { value: 350 }, uSizeMax: { value: 2.6 },
+          uNear: { value: FADE_NEAR }, uFar: { value: FADE_FAR }
+        },
+        transparent: true, depthWrite: false,
+        vertexShader: `
+          uniform float uSizeScale; uniform float uSizeMax; uniform float uNear; uniform float uFar;
+          varying float vFade;
+          #include <common>
+          #include <logdepthbuf_pars_vertex>
+          void main() {
+            vec4 mv = modelViewMatrix * vec4(position, 1.0);
+            float d = length(mv.xyz);
+            vFade = 1.0 - smoothstep(uNear, uFar, d);
+            gl_PointSize = min(uSizeMax, uSizeScale / d);
+            gl_Position = projectionMatrix * mv;
+            #include <logdepthbuf_vertex>
+          }
+        `,
+        fragmentShader: `
+          uniform vec3 uColor; uniform float uOpacity;
+          varying float vFade;
+          #include <logdepthbuf_pars_fragment>
+          void main() {
+            #include <logdepthbuf_fragment>
+            if (vFade <= 0.001) discard;
+            gl_FragColor = vec4(uColor, uOpacity * vFade);
+          }
+        `
+      }));
+      stars.frustumCulled = false;
+      scene.add(stars);
+    }
     // Match the Solar System's lighting (ambient 0.15 + point 1.5) so the
     // star-facing side of Kepler-22b isn't blown out — the same brightness the
     // Sun gives Earth and its neighbours, rather than the previous over-bright 2.5.

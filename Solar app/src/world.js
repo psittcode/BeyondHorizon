@@ -1642,6 +1642,24 @@ function restoreMars() {
   refreshMarsPanel();
 }
 
+// Build an exponential-distance interpolator about a focal point, for fly-tos that
+// span a huge scale range. Returns fn(p, out) that writes the camera position at
+// eased progress p∈[0,1]: the distance to the focal shrinks geometrically (constant
+// visual zoom rate) while the view direction lerps. Endpoints match start/end exactly,
+// so the only change vs a plain lerp is that the final approach no longer whips past.
+function expFly(startPos, endPos, focal) {
+  const sV = startPos.clone().sub(focal), eV = endPos.clone().sub(focal);
+  const sD = Math.max(sV.length(), 1e-6), eD = Math.max(eV.length(), 1e-6);
+  const sDir = sV.normalize(), eDir = eV.clone().normalize();
+  const logR = Math.log(eD / sD);
+  const _dir = new THREE.Vector3();
+  return (p, out) => {
+    const dist = sD * Math.exp(logR * p);
+    _dir.copy(sDir).lerp(eDir, p).normalize();
+    out.copy(focal).addScaledVector(_dir, dist);
+  };
+}
+
 function flyToObject(obj) {
   if (!obj) return;
 
@@ -2442,6 +2460,11 @@ function flyToSolarSystem() {
   const _startBeauGaQuat  = beauGaDisc ? beauGaDisc.quaternion.clone() : null;
   const _endBeauGaQuat    = new THREE.Quaternion().setFromEuler(new THREE.Euler(-Math.PI / 2, 0, 0));
 
+  // Exponential (log) distance interpolation about the destination, so the zoom
+  // rate feels CONSTANT across the huge scale change — without it, a linear lerp
+  // makes the final approach (entering the skybox) whip past abnormally fast.
+  const _exp = expFly(startPos, endPos, endTarget);
+
   const FLY_MS = 4500; let _flyLast = performance.now(); // time-based, display-independent
   let t = 0;
   (function flyIn() {
@@ -2450,7 +2473,7 @@ function flyToSolarSystem() {
     if (t > 1) t = 1;
     const ease = t * t * (3 - 2 * t);
 
-    camera.position.lerpVectors(startPos, endPos, ease);
+    _exp(ease, camera.position);
     controls.target.lerpVectors(startTarget, endTarget, ease);
     camera.up.set(Math.sin(ECLIPTIC_TILT), Math.cos(ECLIPTIC_TILT), 0);
 
@@ -2933,7 +2956,8 @@ function escapeKeplerToGalaxy() {
   // render — matching where the zoom-in entry began, so the hand-off is seamless.
   lockedObject = null;
   camera.up.set(0, 1, 0);
-  camera.position.set(dotPos.x, dotPos.y + R * 0.14, dotPos.z + R * 0.10);
+  // Land just OUTSIDE the skybox (scaled to its radius) so the galaxy + dot render.
+  camera.position.set(dotPos.x, dotPos.y + SKYBOX_RADIUS * 0.94, dotPos.z + SKYBOX_RADIUS * 0.67);
   controls.target.copy(dotPos);
   controls.update();
 }
@@ -2968,9 +2992,9 @@ function flyToKeplerDot() {
     controls.update();
   }
 
-  // End framing: dot centred and as close as we can get while still outside the
-  // skybox (so it stays visible right up to the hand-off into the system scene).
-  const endPos    = new THREE.Vector3(dotPos.x, dotPos.y + R * 0.14, dotPos.z + R * 0.10);
+  // End framing: dot centred, just outside the skybox (scaled to its radius) so it
+  // stays visible right up to the hand-off into the system scene.
+  const endPos    = new THREE.Vector3(dotPos.x, dotPos.y + SKYBOX_RADIUS * 0.94, dotPos.z + SKYBOX_RADIUS * 0.67);
   const endTarget = dotPos.clone();
 
   lockedObject = null;
@@ -2979,6 +3003,7 @@ function flyToKeplerDot() {
   const startPos    = camera.position.clone();
   const startTarget = controls.target.clone();
 
+  const _exp = expFly(startPos, endPos, endTarget); // constant-rate zoom across scales
   const FLY_MS = 3800; let _flyLast = performance.now(); // time-based, display-independent
   let t = 0;
   (function zoomIn() {
@@ -2986,7 +3011,7 @@ function flyToKeplerDot() {
     const _now = performance.now(); t += (_now - _flyLast) / FLY_MS; _flyLast = _now;
     if (t > 1) t = 1;
     const ease = t * t; // ease-IN: accelerate, fastest at the hand-off (no stop)
-    camera.position.lerpVectors(startPos, endPos, ease);
+    _exp(ease, camera.position);
     controls.target.lerpVectors(startTarget, endTarget, ease);
     camera.up.set(0, 1, 0);
     controls.update();
