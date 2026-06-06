@@ -933,6 +933,7 @@ let mercuryPrevNu     = 0;
 // Real-time speed-up of the precession demo (how fast you fast-forward). The
 // elapsed-years readout corrects for this, so the shown time is always honest.
 let mercuryDemoMult   = 1e5;
+let mercurySavedSpeed = null; // main speed stashed while the trail demo drives the clock
 
 // 🪐 ORBIT LINES
 const orbitLines = [];
@@ -1367,18 +1368,23 @@ function refreshMercuryPanel() {
   const info = mercuryMesh.userData.info;
   const btnStyle = "background:rgba(255,255,255,0.15);color:white;border:1px solid rgba(255,255,255,0.4);padding:6px 12px;cursor:pointer;border-radius:4px;font-size:13px;margin-bottom:8px;width:100%;display:block";
   const trailLabel = mercuryTrailMode ? "Hide Precession Trail" : "Show Precession Trail";
-  const exp = Math.round(Math.log10(mercuryDemoMult));
-  const ctrl =
-    `<button id="mercTrailBtn" style="${btnStyle}">${trailLabel}</button>` +
-    `<div style="font-size:12px;opacity:0.85;margin-bottom:4px">Precession speed: <span id="mercDemoLabel">${mercuryDemoLabel()}</span></div>` +
-    `<input id="mercDemoSlider" type="range" min="2" max="7" step="1" value="${exp}" style="width:100%;margin-bottom:10px">`;
+  let ctrl = `<button id="mercTrailBtn" style="${btnStyle}">${trailLabel}</button>`;
+  // The precession speed bar replaces the normal speed bar, so it only appears
+  // while the trail is showing.
+  if (mercuryTrailMode) {
+    const exp = Math.round(Math.log10(mercuryDemoMult));
+    ctrl +=
+      `<div style="font-size:12px;opacity:0.85;margin-bottom:4px">Precession speed: <span id="mercDemoLabel">${mercuryDemoLabel()}</span></div>` +
+      `<input id="mercDemoSlider" type="range" min="4" max="7" step="1" value="${exp}" style="width:100%;margin-bottom:10px">`;
+  }
   const splitAt = info.indexOf('<br><br>') + '<br><br>'.length;
   pc.innerHTML = info.substring(0, splitAt) + ctrl + info.substring(splitAt);
   document.getElementById("mercTrailBtn").addEventListener("click", (e) => {
     e.stopPropagation();
     toggleMercuryTrail();
   });
-  document.getElementById("mercDemoSlider").addEventListener("input", (e) => {
+  const ds = document.getElementById("mercDemoSlider");
+  if (ds) ds.addEventListener("input", (e) => {
     e.stopPropagation();
     mercuryDemoMult = Math.pow(10, parseFloat(e.target.value));
     document.getElementById("mercDemoLabel").textContent = mercuryDemoLabel();
@@ -1386,7 +1392,13 @@ function refreshMercuryPanel() {
 }
 function toggleMercuryTrail() {
   mercuryTrailMode = !mercuryTrailMode;
+  const normalBar = document.getElementById('normalSpeedControls');
   if (mercuryTrailMode) {
+    // Hand speed control to the precession bar: stash the main speed, set a brisk
+    // orbital rate so the rosette actually traces out, and hide the normal bar.
+    mercurySavedSpeed = speed;
+    speed = 1e4;
+    if (normalBar) normalBar.style.display = 'none';
     mercuryPerihelion = 0;   // fresh rosette + fresh elapsed-time count
     mercuryTrailCount = 0;
     mercuryPrevNu = mercuryMesh.userData.angle;
@@ -1394,6 +1406,16 @@ function toggleMercuryTrail() {
     mercuryTrail.visible = true;
     if (mercuryOrbitLine) mercuryOrbitLine.visible = false;
   } else {
+    // Restore the normal speed bar and the speed it had.
+    if (mercurySavedSpeed !== null) {
+      speed = mercurySavedSpeed;
+      mercurySavedSpeed = null;
+      const sp = document.getElementById('speed');
+      if (sp) sp.value = String(Math.log10(speed));
+      const lbl = document.getElementById('speedLabel');
+      if (lbl) lbl.textContent = getSpeedLabel(speed);
+    }
+    if (normalBar) normalBar.style.display = 'block';
     mercuryTrail.visible = false;
     if (mercuryOrbitLine) mercuryOrbitLine.visible = orbitsVisible;
   }
@@ -1799,6 +1821,13 @@ function resetSimulation() {
     earthMesh.rotation.y = -(earthMesh.userData.angle + Math.PI) - sspRad;
     cloudMesh.rotation.y = earthMesh.rotation.y;
   }
+
+  // Reset to Now also zeroes Mercury's precession demo, so its rosette + elapsed-
+  // time readout restart from zero (otherwise the override display wouldn't change).
+  mercuryPerihelion = 0;
+  mercuryTrailCount = 0;
+  if (mercuryMesh) mercuryPrevNu = mercuryMesh.userData.angle;
+  if (mercuryTrailGeom) mercuryTrailGeom.setDrawRange(0, 0);
 
   updateSimTimeDisplay();
 }
