@@ -111,19 +111,22 @@ scene.add(galaxySkybox);
 // shifts them relative to each other (parallax). A per-point DISTANCE FADE (custom
 // shader) makes each dot fade out as you pull away from it, so distant dots don't pile
 // up into a white blob — you only ever see the stars near you. Hidden at galaxy scale.
-const STARFIELD_COUNT = 3000;
+const STARFIELD_COUNT = 12000;
 const STARFIELD_R_MIN  = 450;     // just beyond Neptune's orbit (~300) so it doesn't clutter the planets
 const STARFIELD_R_MAX  = 55000;   // fills the (now larger) skybox
-const STARFIELD_FADE_NEAR = 5000;  // fully visible within this distance of the camera
-const STARFIELD_FADE_FAR   = 26000; // gone beyond this — kills the far-away pile-up
+const STARFIELD_FADE_NEAR = 3000;  // fully visible within this distance of the camera
+const STARFIELD_FADE_FAR   = 32000; // gone beyond this — wide range so the fade is gradual
+const _rMin3 = STARFIELD_R_MIN ** 3, _rMax3 = STARFIELD_R_MAX ** 3;
 const _starPos = new Float32Array(STARFIELD_COUNT * 3);
 for (let i = 0; i < STARFIELD_COUNT; i++) {
   const u = Math.random() * 2 - 1;            // uniform cos(latitude)
   const phi = Math.random() * Math.PI * 2;
   const s = Math.sqrt(1 - u * u);
-  // Bias toward nearer distances (random²) so the inner view where you spend most
-  // time stays populated; the distance fade handles what's visible when zoomed out.
-  const r = STARFIELD_R_MIN + (STARFIELD_R_MAX - STARFIELD_R_MIN) * Math.random() * Math.random();
+  // UNIFORM density throughout the volume (cube-root of a uniform sample), so dots
+  // exist at every distance and the on-screen density is the SAME at any zoom — not
+  // dense near the Sun and empty far out. With the gradual fade, dots then wink out
+  // layer by layer as you pull away, rather than the whole near-cluster at once.
+  const r = Math.cbrt(_rMin3 + (_rMax3 - _rMin3) * Math.random());
   _starPos[i*3]     = r * s * Math.cos(phi);
   _starPos[i*3 + 1] = r * u;
   _starPos[i*3 + 2] = r * s * Math.sin(phi);
