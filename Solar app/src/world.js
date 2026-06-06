@@ -102,6 +102,37 @@ const galaxySkybox = new THREE.Mesh(
 galaxySkybox.visible = false;
 scene.add(galaxySkybox);
 
+// 🌟 3D BACKGROUND STARFIELD — white points scattered through a large volume around
+// the solar system (NASA-Eyes style). Unlike the flat skybox (infinitely far, no
+// parallax), these sit at finite distances, so moving/zooming shifts them relative
+// to each other — you feel like you're travelling past real stars. Hidden at
+// galaxy scale (the galaxy backdrop takes over).
+const STARFIELD_COUNT = 5000;
+const STARFIELD_R_MIN  = 450;     // just beyond Neptune's orbit (~300) so it doesn't clutter the planets
+const STARFIELD_R_MAX  = 16000;   // inside the 20000 skybox
+const _starPos = new Float32Array(STARFIELD_COUNT * 3);
+for (let i = 0; i < STARFIELD_COUNT; i++) {
+  const u = Math.random() * 2 - 1;            // uniform cos(latitude)
+  const phi = Math.random() * Math.PI * 2;
+  const s = Math.sqrt(1 - u * u);
+  const r = STARFIELD_R_MIN + (STARFIELD_R_MAX - STARFIELD_R_MIN) * Math.random();
+  _starPos[i*3]     = r * s * Math.cos(phi);
+  _starPos[i*3 + 1] = r * u;
+  _starPos[i*3 + 2] = r * s * Math.sin(phi);
+}
+const starfieldGeom = new THREE.BufferGeometry();
+starfieldGeom.setAttribute('position', new THREE.BufferAttribute(_starPos, 3));
+const starfield = new THREE.Points(starfieldGeom, new THREE.PointsMaterial({
+  color: 0xffffff,
+  size: 1.5,
+  sizeAttenuation: false,   // constant on-screen size (like real stars); parallax comes from position
+  transparent: true,
+  opacity: 0.85,
+  depthWrite: false
+}));
+starfield.frustumCulled = false;
+scene.add(starfield);
+
 // --- Milky Way GLB Model + Solar System Marker ---
 let milkyWayModel = null;
 let beauGaDisc = null;   // BeauGa.png flat disc galaxy
@@ -2964,6 +2995,9 @@ function animate(){
   if (!bhRendererSettings) {
     skybox.visible       = !outsideSkybox;
     galaxySkybox.visible =  outsideSkybox;
+    // 3D starfield only in the solar/spaceship views (not at galaxy scale or in
+    // the galactic schematic, where it would clutter).
+    starfield.visible    = !outsideSkybox && !galacticViewActive;
     const showGalaxy = outsideSkybox || galacticViewActive;
     if (milkyWayModel) milkyWayModel.visible = showGalaxy;
     if (beauGaDisc)    beauGaDisc.visible    = showGalaxy;
