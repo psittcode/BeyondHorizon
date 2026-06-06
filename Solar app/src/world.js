@@ -111,7 +111,7 @@ scene.add(galaxySkybox);
 // shifts them relative to each other (parallax). A per-point DISTANCE FADE (custom
 // shader) makes each dot fade out as you pull away from it, so distant dots don't pile
 // up into a white blob — you only ever see the stars near you. Hidden at galaxy scale.
-const STARFIELD_COUNT = 30000;
+const STARFIELD_COUNT = 45000;
 const STARFIELD_R_MIN  = 450;     // just beyond Neptune's orbit (~300) so it doesn't clutter the planets
 const STARFIELD_R_MAX  = 55000;   // fills the (now larger) skybox
 const STARFIELD_FADE_NEAR = 3000;  // fully visible within this distance of the camera
@@ -135,16 +135,17 @@ const starfieldGeom = new THREE.BufferGeometry();
 starfieldGeom.setAttribute('position', new THREE.BufferAttribute(_starPos, 3));
 const starfield = new THREE.Points(starfieldGeom, new THREE.ShaderMaterial({
   uniforms: {
-    uColor:   { value: new THREE.Color(0xdde1e8) },
-    uOpacity: { value: 0.75 },
-    uSize:    { value: 1.4 },
-    uNear:    { value: STARFIELD_FADE_NEAR },
-    uFar:     { value: STARFIELD_FADE_FAR }
+    uColor:     { value: new THREE.Color(0xdde1e8) },
+    uOpacity:   { value: 0.8 },
+    uSizeScale: { value: 9000 }, // pixel size = this / distance (perspective shrink)
+    uSizeMax:   { value: 2.8 },  // cap so very near dots aren't huge
+    uNear:      { value: STARFIELD_FADE_NEAR },
+    uFar:       { value: STARFIELD_FADE_FAR }
   },
   transparent: true,
   depthWrite: false,
   vertexShader: `
-    uniform float uSize; uniform float uNear; uniform float uFar;
+    uniform float uSizeScale; uniform float uSizeMax; uniform float uNear; uniform float uFar;
     varying float vFade;
     #include <common>
     #include <logdepthbuf_pars_vertex>
@@ -152,7 +153,7 @@ const starfield = new THREE.Points(starfieldGeom, new THREE.ShaderMaterial({
       vec4 mv = modelViewMatrix * vec4(position, 1.0);
       float d = length(mv.xyz);                  // distance from the camera
       vFade = 1.0 - smoothstep(uNear, uFar, d);  // 1 near → 0 far (fade as you pull away)
-      gl_PointSize = uSize;
+      gl_PointSize = min(uSizeMax, uSizeScale / d);  // dots shrink with distance, capped when near
       gl_Position = projectionMatrix * mv;
       #include <logdepthbuf_vertex>
     }
