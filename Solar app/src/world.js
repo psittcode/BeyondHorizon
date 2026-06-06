@@ -925,10 +925,13 @@ const MERC_PERIOD_YEARS = 0.2408; // Mercury's orbital period
 // Real precession per orbit (radians) at the true 43″/century rate.
 const MERC_PRECESS_PER_ORBIT_RAD =
   MERCURY_PRECESS_ARCSEC_PER_CENTURY * MERC_ARCSEC_TO_RAD * (MERC_PERIOD_YEARS / 100);
-// While the trail demo is on, Mercury orbits at this fixed rate, INDEPENDENT of the
-// simulation clock — so the demo runs without speeding up or touching the normal
-// sim time. (~1.3 orbits/sec, the brisk pace the rosette traces out at.)
-const MERC_DEMO_ORBIT_SPEED = 0.14;
+// Real years one radian of precession represents — for the honest elapsed-time
+// readout (one full rosette ≈ 3 million years, exactly as in reality).
+const MERC_YEARS_PER_RAD = 100 / (MERCURY_PRECESS_ARCSEC_PER_CENTURY * MERC_ARCSEC_TO_RAD);
+// While the trail demo is on, Mercury orbits at this fixed gentle rate, INDEPENDENT
+// of the simulation clock — so the demo runs without touching the normal sim time.
+// (~0.29 orbits/sec — a calm pace, not the blur it was at before.)
+const MERC_DEMO_ORBIT_SPEED = 0.03;
 let mercuryPerihelion = 0;   // accumulated argument of perihelion (radians)
 let mercuryDOmega     = 0;   // precession added this frame (for smooth trail sampling)
 let mercuryTrailMode  = false;
@@ -1380,7 +1383,8 @@ function refreshMercuryPanel() {
     const exp = Math.round(Math.log10(mercuryDemoMult));
     ctrl +=
       `<div style="font-size:12px;opacity:0.85;margin-bottom:4px">Precession speed: <span id="mercDemoLabel">${mercuryDemoLabel()}</span></div>` +
-      `<input id="mercDemoSlider" type="range" min="0" max="7" step="1" value="${exp}" style="width:100%;margin-bottom:10px">`;
+      `<input id="mercDemoSlider" type="range" min="0" max="7" step="1" value="${exp}" style="width:100%;margin-bottom:6px">` +
+      `<div id="mercElapsed" style="font-size:12px;opacity:0.85;margin-bottom:10px"></div>`;
   }
   const splitAt = info.indexOf('<br><br>') + '<br><br>'.length;
   pc.innerHTML = info.substring(0, splitAt) + ctrl + info.substring(splitAt);
@@ -1743,6 +1747,12 @@ let isFlyingTo = false;
 // Simulation time — starts at the real current date/time
 let simulationDate = new Date();
 
+// Format a (possibly enormous) number of years for the precession readout.
+function formatYears(y) {
+  if (y >= 1e9) return (y / 1e9).toFixed(2) + ' billion yr';
+  if (y >= 1e6) return (y / 1e6).toFixed(2) + ' million yr';
+  return Math.round(y).toLocaleString() + ' yr';
+}
 function updateSimTimeDisplay() {
   document.getElementById('simDate').textContent = simulationDate.toLocaleDateString('en-US', {
     weekday: 'short', year: 'numeric', month: 'short', day: 'numeric'
@@ -3169,6 +3179,13 @@ function animate(){
   }
   mercuryPerihelion += mercuryDOmega;
   if (mercuryOrbitLine) mercuryOrbitLine.rotation.y = -mercuryPerihelion;
+  // Honest elapsed-time readout in the Mercury panel (the precession's real deep
+  // time), shown there rather than overriding the normal simulation clock.
+  if (mercuryTrailMode) {
+    const _me = document.getElementById('mercElapsed');
+    if (_me) _me.textContent = '≈ ' + formatYears(mercuryPerihelion * MERC_YEARS_PER_RAD)
+      + ' elapsed · ' + (mercuryPerihelion * 180 / Math.PI).toFixed(1) + '° drift';
+  }
 
   // Sun rotation
   sun.rotation.y += 0.135 * speed * deltaScale;
