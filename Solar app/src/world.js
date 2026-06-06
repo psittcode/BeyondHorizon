@@ -932,7 +932,8 @@ let mercuryTrailMode  = false;
 let mercuryPrevNu     = 0;
 // Real-time speed-up of the precession demo (how fast you fast-forward). The
 // elapsed-years readout corrects for this, so the shown time is always honest.
-let mercuryDemoMult   = 1e5;
+// Starts gentle; the panel slider goes from 100× up to 10,000,000×.
+let mercuryDemoMult   = 1e3;
 let mercurySavedSpeed = null; // main speed stashed while the trail demo drives the clock
 
 // 🪐 ORBIT LINES
@@ -1375,7 +1376,7 @@ function refreshMercuryPanel() {
     const exp = Math.round(Math.log10(mercuryDemoMult));
     ctrl +=
       `<div style="font-size:12px;opacity:0.85;margin-bottom:4px">Precession speed: <span id="mercDemoLabel">${mercuryDemoLabel()}</span></div>` +
-      `<input id="mercDemoSlider" type="range" min="4" max="7" step="1" value="${exp}" style="width:100%;margin-bottom:10px">`;
+      `<input id="mercDemoSlider" type="range" min="2" max="7" step="1" value="${exp}" style="width:100%;margin-bottom:10px">`;
   }
   const splitAt = info.indexOf('<br><br>') + '<br><br>'.length;
   pc.innerHTML = info.substring(0, splitAt) + ctrl + info.substring(splitAt);
@@ -1397,7 +1398,7 @@ function toggleMercuryTrail() {
     // Hand speed control to the precession bar: stash the main speed, set a brisk
     // orbital rate so the rosette actually traces out, and hide the normal bar.
     mercurySavedSpeed = speed;
-    speed = 1e4;
+    speed = 1e3; // brisk enough to trace the rosette, calm enough not to blur everything
     if (normalBar) normalBar.style.display = 'none';
     mercuryPerihelion = 0;   // fresh rosette + fresh elapsed-time count
     mercuryTrailCount = 0;
