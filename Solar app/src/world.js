@@ -1316,9 +1316,9 @@ function transformMars() {
   }
 
   const colorTex = textureLoader.load("ChatGPT Image May 19, 2026, 09_39_22 PM.png", applyTexQuality);
-  // terraformed_mars_emissive.png is the safe-sized 4096×2048 version of city_lights.png
-  // (city_lights.png extracted from GLB is 8192×4096 and exceeds GPU texture limits)
-  const nightTex = textureLoader.load("terraformed_mars_emissive.png", applyTexQuality);
+  // city_lights.png is the dedicated Mars night map (1774×887, within GPU limits):
+  // dim continents + city lights baked in, used directly as the night side.
+  const nightTex = textureLoader.load("city_lights.png", applyTexQuality);
   const cloudTex = textureLoader.load("clouds.png", applyTexQuality);
 
   // ShaderMaterial: city lights only appear on the night side and fade with the terminator
@@ -1353,10 +1353,9 @@ function transformMars() {
         float blend = smoothstep(-0.15, 0.15, intensity);
         vec4 day   = texture2D(dayTexture,   vUv);
         vec4 night = texture2D(nightTexture, vUv);
-        // Night side: dim daylit terrain (so continents stay readable, like Earth's
-        // night side) plus city lights on top — bright enough to see, still night.
-        vec3 darkSide = day.rgb * 0.20 + night.rgb;
-        gl_FragColor = vec4(mix(darkSide, day.rgb, blend), 1.0);
+        // Night side is the dedicated night map directly (like Earth) — its dim
+        // continents and city lights are already baked in at the right brightness.
+        gl_FragColor = vec4(mix(night.rgb, day.rgb, blend), 1.0);
       }
     `
   });
