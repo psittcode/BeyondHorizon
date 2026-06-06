@@ -111,7 +111,7 @@ scene.add(galaxySkybox);
 // shifts them relative to each other (parallax). A per-point DISTANCE FADE (custom
 // shader) makes each dot fade out as you pull away from it, so distant dots don't pile
 // up into a white blob — you only ever see the stars near you. Hidden at galaxy scale.
-const STARFIELD_COUNT = 12000;
+const STARFIELD_COUNT = 30000;
 const STARFIELD_R_MIN  = 450;     // just beyond Neptune's orbit (~300) so it doesn't clutter the planets
 const STARFIELD_R_MAX  = 55000;   // fills the (now larger) skybox
 const STARFIELD_FADE_NEAR = 3000;  // fully visible within this distance of the camera
