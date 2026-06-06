@@ -71,7 +71,7 @@ const room = {
     // units, camera maxDistance 200): dots grow as you approach and shrink/fade as
     // you pull away, giving depth and parallax. Self-updating in the shader.
     {
-      const COUNT = 18000, R_MIN = 40, R_MAX = 4000, FADE_NEAR = 80, FADE_FAR = 2500;
+      const COUNT = 45000, R_MIN = 40, R_MAX = 4000, FADE_NEAR = 80, FADE_FAR = 2500; // match the Solar view's count
       const rMin3 = R_MIN ** 3, rMax3 = R_MAX ** 3;
       const pos = new Float32Array(COUNT * 3);
       for (let i = 0; i < COUNT; i++) {
