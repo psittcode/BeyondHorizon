@@ -921,14 +921,18 @@ const MERCURY_ECC = 0.2056;
 const MERCURY_PRECESS_ARCSEC_PER_CENTURY = 43;
 const MERC_ARCSEC_TO_RAD = Math.PI / (180 * 3600);
 const MERC_CENTURY_MS = 100 * 365.25 * 86400 * 1000;
+// Real years that 1 radian of precession represents at the true 43″/century rate.
+// The trail is sped up for visibility, but the elapsed-time readout is derived from
+// the precession angle through this, so the displayed years stay scientifically
+// honest (one full rosette ≈ 3 million years, exactly as in reality).
+const MERC_YEARS_PER_RAD = 100 / (MERCURY_PRECESS_ARCSEC_PER_CENTURY * MERC_ARCSEC_TO_RAD);
 let mercuryPerihelion = 0;   // accumulated argument of perihelion (radians)
 let mercuryDOmega     = 0;   // precession added this frame (for smooth trail sampling)
 let mercuryTrailMode  = false;
 let mercuryPrevNu     = 0;
-// Fixed exaggeration of the real 43″/century rate applied only while the trail is
-// shown. The true rate is ~0.0001°/orbit (≈3.4M orbits for one rosette — undrawable),
-// so we bake in a visible rate and let the main speed bar control how fast it builds.
-const MERCURY_PRECESS_DEMO = 1e5;
+// Real-time speed-up of the precession demo (how fast you fast-forward). The
+// elapsed-years readout corrects for this, so the shown time is always honest.
+let mercuryDemoMult   = 1e5;
 
 // 🪐 ORBIT LINES
 const orbitLines = [];
@@ -1353,23 +1357,37 @@ function refreshSunPanel() {
   });
 }
 
-// Mercury panel: toggle the precession trail. Build speed is the main speed bar.
+// Mercury panel: toggle the precession trail + set how fast to fast-forward it.
+// The elapsed-years readout (in the time panel) stays honest at any speed.
+function mercuryDemoLabel() {
+  return mercuryDemoMult.toLocaleString() + "× fast-forward (real rate 43″/century)";
+}
 function refreshMercuryPanel() {
   const pc = document.getElementById("panelContent");
   const info = mercuryMesh.userData.info;
-  const btnStyle = "background:rgba(255,255,255,0.15);color:white;border:1px solid rgba(255,255,255,0.4);padding:6px 12px;cursor:pointer;border-radius:4px;font-size:13px;margin-bottom:10px;width:100%;display:block";
+  const btnStyle = "background:rgba(255,255,255,0.15);color:white;border:1px solid rgba(255,255,255,0.4);padding:6px 12px;cursor:pointer;border-radius:4px;font-size:13px;margin-bottom:8px;width:100%;display:block";
   const trailLabel = mercuryTrailMode ? "Hide Precession Trail" : "Show Precession Trail";
-  const ctrl = `<button id="mercTrailBtn" style="${btnStyle}">${trailLabel}</button>`;
+  const exp = Math.round(Math.log10(mercuryDemoMult));
+  const ctrl =
+    `<button id="mercTrailBtn" style="${btnStyle}">${trailLabel}</button>` +
+    `<div style="font-size:12px;opacity:0.85;margin-bottom:4px">Precession speed: <span id="mercDemoLabel">${mercuryDemoLabel()}</span></div>` +
+    `<input id="mercDemoSlider" type="range" min="2" max="7" step="1" value="${exp}" style="width:100%;margin-bottom:10px">`;
   const splitAt = info.indexOf('<br><br>') + '<br><br>'.length;
   pc.innerHTML = info.substring(0, splitAt) + ctrl + info.substring(splitAt);
   document.getElementById("mercTrailBtn").addEventListener("click", (e) => {
     e.stopPropagation();
     toggleMercuryTrail();
   });
+  document.getElementById("mercDemoSlider").addEventListener("input", (e) => {
+    e.stopPropagation();
+    mercuryDemoMult = Math.pow(10, parseFloat(e.target.value));
+    document.getElementById("mercDemoLabel").textContent = mercuryDemoLabel();
+  });
 }
 function toggleMercuryTrail() {
   mercuryTrailMode = !mercuryTrailMode;
   if (mercuryTrailMode) {
+    mercuryPerihelion = 0;   // fresh rosette + fresh elapsed-time count
     mercuryTrailCount = 0;
     mercuryPrevNu = mercuryMesh.userData.angle;
     mercuryTrailGeom.setDrawRange(0, 0);
@@ -1708,7 +1726,22 @@ let isFlyingTo = false;
 // Simulation time — starts at the real current date/time
 let simulationDate = new Date();
 
+function formatYears(y) {
+  if (y >= 1e9) return (y / 1e9).toFixed(2) + ' billion yr';
+  if (y >= 1e6) return (y / 1e6).toFixed(2) + ' million yr';
+  return Math.round(y).toLocaleString() + ' yr';
+}
 function updateSimTimeDisplay() {
+  // While the Mercury precession trail is building, show the elapsed time it
+  // represents at the real 43″/century rate (a JS Date can't reach the millions of
+  // years involved). Derived from the precession angle, so it's honest.
+  if (mercuryTrailMode) {
+    document.getElementById('simDate').textContent =
+      formatYears(mercuryPerihelion * MERC_YEARS_PER_RAD) + ' elapsed';
+    document.getElementById('simTime').textContent =
+      'Mercury perihelion drift: ' + (mercuryPerihelion * 180 / Math.PI).toFixed(1) + '°';
+    return;
+  }
   document.getElementById('simDate').textContent = simulationDate.toLocaleDateString('en-US', {
     weekday: 'short', year: 'numeric', month: 'short', day: 'numeric'
   });
@@ -3118,7 +3151,7 @@ function animate(){
   // accelerated by the demo factor only while the trail demo is active so the
   // rosette is actually visible. Rotate the ring to match (negligible when exact).
   mercuryDOmega = MERCURY_PRECESS_ARCSEC_PER_CENTURY * MERC_ARCSEC_TO_RAD
-    * (mercuryTrailMode ? MERCURY_PRECESS_DEMO : 1) * (simMsPerFrame / MERC_CENTURY_MS);
+    * (mercuryTrailMode ? mercuryDemoMult : 1) * (simMsPerFrame / MERC_CENTURY_MS);
   mercuryPerihelion += mercuryDOmega;
   if (mercuryOrbitLine) mercuryOrbitLine.rotation.y = -mercuryPerihelion;
 
