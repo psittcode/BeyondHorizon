@@ -46,7 +46,7 @@ ctx.keplerEscapeToGalaxy = () => escapeKeplerToGalaxy();
 controls.enablePan = false;
 controls.maxDistance = 1000000;
 controls.minDistance = 0.0008;   // true-scale: allow approaching a focused body to ~just outside the near plane
-controls.zoomSpeed = 0.5;        // gentler mouse-wheel zoom — a gradual glide, not a warp
+controls.zoomSpeed = 0.2;        // much gentler mouse-wheel zoom — a slow glide, not a warp
 
 // Lights
 const ambientLight = new THREE.AmbientLight(0xffffff, 0.15);
@@ -1695,10 +1695,15 @@ function flyToObject(obj) {
   const offset = new THREE.Vector3(0, size * 2, size * 8);
   const endPos = targetPos.clone().add(offset);
 
+  // Time-based (not per-frame) so it's a fixed ~3s glide on any display refresh rate.
+  const FLY_MS = 3000;
+  let _flyLast = performance.now();
   let t = 0;
   function flyTo() {
     if (myGeneration !== flyGeneration) { isFlyingTo = false; return; } // cancelled
-    t += 0.016; // gentler glide to a clicked body (~62 frames)
+    const _now = performance.now();
+    t += (_now - _flyLast) / FLY_MS;
+    _flyLast = _now;
     if (t > 1) t = 1;
     const ease = t * t * (3 - 2 * t);
 
@@ -2437,10 +2442,11 @@ function flyToSolarSystem() {
   const _startBeauGaQuat  = beauGaDisc ? beauGaDisc.quaternion.clone() : null;
   const _endBeauGaQuat    = new THREE.Quaternion().setFromEuler(new THREE.Euler(-Math.PI / 2, 0, 0));
 
+  const FLY_MS = 4500; let _flyLast = performance.now(); // time-based, display-independent
   let t = 0;
   (function flyIn() {
     if (myGeneration !== flyGeneration) { isFlyingTo = false; return; }
-    t += 0.007; // gentle descent into the solar system (~143 frames)
+    const _now = performance.now(); t += (_now - _flyLast) / FLY_MS; _flyLast = _now;
     if (t > 1) t = 1;
     const ease = t * t * (3 - 2 * t);
 
@@ -2498,10 +2504,11 @@ function flyToMilkyWay() {
   const startPos    = camera.position.clone();
   const startTarget = controls.target.clone();
 
+  const FLY_MS = 5000; let _flyLast = performance.now(); // time-based, display-independent
   let t = 0;
   (function flyOut() {
     if (myGeneration !== flyGeneration) { isFlyingTo = false; return; }
-    t += 0.006; // gentle sweeping arc to the galaxy (~167 frames)
+    const _now = performance.now(); t += (_now - _flyLast) / FLY_MS; _flyLast = _now;
     if (t > 1) t = 1;
     const ease = t * t * (3 - 2 * t);
 
@@ -2972,10 +2979,11 @@ function flyToKeplerDot() {
   const startPos    = camera.position.clone();
   const startTarget = controls.target.clone();
 
+  const FLY_MS = 3800; let _flyLast = performance.now(); // time-based, display-independent
   let t = 0;
   (function zoomIn() {
     if (myGeneration !== flyGeneration) { isFlyingTo = false; return; }
-    t += 0.009; // gentler dive onto the Kepler dot (~111 frames)
+    const _now = performance.now(); t += (_now - _flyLast) / FLY_MS; _flyLast = _now;
     if (t > 1) t = 1;
     const ease = t * t; // ease-IN: accelerate, fastest at the hand-off (no stop)
     camera.position.lerpVectors(startPos, endPos, ease);

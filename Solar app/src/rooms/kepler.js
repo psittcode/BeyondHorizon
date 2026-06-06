@@ -165,7 +165,7 @@ const room = {
     this.controls = new THREE.OrbitControls(this.camera, ctx.domElement);
     this.controls.enableDamping = true;
     this.controls.dampingFactor = 0.08;
-    this.controls.zoomSpeed = 0.5;   // gentler zoom, matching the main view
+    this.controls.zoomSpeed = 0.2;   // much gentler zoom, matching the main view
     // True scale: let the camera approach Kepler-22b (true radius ≈ 0.00096) to
     // just outside its surface for a real-size close-up. 0.0015 stays clear of the
     // planet and the near plane; the star (≈ 0.0429) can be entered, as the Sun can.
@@ -207,10 +207,12 @@ const room = {
     const size = obj.userData.size || 0.5;
     const endPos = endTarget.clone().add(new THREE.Vector3(0, size * 2, size * 8));
     const self = this;
+    const FLY_MS = 3000; let flyLast = performance.now(); // time-based, display-independent
     let t = 0;
     (function flyTo() {
       if (!self._isActive) { self.flying = false; return; }
-      t += 0.016; if (t > 1) t = 1; // gentler glide to a clicked body
+      const now = performance.now(); t += (now - flyLast) / FLY_MS; flyLast = now;
+      if (t > 1) t = 1;
       const e = t * t * (3 - 2 * t);
       self.camera.position.lerpVectors(startPos, endPos, e);
       self.controls.target.lerpVectors(startTarget, endTarget, e);
@@ -345,8 +347,8 @@ const room = {
     if (this.bClouds) this.bClouds.rotation.y += 0.0101 * ctx.speed * kScale;
 
     if (this.introActive) {
-      // ease-OUT zoom-in, continuing the galaxy dive (gentle)
-      this.introT += 0.012 * kScale;
+      // ease-OUT zoom-in, continuing the galaxy dive (slow)
+      this.introT += 0.006 * kScale;
       if (this.introT >= 1) this.introT = 1;
       const e = this.introT * (2 - this.introT);
       this.camera.position.lerpVectors(KEPLER_INTRO_FROM, KEPLER_INTRO_TO, e);
