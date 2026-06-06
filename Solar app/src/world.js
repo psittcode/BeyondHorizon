@@ -911,6 +911,22 @@ moon.position.set(MOON_ORBIT_DIST, 0, 0);
 moon.userData.trueRadius = MOON_TRUE_RADIUS;
 moonGroup.add(moon);
 
+// ── Mercury's relativistic perihelion precession (Einstein) ──────────────────
+// Mercury orbits on its real ellipse (e=0.2056, Sun at the focus); the long axis
+// slowly rotates — 43″ per century in reality, the famous general-relativity test.
+// A button in Mercury's panel swaps its orbit ring for an accumulating trail so
+// the precession "rosette" stacks up over time; a demo-speed factor exaggerates
+// the (otherwise invisibly slow) rate while still based on the real 43″/century.
+const MERCURY_ECC = 0.2056;
+const MERCURY_PRECESS_ARCSEC_PER_CENTURY = 43;
+const MERC_ARCSEC_TO_RAD = Math.PI / (180 * 3600);
+const MERC_CENTURY_MS = 100 * 365.25 * 86400 * 1000;
+let mercuryPerihelion = 0;   // accumulated argument of perihelion (radians)
+let mercuryDOmega     = 0;   // precession added this frame (for smooth trail sampling)
+let mercuryTrailMode  = false;
+let mercuryDemoMult   = 1e5; // precession speed-up while the trail demo is on (1 = exact)
+let mercuryPrevNu     = 0;
+
 // 🪐 ORBIT LINES
 const orbitLines = [];
 meshes.forEach(m => {
@@ -922,13 +938,19 @@ meshes.forEach(m => {
   const targetSagitta = (m.userData.size || 0.001) * 0.1;
   const segs = Math.min(4096, Math.max(256,
     Math.ceil(Math.PI * Math.sqrt(dist / (2 * targetSagitta)))));
+  // Mercury's ring is its real ellipse (Sun at the focus) so the precession shows;
+  // every other planet stays a circle.
+  const isMercury = m.userData.name === "Mercury";
   const points = [];
   for (let i = 0; i <= segs; i++) {
     const angle = (i / segs) * Math.PI * 2;
+    const r = isMercury
+      ? dist * (1 - MERCURY_ECC * MERCURY_ECC) / (1 + MERCURY_ECC * Math.cos(angle))
+      : dist;
     points.push(new THREE.Vector3(
-      Math.cos(angle) * dist,
+      Math.cos(angle) * r,
       0,
-      Math.sin(angle) * dist
+      Math.sin(angle) * r
     ));
   }
   const orbit = new THREE.Line(
@@ -939,6 +961,49 @@ meshes.forEach(m => {
   scene.add(orbit);
   orbitLines.push(orbit);
 });
+
+// Mercury precession trail — an accumulating polyline of Mercury's actual path,
+// hidden until toggled on from its info panel. Sampled sub-frame so it stays
+// smooth at any speed; it never fades, so the precession rosette builds up.
+const mercuryMesh = meshes.find(m => m.userData.name === "Mercury");
+let mercuryOrbitLine = orbitLines.find(o => o.userData.ownerMesh === mercuryMesh) || null;
+const MERCURY_TRAIL_MAX = 200000;
+const mercuryTrailPositions = new Float32Array(MERCURY_TRAIL_MAX * 3);
+let mercuryTrailCount = 0;
+const mercuryTrailGeom = new THREE.BufferGeometry();
+mercuryTrailGeom.setAttribute('position', new THREE.BufferAttribute(mercuryTrailPositions, 3));
+mercuryTrailGeom.setDrawRange(0, 0);
+const mercuryTrail = new THREE.Line(
+  mercuryTrailGeom,
+  new THREE.LineBasicMaterial({ color: 0xffb060, transparent: true, opacity: 0.6 })
+);
+mercuryTrail.frustumCulled = false; // grows unbounded; never cull it
+mercuryTrail.visible = false;
+scene.add(mercuryTrail);
+
+// Append Mercury's path from the previous true anomaly to the current one,
+// interpolating both the anomaly and the precession angle so the line is smooth
+// even when many degrees pass per frame.
+function appendMercuryTrail(curNu) {
+  const e = MERCURY_ECC, a = mercuryMesh.userData.dist;
+  const dNu = curNu - mercuryPrevNu;
+  const omegaStart = mercuryPerihelion - mercuryDOmega;
+  const steps = Math.min(1000, Math.max(1, Math.ceil(Math.abs(dNu) / 0.1)));
+  for (let s = 1; s <= steps && mercuryTrailCount < MERCURY_TRAIL_MAX; s++) {
+    const f = s / steps;
+    const nu = mercuryPrevNu + dNu * f;
+    const om = omegaStart + mercuryDOmega * f;
+    const r = a * (1 - e * e) / (1 + e * Math.cos(nu));
+    const ang = nu + om;
+    const i3 = mercuryTrailCount * 3;
+    mercuryTrailPositions[i3]     = r * Math.cos(ang);
+    mercuryTrailPositions[i3 + 1] = 0;
+    mercuryTrailPositions[i3 + 2] = r * Math.sin(ang);
+    mercuryTrailCount++;
+  }
+  mercuryTrailGeom.setDrawRange(0, mercuryTrailCount);
+  mercuryTrailGeom.attributes.position.needsUpdate = true;
+}
 
 // 🌕 Moon orbit line
 const moonOrbitPoints = [];
@@ -1242,6 +1307,8 @@ function updateOrbitRingProximity() {
   for (const line of orbitLines) {
     const owner = line.userData.ownerMesh;
     if (!owner) continue;
+    // Mercury's ring stays hidden while its precession trail is showing.
+    if (line === mercuryOrbitLine && mercuryTrailMode) { line.visible = false; continue; }
     owner.getWorldPosition(_orbPos);
     const d = camera.position.distanceTo(_orbPos);
     const worldPerPx = (2 * d * tanHalf) / window.innerHeight;
@@ -1281,6 +1348,49 @@ function refreshSunPanel() {
     tempCompareEarth.visible = !tempCompareEarth.visible;
     refreshSunPanel(); // update the button label
   });
+}
+
+// Mercury panel: toggle the precession trail + dial the demo speed-up.
+function mercuryDemoLabel() {
+  return mercuryDemoMult === 1
+    ? "1× (exact 43″/century)"
+    : mercuryDemoMult.toLocaleString() + "× of 43″/century";
+}
+function refreshMercuryPanel() {
+  const pc = document.getElementById("panelContent");
+  const info = mercuryMesh.userData.info;
+  const btnStyle = "background:rgba(255,255,255,0.15);color:white;border:1px solid rgba(255,255,255,0.4);padding:6px 12px;cursor:pointer;border-radius:4px;font-size:13px;margin-bottom:8px;width:100%;display:block";
+  const trailLabel = mercuryTrailMode ? "Hide precession trail" : "Show precession trail (Einstein)";
+  const exp = Math.round(Math.log10(mercuryDemoMult));
+  const ctrl =
+    `<button id="mercTrailBtn" style="${btnStyle}">${trailLabel}</button>` +
+    `<div style="font-size:12px;opacity:0.85;margin-bottom:4px">Precession demo speed: <span id="mercDemoLabel">${mercuryDemoLabel()}</span></div>` +
+    `<input id="mercDemoSlider" type="range" min="0" max="6" step="1" value="${exp}" style="width:100%;margin-bottom:10px">`;
+  const splitAt = info.indexOf('<br><br>') + '<br><br>'.length;
+  pc.innerHTML = info.substring(0, splitAt) + ctrl + info.substring(splitAt);
+  document.getElementById("mercTrailBtn").addEventListener("click", (e) => {
+    e.stopPropagation();
+    toggleMercuryTrail();
+  });
+  document.getElementById("mercDemoSlider").addEventListener("input", (e) => {
+    e.stopPropagation();
+    mercuryDemoMult = Math.pow(10, parseFloat(e.target.value));
+    document.getElementById("mercDemoLabel").textContent = mercuryDemoLabel();
+  });
+}
+function toggleMercuryTrail() {
+  mercuryTrailMode = !mercuryTrailMode;
+  if (mercuryTrailMode) {
+    mercuryTrailCount = 0;
+    mercuryPrevNu = mercuryMesh.userData.angle;
+    mercuryTrailGeom.setDrawRange(0, 0);
+    mercuryTrail.visible = true;
+    if (mercuryOrbitLine) mercuryOrbitLine.visible = false;
+  } else {
+    mercuryTrail.visible = false;
+    if (mercuryOrbitLine) mercuryOrbitLine.visible = orbitsVisible;
+  }
+  refreshMercuryPanel();
 }
 
 function refreshMarsPanel() {
@@ -1416,6 +1526,8 @@ function flyToObject(obj) {
     refreshMarsPanel();
   } else if (infoObj.userData.name === "Sun") {
     refreshSunPanel();
+  } else if (infoObj.userData.name === "Mercury") {
+    refreshMercuryPanel();
   } else {
     document.getElementById("panelContent").innerHTML = infoObj.userData.info;
   }
@@ -3013,14 +3125,33 @@ function animate(){
   simulationDate = new Date(simulationDate.getTime() + simMsPerFrame);
   updateSimTimeDisplay();
 
+  // Mercury perihelion precession (Einstein GR, 43″/century vs simulated time),
+  // accelerated by the demo factor only while the trail demo is active so the
+  // rosette is actually visible. Rotate the ring to match (negligible when exact).
+  mercuryDOmega = MERCURY_PRECESS_ARCSEC_PER_CENTURY * MERC_ARCSEC_TO_RAD
+    * (mercuryTrailMode ? mercuryDemoMult : 1) * (simMsPerFrame / MERC_CENTURY_MS);
+  mercuryPerihelion += mercuryDOmega;
+  if (mercuryOrbitLine) mercuryOrbitLine.rotation.y = -mercuryPerihelion;
+
   // Sun rotation
   sun.rotation.y += 0.135 * speed * deltaScale;
   sun.rotation.z = 7.25 * (Math.PI / 180);
 
   meshes.forEach(m=>{
     m.userData.angle += m.userData.speed * speed * deltaScale;
+    if (m.userData.name === "Mercury") {
+      // Elliptical orbit (Sun at the focus) whose perihelion precesses.
+      const e = MERCURY_ECC, nu = m.userData.angle;
+      const r = m.userData.dist * (1 - e * e) / (1 + e * Math.cos(nu));
+      const ang = nu + mercuryPerihelion;
+      m.position.x = r * Math.cos(ang);
+      m.position.z = r * Math.sin(ang);
+      if (mercuryTrailMode) appendMercuryTrail(nu);
+      mercuryPrevNu = nu;
+    } else {
     m.position.x = Math.cos(m.userData.angle) * m.userData.dist;
     m.position.z = Math.sin(m.userData.angle) * m.userData.dist;
+    }
 
     // Spin each planet around itself
     if (m.userData.name === "Mercury") {
