@@ -1219,6 +1219,9 @@ function applyMinDots() {
   updateSunGlow(); // scales the Sun core (smaller min-dot) + its glow
 
   meshes.forEach(m => minDotScale(m, m.userData.size));
+  // Transformed Mars replaces the (hidden) Mars mesh, so min-dot it the same way
+  // or it would vanish at distance while every other planet stays a visible dot.
+  if (marsTransformed && terraformedMarsModel) minDotScale(terraformedMarsModel, marsMesh.userData.size);
   if (moon) minDotScale(moon, moon.userData.trueRadius);
   jupiterMoons.forEach(jm => minDotScale(jm.mesh, jm.mesh.userData.trueRadius));
   // Saturn's rings: match the body's apparent size and keep the shadow term correct.
@@ -1328,10 +1331,13 @@ function transformMars() {
     vertexShader: `
       varying vec2 vUv;
       varying vec3 vNormal;
+      #include <common>
+      #include <logdepthbuf_pars_vertex>
       void main() {
         vUv = uv;
         vNormal = normalize((modelMatrix * vec4(normal, 0.0)).xyz);
         gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        #include <logdepthbuf_vertex>
       }
     `,
     fragmentShader: `
@@ -1340,13 +1346,16 @@ function transformMars() {
       uniform vec3 sunDirection;
       varying vec2 vUv;
       varying vec3 vNormal;
+      #include <logdepthbuf_pars_fragment>
       void main() {
+        #include <logdepthbuf_fragment>
         float intensity = dot(vNormal, sunDirection);
         float blend = smoothstep(-0.15, 0.15, intensity);
         vec4 day   = texture2D(dayTexture,   vUv);
         vec4 night = texture2D(nightTexture, vUv);
-        // Dim ambient keeps night side from being pitch-black; city lights add on top
-        vec3 darkSide = day.rgb * 0.06 + night.rgb;
+        // Night side: dim daylit terrain (so continents stay readable, like Earth's
+        // night side) plus city lights on top — bright enough to see, still night.
+        vec3 darkSide = day.rgb * 0.20 + night.rgb;
         gl_FragColor = vec4(mix(darkSide, day.rgb, blend), 1.0);
       }
     `
