@@ -46,6 +46,7 @@ ctx.keplerEscapeToGalaxy = () => escapeKeplerToGalaxy();
 controls.enablePan = false;
 controls.maxDistance = 1000000;
 controls.minDistance = 0.0008;   // true-scale: allow approaching a focused body to ~just outside the near plane
+controls.zoomSpeed = 0.5;        // gentler mouse-wheel zoom — a gradual glide, not a warp
 
 // Lights
 const ambientLight = new THREE.AmbientLight(0xffffff, 0.15);
@@ -1697,7 +1698,7 @@ function flyToObject(obj) {
   let t = 0;
   function flyTo() {
     if (myGeneration !== flyGeneration) { isFlyingTo = false; return; } // cancelled
-    t += 0.03;
+    t += 0.016; // gentler glide to a clicked body (~62 frames)
     if (t > 1) t = 1;
     const ease = t * t * (3 - 2 * t);
 
@@ -2439,7 +2440,7 @@ function flyToSolarSystem() {
   let t = 0;
   (function flyIn() {
     if (myGeneration !== flyGeneration) { isFlyingTo = false; return; }
-    t += 0.012; // ~83-frame descent for a cinematic feel
+    t += 0.007; // gentle descent into the solar system (~143 frames)
     if (t > 1) t = 1;
     const ease = t * t * (3 - 2 * t);
 
@@ -2500,7 +2501,7 @@ function flyToMilkyWay() {
   let t = 0;
   (function flyOut() {
     if (myGeneration !== flyGeneration) { isFlyingTo = false; return; }
-    t += 0.01; // ~100-frame arc for a sweeping feel
+    t += 0.006; // gentle sweeping arc to the galaxy (~167 frames)
     if (t > 1) t = 1;
     const ease = t * t * (3 - 2 * t);
 
@@ -2974,7 +2975,7 @@ function flyToKeplerDot() {
   let t = 0;
   (function zoomIn() {
     if (myGeneration !== flyGeneration) { isFlyingTo = false; return; }
-    t += 0.015;
+    t += 0.009; // gentler dive onto the Kepler dot (~111 frames)
     if (t > 1) t = 1;
     const ease = t * t; // ease-IN: accelerate, fastest at the hand-off (no stop)
     camera.position.lerpVectors(startPos, endPos, ease);

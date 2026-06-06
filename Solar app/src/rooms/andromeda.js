@@ -164,6 +164,7 @@ const room = {
     this.controls = new THREE.OrbitControls(this.camera, ctx.domElement);
     this.controls.enableDamping = true;
     this.controls.dampingFactor = 0.08;
+    this.controls.zoomSpeed = 0.5;   // gentler zoom, matching the main view
     this.controls.minDistance   = 1;
     this.controls.maxDistance   = SKYBOX_RADIUS * 0.9;
     this.controls.target.set(0, 0, 0);
