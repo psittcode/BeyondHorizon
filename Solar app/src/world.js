@@ -917,11 +917,7 @@ moonGroup.add(moon);
 // A button in Mercury's panel swaps its orbit ring for an accumulating trail so
 // the precession "rosette" stacks up over time; a demo-speed factor exaggerates
 // the (otherwise invisibly slow) rate while still based on the real 43″/century.
-const MERCURY_ECC = 0.2056;        // Mercury's true eccentricity (normal orbit ring)
-// Exaggerated eccentricity used ONLY for the precession-trail demo, so the rosette
-// shows the dramatic elongated petals of the classic illustration (real e=0.21 makes
-// near-round petals that tangle rather than read as a flower).
-const MERC_ROSETTE_ECC = 0.45;
+const MERCURY_ECC = 0.2056;        // Mercury's true eccentricity (used everywhere)
 const MERCURY_PRECESS_ARCSEC_PER_CENTURY = 43;
 const MERC_ARCSEC_TO_RAD = Math.PI / (180 * 3600);
 const MERC_CENTURY_MS = 100 * 365.25 * 86400 * 1000;
@@ -1003,7 +999,7 @@ scene.add(mercuryTrail);
 // interpolating both the anomaly and the precession angle so the line is smooth
 // even when many degrees pass per frame.
 function appendMercuryTrail(curNu) {
-  const e = MERC_ROSETTE_ECC, a = mercuryMesh.userData.dist; // demo ellipse (matches the drawn orbit)
+  const e = MERCURY_ECC, a = mercuryMesh.userData.dist;
   const dNu = curNu - mercuryPrevNu;
   const omegaStart = mercuryPerihelion - mercuryDOmega;
   const steps = Math.min(1000, Math.max(1, Math.ceil(Math.abs(dNu) / 0.1)));
@@ -3237,8 +3233,7 @@ function animate(){
       const _mercRate = mercuryTrailMode ? (mercuryTrailPaused ? 0 : MERC_DEMO_ORBIT_SPEED)
                                          : m.userData.speed * speed;
       m.userData.angle += _mercRate * deltaScale;
-      // Exaggerated ellipse during the demo so the rosette reads as a flower.
-      const e = mercuryTrailMode ? MERC_ROSETTE_ECC : MERCURY_ECC, nu = m.userData.angle;
+      const e = MERCURY_ECC, nu = m.userData.angle;
       const r = m.userData.dist * (1 - e * e) / (1 + e * Math.cos(nu));
       const ang = nu + mercuryPerihelion;
       m.position.x = r * Math.cos(ang);
