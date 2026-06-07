@@ -1356,11 +1356,18 @@ const callisto = createMoon(
 const jupiterMoons = [io, europa, ganymede, callisto];
 
 // 🌑 Pluto's moons — Charon + the four small ones (Styx, Nix, Kerberos, Hydra),
-// built from the Pluto data entry. Untextured greys for now. They orbit sub-pixel
-// close to Pluto and only separate from it on a very close zoom (min-dot keeps each
-// visible). Same scene-parented pattern as the Jupiter moons; orbit plane left in
-// the ecliptic for v1 (the real ~119° tilt is invisible at this scale).
+// built from the Pluto data entry. They all orbit in Pluto's EQUATORIAL plane, which
+// is tilted ~122.5° (Pluto's obliquity), so they ride a shared tilt container parked
+// on Pluto each frame. Pluto and Charon are MUTUALLY tidally locked: Charon keeps one
+// face toward Pluto for free (its mesh is parented to its orbit pivot), and Pluto is
+// spun in lock-step with Charon's orbital angle about this plane's normal (see animate).
 const plutoMesh = meshes.find(m => m.userData.name === "Pluto");
+const plutoTiltGroup = new THREE.Object3D();   // Pluto's equatorial plane (not min-dot scaled)
+plutoTiltGroup.rotation.x = (plutoMesh && plutoMesh.userData.tilt || 0) * (Math.PI / 180);
+scene.add(plutoTiltGroup);
+// Reusable handles for Pluto's locked spin (set each frame in animate).
+const _plutoSpinAxis = new THREE.Vector3(0, 1, 0);
+const _plutoSpinQ = new THREE.Quaternion();
 const plutoMoons = [];
 const plutoMoonOrbitLines = [];
 if (plutoMesh && plutoMesh.userData.moons) {
@@ -1377,11 +1384,12 @@ if (plutoMesh && plutoMesh.userData.moons) {
       mo.irregular = true;
       mo.mesh.rotation.set(Math.random() * 6.28, Math.random() * 6.28, Math.random() * 6.28);
     }
+    scene.remove(mo.group);          // reparent into Pluto's tilted equatorial plane
+    plutoTiltGroup.add(mo.group);
     plutoMoons.push(mo);
 
-    // Orbit ring at the moon's true semi-major axis, so Pluto's system is spaced
-    // accurately. Parented to the scene, repositioned onto Pluto each frame; hidden
-    // (via ownerMesh) when zoomed into Pluto itself, shown at system-framing zoom.
+    // Orbit ring at the moon's true semi-major axis, riding the same tilted plane;
+    // hidden (via ownerMesh) when zoomed into Pluto itself, shown at system-framing zoom.
     const pts = [];
     for (let i = 0; i <= 128; i++) {
       const a = (i / 128) * Math.PI * 2;
@@ -1392,11 +1400,12 @@ if (plutoMesh && plutoMesh.userData.moons) {
       new THREE.LineBasicMaterial({ color: ORBIT_COLORS.Pluto, transparent: true, opacity: 0.3 })
     );
     line.userData.ownerMesh = plutoMesh;
-    scene.add(line);
+    plutoTiltGroup.add(line);
     orbitLines.push(line);
     plutoMoonOrbitLines.push(line);
   });
 }
+const plutoCharon = plutoMoons.find(p => p.mesh.userData.name === "Charon") || null;
 
 // 🔵 Neptune's moon — Triton (retrograde). Same scene-parented pattern as the Pluto
 // moons: a sphere via createMoon + an orbit ring repositioned onto Neptune each frame.
@@ -1916,7 +1925,7 @@ const helioObjects = [
   ...meshes,
   ...orbitLines,
   ...jupiterMoons.map(jm => jm.group),
-  ...plutoMoons.map(pm => pm.group),
+  plutoTiltGroup,
   ...neptuneMoonTilts,
   uranusMoonGroup,
 ];
@@ -4013,8 +4022,9 @@ function animate(){
       neptuneRingUniforms.neptunePos.value.copy(m.position);
     }
     // Dwarf planets: spin + axial tilt from data (Haumea spins fast about its short
-    // axis, Pluto highly tilted, etc.).
-    if (m.userData.kind === "dwarf") {
+    // axis, etc.). Pluto is excluded — its orientation is driven by the Pluto–Charon
+    // tidal lock in the moon-follow block below.
+    if (m.userData.kind === "dwarf" && m.userData.name !== "Pluto") {
       if (m.userData.spinY) m.rotation.y += m.userData.spinY * speed * deltaScale;
       if (m.userData.tilt != null) m.rotation.z = m.userData.tilt * (Math.PI / 180);
     }
@@ -4025,8 +4035,10 @@ function animate(){
     const earthWorldPos = new THREE.Vector3();
     earth.getWorldPosition(earthWorldPos);
     moonGroup.position.copy(earthWorldPos);
+    // Tidally locked: the Moon mesh is parented to moonGroup, so the group's orbital
+    // rotation alone keeps one face (its near side) toward Earth. Adding a second spin
+    // to the mesh would double-rotate it (showing all sides), so it is NOT applied.
     moonGroup.rotation.y += 0.0004434 * speed * deltaScale;
-    moon.rotation.y += 0.0004434 * speed * deltaScale; // tidally locked
   }
 
   // 🪐 Jupiter moons follow Jupiter in world space
@@ -4046,12 +4058,12 @@ function animate(){
     });
   }
 
-  // 🌑 Pluto's moons follow Pluto in world space
+  // 🌑 Pluto's moons follow Pluto; the whole tilted plane rides Pluto's position
   if (plutoMoons.length && plutoMesh) {
     const plutoWorldPos = new THREE.Vector3();
     plutoMesh.getWorldPosition(plutoWorldPos);
+    plutoTiltGroup.position.copy(plutoWorldPos);
     plutoMoons.forEach(m => {
-      m.group.position.copy(plutoWorldPos);
       m.group.rotation.y += m.speed * speed * deltaScale;
       // Irregular moons tumble chaotically (Nix/Hydra really do).
       if (m.irregular) {
@@ -4059,7 +4071,13 @@ function animate(){
         m.mesh.rotation.x += 0.0026 * speed * deltaScale;
       }
     });
-    plutoMoonOrbitLines.forEach(line => { line.position.copy(plutoWorldPos); });
+    // Mutual tidal lock: spin Pluto about the orbit-plane normal in lock-step with
+    // Charon's orbital angle, so Pluto keeps one face toward Charon (as Charon keeps one
+    // face toward Pluto). Same plane orientation as plutoTiltGroup, so the axis matches.
+    if (plutoCharon) {
+      plutoMesh.quaternion.copy(plutoTiltGroup.quaternion)
+        .multiply(_plutoSpinQ.setFromAxisAngle(_plutoSpinAxis, plutoCharon.group.rotation.y));
+    }
   }
 
   // 🔵 Triton follows Neptune in world space
