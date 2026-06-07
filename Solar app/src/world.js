@@ -1344,7 +1344,13 @@ const ringMaterial = new THREE.ShaderMaterial({
     #include <logdepthbuf_pars_fragment>
     void main() {
       #include <logdepthbuf_fragment>
-      vec4 texColor = texture2D(map, vUv);
+      // Sample the ring profile RADIALLY. The texture is a 1D inner→outer strip, so
+      // map each fragment's distance from Saturn's centre to U (V held constant). This
+      // reproduces the real C / B / Cassini-division / A banding, instead of smearing
+      // the strip flat the way RingGeometry's default square UVs did.
+      float rr = length(vUv - 0.5) * 2.0;            // radius / outerRadius, in [0.6, 1.0]
+      float t  = clamp((rr - 0.6) / 0.4, 0.0, 1.0);  // 0 = inner edge, 1 = outer edge
+      vec4 texColor = texture2D(map, vec2(t, 0.5));
       if (texColor.a < 0.01) discard;
 
       // Direction from Saturn toward the Sun (Sun is at origin)
