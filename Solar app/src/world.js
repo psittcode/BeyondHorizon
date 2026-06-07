@@ -1340,6 +1340,37 @@ if (plutoMesh && plutoMesh.userData.moons) {
   });
 }
 
+// 🔵 Neptune's moon — Triton (retrograde). Same scene-parented pattern as the Pluto
+// moons: a sphere via createMoon + an orbit ring repositioned onto Neptune each frame.
+// Untextured for now (a flat colour); a real texture can be dropped in later via the
+// moon's `texture` field. Negative speed in the data gives the true retrograde orbit.
+const neptuneMesh = meshes.find(m => m.userData.name === "Neptune");
+const neptuneMoons = [];
+const neptuneMoonOrbitLines = [];
+if (neptuneMesh && neptuneMesh.userData.moons) {
+  neptuneMesh.userData.moons.forEach(mn => {
+    const mo = createMoon(mn.size, mn.dist, mn.speed, mn.color, mn.info,
+                          mn.texture ? textureLoader.load(mn.texture) : null,
+                          Math.random() * Math.PI * 2);
+    mo.mesh.userData.name = mn.name;
+    neptuneMoons.push(mo);
+
+    const pts = [];
+    for (let i = 0; i <= 128; i++) {
+      const a = (i / 128) * Math.PI * 2;
+      pts.push(new THREE.Vector3(Math.cos(a) * mn.dist, 0, Math.sin(a) * mn.dist));
+    }
+    const line = new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints(pts),
+      new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.15 })
+    );
+    line.userData.ownerMesh = neptuneMesh;
+    scene.add(line);
+    orbitLines.push(line);
+    neptuneMoonOrbitLines.push(line);
+  });
+}
+
 
 moon.userData = {
   name: "Moon",
@@ -1436,6 +1467,57 @@ const ring = new THREE.Mesh(ringGeometry, ringMaterial);
 ring.rotation.x = Math.PI / 2;
 saturnTiltGroup.add(ring);
 
+// 🔵 Neptune's rings — faint, fragmented dust rings in reality. We reuse Saturn's
+// ring strip texture but render it VERY pale and VERY transparent so it reads as the
+// barely-there haze NASA's Eyes shows, not a bright Saturn-style band. Lives in the
+// scene (like Saturn's) so it stays put while Neptune's body spins; tracked onto
+// Neptune and min-dot-scaled each frame.
+const neptuneTiltGroup = new THREE.Object3D();
+neptuneTiltGroup.rotation.z = 28.3 * (Math.PI / 180); // Neptune's axial tilt
+scene.add(neptuneTiltGroup);
+
+const neptuneRingUniforms = { map: { value: ringTexture } };
+// Ring span 1.7×–2.6× the body radius (Neptune's real rings sit ~41,900–62,930 km
+// out, vs its 24,622 km radius), relative to Neptune's true size.
+const neptuneRingGeometry = new THREE.RingGeometry(
+  neptuneMesh.userData.size * 1.7, neptuneMesh.userData.size * 2.6, 64);
+const neptuneRingMaterial = new THREE.ShaderMaterial({
+  uniforms: neptuneRingUniforms,
+  vertexShader: `
+    varying vec2 vUv;
+    #include <common>
+    #include <logdepthbuf_pars_vertex>
+    void main() {
+      vUv = uv;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      #include <logdepthbuf_vertex>
+    }
+  `,
+  fragmentShader: `
+    uniform sampler2D map;
+    varying vec2 vUv;
+    #include <logdepthbuf_pars_fragment>
+    void main() {
+      #include <logdepthbuf_fragment>
+      // Radial sample of the 1D inner→outer strip (same mapping as Saturn's rings).
+      float rr = length(vUv - 0.5) * 2.0;
+      float t  = clamp((rr - 0.6) / 0.4, 0.0, 1.0);
+      vec4 texColor = texture2D(map, vec2(t, 0.5));
+      if (texColor.a < 0.01) discard;
+      // Wash the banding out toward a cool pale grey-blue, then knock the alpha
+      // right down so the whole ring is a ghostly haze.
+      vec3 pale = mix(texColor.rgb, vec3(0.72, 0.78, 0.88), 0.8);
+      gl_FragColor = vec4(pale, texColor.a * 0.12);
+    }
+  `,
+  side: THREE.DoubleSide,
+  transparent: true,
+  depthWrite: false
+});
+const neptuneRing = new THREE.Mesh(neptuneRingGeometry, neptuneRingMaterial);
+neptuneRing.rotation.x = Math.PI / 2;
+neptuneTiltGroup.add(neptuneRing);
+
 // 👇 ADD IT HERE (outside the loop)
 meshes.forEach(m => {
   m.castShadow = true;
@@ -1517,10 +1599,13 @@ function applyMinDots() {
   if (moon) minDotScale(moon, moon.userData.trueRadius);
   jupiterMoons.forEach(jm => minDotScale(jm.mesh, jm.mesh.userData.trueRadius));
   plutoMoons.forEach(pm => minDotScale(pm.mesh, pm.mesh.userData.trueRadius));
+  neptuneMoons.forEach(nm => minDotScale(nm.mesh, nm.mesh.userData.trueRadius));
   // Saturn's rings: match the body's apparent size and keep the shadow term correct.
   const saturnS = saturn.scale.x; // set by the meshes loop above
   saturnTiltGroup.scale.setScalar(saturnS);
   ringUniforms.saturnRadius.value = saturn.userData.size * saturnS;
+  // Neptune's rings track the body's apparent size the same way.
+  neptuneTiltGroup.scale.setScalar(neptuneMesh.scale.x);
 }
 
 // Hide a body's orbit ring once you've zoomed in close enough that the body is
@@ -1553,10 +1638,12 @@ const helioObjects = [
   glowMesh,
   moonGroup,
   saturnTiltGroup,
+  neptuneTiltGroup,
   ...meshes,
   ...orbitLines,
   ...jupiterMoons.map(jm => jm.group),
   ...plutoMoons.map(pm => pm.group),
+  ...neptuneMoons.map(nm => nm.group),
 ];
 
 // Click interaction
@@ -1939,6 +2026,15 @@ window.addEventListener("click", e => {
     if (pHits.length > 0) { flyToObject(pHits[0].object); return; }
   }
 
+  // Check Neptune's moon (hide Neptune so it can't block close-orbiting Triton)
+  if (neptuneMoons.length && neptuneMesh) {
+    const neptuneWasVisible = neptuneMesh.visible;
+    neptuneMesh.visible = false;
+    const nHits = raycaster.intersectObjects(neptuneMoons.map(nm => nm.mesh), false);
+    neptuneMesh.visible = neptuneWasVisible;
+    if (nHits.length > 0) { flyToObject(nHits[0].object); return; }
+  }
+
   // Check everything else
   const allClickable = [...meshes, sun, moon];
   const hits = raycaster.intersectObjects(allClickable, true);
@@ -2091,6 +2187,8 @@ function resetSimulation() {
     saturnTiltGroup.position.copy(saturnMesh.position);
     ringUniforms.saturnPos.value.copy(saturnMesh.position);
   }
+  // Sync Neptune's ring group to the new position
+  if (neptuneMesh) neptuneTiltGroup.position.copy(neptuneMesh.position);
 
   // Orient Earth so the sub-solar point sits at longitude (12 − UTC)×15°E.
   // Three.js sphere UVs put Greenwich at +X when rotation.y=0, and a +Y turn maps
@@ -3583,6 +3681,8 @@ function animate(){
     if (m.userData.name === "Neptune") {
       m.rotation.y += 0.01806 * speed * deltaScale;
       m.rotation.z = 28.3 * (Math.PI / 180);
+
+      neptuneTiltGroup.position.copy(m.position);
     }
     // Dwarf planets: spin + axial tilt from data (Haumea spins fast about its short
     // axis, Pluto highly tilted, etc.).
@@ -3632,6 +3732,17 @@ function animate(){
       }
     });
     plutoMoonOrbitLines.forEach(line => { line.position.copy(plutoWorldPos); });
+  }
+
+  // 🔵 Triton follows Neptune in world space
+  if (neptuneMoons.length && neptuneMesh) {
+    const neptuneWorldPos = new THREE.Vector3();
+    neptuneMesh.getWorldPosition(neptuneWorldPos);
+    neptuneMoons.forEach(m => {
+      m.group.position.copy(neptuneWorldPos);
+      m.group.rotation.y += m.speed * speed * deltaScale;
+    });
+    neptuneMoonOrbitLines.forEach(line => { line.position.copy(neptuneWorldPos); });
   }
 
   // Dynamic near plane: keep it at ~5% of the distance to whatever we're orbiting,
@@ -3930,6 +4041,7 @@ const bodyList = [
   { label: " • Saturn", obj: meshes.find(m => m.userData.name === "Saturn") },
   { label: " • Uranus", obj: meshes.find(m => m.userData.name === "Uranus") },
   { label: " • Neptune", obj: meshes.find(m => m.userData.name === "Neptune") },
+  { label: "　 ◦ Triton", obj: (neptuneMoons.find(p => p.mesh.userData.name === "Triton") || {}).mesh },
   { label: " • Pluto", obj: meshes.find(m => m.userData.name === "Pluto") },
   { label: "　 ◦ Charon", obj: (plutoMoons.find(p => p.mesh.userData.name === "Charon") || {}).mesh },
   { label: "　 ◦ Styx", obj: (plutoMoons.find(p => p.mesh.userData.name === "Styx") || {}).mesh },
