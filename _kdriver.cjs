@@ -1,0 +1,20 @@
+const { firefox } = require('/Users/phusitchaibal/.npm/_npx/e41f203b7505f1fb/node_modules/playwright');
+(async () => {
+  const browser = await firefox.launch();
+  const page = await browser.newPage({ viewport: { width: 800, height: 800 } });
+  const errs = []; page.on('pageerror', e => { errs.push(e.message); console.log('PE:', e.message); });
+  await page.goto('http://localhost:8000/Solar%20app/index.html');
+  await page.waitForTimeout(4000);
+  await page.evaluate(() => { const b = document.getElementById('btnEnter') || document.querySelector('#mainMenu button'); if (b) b.click(); });
+  await page.waitForTimeout(2500);
+  await page.waitForFunction('window.__zoomMoon', { timeout: 15000 });
+  await page.evaluate(() => { const s=document.getElementById('speed'); if(s){ s.value='-9'; s.dispatchEvent(new Event('input',{bubbles:true})); } });
+  await page.evaluate(()=>window.__zoomMoon('Nix', 3.5));
+  await page.waitForTimeout(700);
+  await page.screenshot({ path:'/Users/phusitchaibal/Desktop/ClaudeCodeTest/_tex_nix.png' });
+  await page.evaluate(()=>window.__zoomMoon('Hydra', 3.5));
+  await page.waitForTimeout(700);
+  await page.screenshot({ path:'/Users/phusitchaibal/Desktop/ClaudeCodeTest/_tex_hydra.png' });
+  console.log('errors=', errs.length);
+  await browser.close(); console.log('done');
+})();

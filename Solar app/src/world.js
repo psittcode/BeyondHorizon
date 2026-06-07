@@ -1307,7 +1307,8 @@ const plutoMoons = [];
 const plutoMoonOrbitLines = [];
 if (plutoMesh && plutoMesh.userData.moons) {
   plutoMesh.userData.moons.forEach((mn, idx) => {
-    const mo = createMoon(mn.size, mn.dist, mn.speed, mn.color, mn.info, null,
+    const mo = createMoon(mn.size, mn.dist, mn.speed, mn.color, mn.info,
+                          mn.texture ? textureLoader.load(mn.texture) : null,
                           Math.random() * Math.PI * 2);
     mo.mesh.userData.name = mn.name;
     // The tiny moons are irregular, bumpy asteroids — swap the sphere for a
