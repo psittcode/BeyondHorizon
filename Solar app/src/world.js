@@ -1354,10 +1354,11 @@ if (neptuneMesh && neptuneMesh.userData.moons) {
                           Math.random() * Math.PI * 2);
     mo.mesh.userData.name = mn.name;
 
-    // Triton's orbit is steeply inclined (and retrograde), so NASA's Eyes shows it as a
-    // lopsided, tilted ellipse — not a flat ecliptic circle centred on Neptune. Put the
-    // spinning orbit group AND its ring inside a tilt container so the whole plane is
-    // inclined; the container (not the group) is the thing parked on Neptune each frame.
+    // Triton orbits ~157° to Neptune's equator — i.e. retrograde but only ~23° off the
+    // equatorial plane, which itself sits ~28° from the ecliptic. So its orbit is a gently
+    // inclined ellipse (NOT a flat ecliptic circle, NOT a steep one). Put the spinning
+    // orbit group AND its ring inside a tilt container so the whole plane is inclined;
+    // the container (not the group) is the thing parked on Neptune each frame.
     const tilt = new THREE.Object3D();
     tilt.rotation.x = (mn.orbitTiltX || 0) * (Math.PI / 180);
     tilt.rotation.z = (mn.orbitTiltZ || 0) * (Math.PI / 180);
