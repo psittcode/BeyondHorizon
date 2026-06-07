@@ -483,7 +483,7 @@ name:"Pluto",
 dist:394.80,size:0.0000794,color:0xccb39a,speed:0.0000001339,e:0.2488,i:17.16,Om:110.30,w:113.76,period:247.94,
 kind:"dwarf",texture:"pluto.png",tilt:122.5,spinY:0.0019,
 moons:[
-  {name:"Charon",  size:0.0000405,dist:0.00131,speed:0.001896,color:0xb9b4ad,
+  {name:"Charon",  size:0.0000405,dist:0.00131,speed:0.001896,color:0xb9b4ad,texture:"charon.png",
    info:`<b>Charon</b><br><br>Pluto's largest moon — about half Pluto's diameter, making the pair almost a double dwarf planet. The two are mutually tidally locked, always showing the same face to each other, and orbit a common point (barycenter) that lies in the space between them.<br>`},
   {name:"Styx",    size:0.00000053,dist:0.00285,speed:0.000601,color:0x999999,irregular:true,texture:"asteroid.png",
    info:`<b>Styx</b><br><br>A tiny, irregular moon of Pluto (~16 km across), discovered in 2012. It orbits beyond Charon in a near-circular path and tumbles chaotically.<br><br><i>Note: Pluto's small moons are too small and distant to have been imaged in detail — this 3D shape and surface are an illustrative, made-up stand-in, not the real appearance (as NASA's Eyes also notes).</i><br>`},
