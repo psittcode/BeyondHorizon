@@ -65,10 +65,14 @@ controls.minDistance = 0.0008;   // true-scale: allow approaching a focused body
 controls.zoomSpeed = 0.2;        // much gentler mouse-wheel zoom — a slow glide, not a warp
 
 // Lights
-const ambientLight = new THREE.AmbientLight(0xffffff, 0.15);
+const ambientLight = new THREE.AmbientLight(0xffffff, 0.18);
 scene.add(ambientLight);
 
-const sunLight = new THREE.PointLight(0xffffff, 1.5);
+// Sun intensity kept at ~1.0: with no tone mapping, a higher value drove the diffuse
+// term past 1.0 on the sub-solar side of bright planets, clipping it to pure white
+// (the "over-exposed" look). At ~1.0 the lit side tops out near the texture's own
+// colour instead of blowing out. A touch more ambient softens the terminator.
+const sunLight = new THREE.PointLight(0xffffff, 1.0);
 sunLight.position.set(0, 0, 0);
 scene.add(sunLight);
 
@@ -1654,7 +1658,7 @@ scene.add(uranusTiltGroup);
 const URANUS_RING_OUTER = 4.0;   // geometry outer edge, in Uranus radii (reaches the Mu ring)
 const uranusRingUniforms = { outerMul: { value: URANUS_RING_OUTER } };
 const uranusRingGeometry = new THREE.RingGeometry(
-  uranusMesh.userData.size * 1.55, uranusMesh.userData.size * URANUS_RING_OUTER, 160);
+  uranusMesh.userData.size * 1.12, uranusMesh.userData.size * URANUS_RING_OUTER, 160);
 const uranusRingMaterial = new THREE.ShaderMaterial({
   uniforms: uranusRingUniforms,
   vertexShader: `
@@ -1684,6 +1688,13 @@ const uranusRingMaterial = new THREE.ShaderMaterial({
       float rr = length(vUv - 0.5) * 2.0;
       float physR = rr * outerMul;
 
+      // Diffuse inner sheet — the faint dusty material (Zeta ring etc.) that reaches in
+      // from the main rings toward the planet, giving the inner rings a continuous,
+      // Saturn-like fill rather than stopping in empty space. Fades in just above the
+      // surface (~1.12 R) and fades out at Epsilon.
+      float inner = smoothstep(1.12, 1.34, physR) * (1.0 - smoothstep(1.90, 2.04, physR));
+      vec3  innerCol = vec3(0.42, 0.40, 0.38);
+
       // Cluster of thin dark main rings (6,5,4,α,β,η,γ,δ,λ).
       float mains =
           band(physR,1.637,0.006) + band(physR,1.665,0.006)
@@ -1697,16 +1708,16 @@ const uranusRingMaterial = new THREE.ShaderMaterial({
       vec3  epsCol = vec3(0.62, 0.60, 0.57);
 
       // Faint dusty outer rings as defined ribbons: Nu (deep red, rocky) thicker,
-      // Mu (deep blue, ice) thickest.
+      // Mu (deep blue, ice) thickest. Kept very dark/dim.
       float nu    = ribbon(physR, 2.63, 0.10, 0.05);
-      vec3  nuCol = vec3(0.34, 0.07, 0.05);   // deep red
+      vec3  nuCol = vec3(0.22, 0.04, 0.03);   // deep, dark red
       float mu    = ribbon(physR, 3.50, 0.22, 0.07);
-      vec3  muCol = vec3(0.06, 0.11, 0.32);   // deep blue
+      vec3  muCol = vec3(0.04, 0.07, 0.20);   // deep, dark blue
 
-      vec3  col = mainsCol * mains + epsCol * eps + nuCol * nu + muCol * mu;
+      vec3  col = innerCol * inner + mainsCol * mains + epsCol * eps + nuCol * nu + muCol * mu;
       // Much dimmer overall — Uranus's rings reflect only ~2% of sunlight, so everything
-      // is kept very faint; the whites no longer dominate.
-      float a   = mains * 0.08 + eps * 0.15 + nu * 0.16 + mu * 0.16;
+      // is kept very faint; the whites no longer dominate and the red/blue stay subtle.
+      float a   = inner * 0.05 + mains * 0.08 + eps * 0.15 + nu * 0.09 + mu * 0.09;
       if (a < 0.003) discard;
 
       gl_FragColor = vec4(col, a);
@@ -1719,6 +1730,42 @@ const uranusRingMaterial = new THREE.ShaderMaterial({
 const uranusRing = new THREE.Mesh(uranusRingGeometry, uranusRingMaterial);
 uranusRing.rotation.x = Math.PI / 2;
 uranusTiltGroup.add(uranusRing);
+
+// 🌙 Uranus's 5 major moons — Miranda, Ariel, Umbriel, Titania, Oberon — at their true
+// semi-major axes (true scale). They orbit in Uranus's equatorial plane = the ring
+// plane, so they ride uranusMoonGroup, which shares the ring-plane orientation (set in
+// resetSimulation). That group is NOT min-dot scaled (unlike the ring), so the moons
+// stay at their real orbital distances; only each moon mesh is min-dot-scaled for
+// visibility. Untextured for now — drop a `texture` into each moon's data entry later.
+const uranusMoonGroup = new THREE.Object3D();
+scene.add(uranusMoonGroup);
+const uranusMoons = [];
+const uranusMoonOrbitLines = [];
+if (uranusMesh && uranusMesh.userData.moons) {
+  uranusMesh.userData.moons.forEach(mn => {
+    const mo = createMoon(mn.size, mn.dist, mn.speed, mn.color, mn.info,
+                          mn.texture ? textureLoader.load(mn.texture) : null,
+                          Math.random() * Math.PI * 2);
+    mo.mesh.userData.name = mn.name;
+    scene.remove(mo.group);        // createMoon parented it to the scene — move it into the ring plane
+    uranusMoonGroup.add(mo.group);
+    uranusMoons.push(mo);
+
+    const pts = [];
+    for (let i = 0; i <= 128; i++) {
+      const a = (i / 128) * Math.PI * 2;
+      pts.push(new THREE.Vector3(Math.cos(a) * mn.dist, 0, Math.sin(a) * mn.dist));
+    }
+    const line = new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints(pts),
+      new THREE.LineBasicMaterial({ color: ORBIT_COLORS.Uranus, transparent: true, opacity: 0.3 })
+    );
+    line.userData.ownerMesh = uranusMesh;
+    uranusMoonGroup.add(line);     // orbit ring rides the same ring-plane container
+    orbitLines.push(line);
+    uranusMoonOrbitLines.push(line);
+  });
+}
 
 // 👇 ADD IT HERE (outside the loop)
 meshes.forEach(m => {
@@ -1802,6 +1849,7 @@ function applyMinDots() {
   jupiterMoons.forEach(jm => minDotScale(jm.mesh, jm.mesh.userData.trueRadius));
   plutoMoons.forEach(pm => minDotScale(pm.mesh, pm.mesh.userData.trueRadius));
   neptuneMoons.forEach(nm => minDotScale(nm.mesh, nm.mesh.userData.trueRadius));
+  uranusMoons.forEach(um => minDotScale(um.mesh, um.mesh.userData.trueRadius));
   // Saturn's rings: match the body's apparent size and keep the shadow term correct.
   const saturnS = saturn.scale.x; // set by the meshes loop above
   saturnTiltGroup.scale.setScalar(saturnS);
@@ -1849,6 +1897,7 @@ const helioObjects = [
   ...jupiterMoons.map(jm => jm.group),
   ...plutoMoons.map(pm => pm.group),
   ...neptuneMoonTilts,
+  uranusMoonGroup,
 ];
 
 // Click interaction
@@ -2240,6 +2289,15 @@ window.addEventListener("click", e => {
     if (nHits.length > 0) { flyToObject(nHits[0].object); return; }
   }
 
+  // Check Uranus's moons (hide Uranus so it can't block them)
+  if (uranusMoons.length && uranusMesh) {
+    const uranusWasVisible = uranusMesh.visible;
+    uranusMesh.visible = false;
+    const uHits = raycaster.intersectObjects(uranusMoons.map(um => um.mesh), false);
+    uranusMesh.visible = uranusWasVisible;
+    if (uHits.length > 0) { flyToObject(uHits[0].object); return; }
+  }
+
   // Check everything else
   const allClickable = [...meshes, sun, moon];
   const hits = raycaster.intersectObjects(allClickable, true);
@@ -2407,6 +2465,11 @@ function resetSimulation() {
     const tiltAxis = new THREE.Vector3(0, 1, 0).cross(radial).normalize();  // horizontal, ⟂ to radial
     const ringNormal = radial.clone().applyAxisAngle(tiltAxis, 12 * Math.PI / 180); // slight back-tilt
     uranusTiltGroup.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), ringNormal);
+    // Moons share the ring plane.
+    if (typeof uranusMoonGroup !== 'undefined' && uranusMoonGroup) {
+      uranusMoonGroup.position.copy(uranusMesh.position);
+      uranusMoonGroup.quaternion.copy(uranusTiltGroup.quaternion);
+    }
   }
 
   // Orient Earth so the sub-solar point sits at longitude (12 − UTC)×15°E.
@@ -3644,7 +3707,7 @@ function animate(){
     const _opF    = 1.0 + _pulse * 0.18;   // ±18% halo brightness
     glowMesh.scale.set(6 * _scaleF, 6 * _scaleF, 1);
     glowMesh.material.opacity = Math.max(0.0, Math.min(1.0, _opF));
-    sunLight.intensity = 1.5 + _pulse * 0.15;
+    sunLight.intensity = 1.0 + _pulse * 0.08;
   }
   const _ssBtn = document.getElementById('solarSystemBtn');
   if (_ssBtn) _ssBtn.style.display = outsideSkybox ? 'block' : 'none';
@@ -3984,6 +4047,16 @@ function animate(){
     });
   }
 
+  // 🌙 Uranus's moons follow Uranus in world space (orbits ride the shared ring-plane group)
+  if (uranusMoons.length && uranusMesh) {
+    const uranusWorldPos = new THREE.Vector3();
+    uranusMesh.getWorldPosition(uranusWorldPos);
+    uranusMoonGroup.position.copy(uranusWorldPos);
+    uranusMoons.forEach(m => {
+      m.group.rotation.y += m.speed * speed * deltaScale;
+    });
+  }
+
   // Dynamic near plane: keep it at ~5% of the distance to whatever we're orbiting,
   // capped at the default 0.0004 when zoomed out. So zooming into a body of any size
   // (even Pluto's 16-km moons) never clips it on the near plane, while the wide views
@@ -4299,6 +4372,11 @@ const bodyList = [
   { label: "　 ◦ Callisto", obj: callisto.mesh },
   { label: " • Saturn", obj: meshes.find(m => m.userData.name === "Saturn") },
   { label: " • Uranus", obj: meshes.find(m => m.userData.name === "Uranus") },
+  { label: "　 ◦ Miranda", obj: (uranusMoons.find(p => p.mesh.userData.name === "Miranda") || {}).mesh },
+  { label: "　 ◦ Ariel",   obj: (uranusMoons.find(p => p.mesh.userData.name === "Ariel") || {}).mesh },
+  { label: "　 ◦ Umbriel", obj: (uranusMoons.find(p => p.mesh.userData.name === "Umbriel") || {}).mesh },
+  { label: "　 ◦ Titania", obj: (uranusMoons.find(p => p.mesh.userData.name === "Titania") || {}).mesh },
+  { label: "　 ◦ Oberon",  obj: (uranusMoons.find(p => p.mesh.userData.name === "Oberon") || {}).mesh },
   { label: " • Neptune", obj: meshes.find(m => m.userData.name === "Neptune") },
   { label: "　 ◦ Triton", obj: (neptuneMoons.find(p => p.mesh.userData.name === "Triton") || {}).mesh },
   { label: " • Pluto", obj: meshes.find(m => m.userData.name === "Pluto") },
