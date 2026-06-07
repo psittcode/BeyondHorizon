@@ -1487,14 +1487,24 @@ saturnTiltGroup.add(ring);
 // scene (like Saturn's) so it stays put while Neptune's body spins; tracked onto
 // Neptune and min-dot-scaled each frame.
 const neptuneTiltGroup = new THREE.Object3D();
-// Sit the ring in the SAME tilted plane as Triton's orbit (data: orbitTiltX 40,
-// orbitTiltZ 28) so the two share an orientation, but roll a touch less to the left
-// (32° vs 40°) so the ring is slightly less aggressively tilted than the orbit.
-neptuneTiltGroup.rotation.x = 32 * (Math.PI / 180);
+// Sit the ring in roughly the same tilted plane as Triton's orbit, but rolled the
+// opposite way from the orbit: its right side sits a little LOWER and its left side
+// HIGHER (rotation.x = -12°). rotation.z keeps Neptune's ~28° axial tilt.
+neptuneTiltGroup.rotation.x = -12 * (Math.PI / 180);
 neptuneTiltGroup.rotation.z = 28 * (Math.PI / 180);
 scene.add(neptuneTiltGroup);
 
-const neptuneRingUniforms = { map: { value: ringTexture } };
+// Ring-plane normal in world space (the container only ever rotates, never re-tilts at
+// runtime, so this is constant). Used to project the Sun direction into the ring plane
+// for the cast shadow, exactly like Saturn's rings.
+const _neptuneRingNormal = new THREE.Vector3(0, 1, 0).applyEuler(neptuneTiltGroup.rotation).normalize();
+
+const neptuneRingUniforms = {
+  map:           { value: ringTexture },
+  neptunePos:    { value: new THREE.Vector3() },
+  neptuneRadius: { value: neptuneMesh.userData.size }, // updated each frame to the apparent radius
+  ringNormal:    { value: _neptuneRingNormal }
+};
 // Ring span 1.7×–2.6× the body radius (Neptune's real rings sit ~41,900–62,930 km
 // out, vs its 24,622 km radius), relative to Neptune's true size.
 const neptuneRingGeometry = new THREE.RingGeometry(
@@ -1503,17 +1513,23 @@ const neptuneRingMaterial = new THREE.ShaderMaterial({
   uniforms: neptuneRingUniforms,
   vertexShader: `
     varying vec2 vUv;
+    varying vec3 vWorldPos;
     #include <common>
     #include <logdepthbuf_pars_vertex>
     void main() {
       vUv = uv;
+      vWorldPos = (modelMatrix * vec4(position, 1.0)).xyz;
       gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
       #include <logdepthbuf_vertex>
     }
   `,
   fragmentShader: `
     uniform sampler2D map;
+    uniform vec3 neptunePos;
+    uniform float neptuneRadius;
+    uniform vec3 ringNormal;
     varying vec2 vUv;
+    varying vec3 vWorldPos;
     #include <logdepthbuf_pars_fragment>
     void main() {
       #include <logdepthbuf_fragment>
@@ -1526,7 +1542,25 @@ const neptuneRingMaterial = new THREE.ShaderMaterial({
       // right down so the whole ring is a barely-there ghostly haze (NASA's Eyes
       // shows Neptune's rings as almost invisible wisps).
       vec3 pale = mix(texColor.rgb, vec3(0.72, 0.78, 0.88), 0.85);
-      gl_FragColor = vec4(pale, texColor.a * 0.05);
+
+      // Cast Neptune's shadow across the ring's far (night) side — the Sun direction
+      // projected into the ring plane, same construction as Saturn's ring shadow.
+      vec3 toSun = normalize(-neptunePos);
+      vec3 ringPoint = vWorldPos - neptunePos;
+      vec3 nrm = normalize(ringNormal);
+      vec3 sunFlat = toSun - dot(toSun, nrm) * nrm;
+      float sfl = length(sunFlat);
+      vec3 shadowDir = sfl > 0.001 ? sunFlat / sfl : toSun;
+      float proj = dot(ringPoint, shadowDir);
+      float shadowFactor = 1.0;
+      if (proj < 0.0) {
+        float perpDist = length(ringPoint - proj * shadowDir);
+        float edge = neptuneRadius * 0.10;
+        float shadow = 1.0 - smoothstep(neptuneRadius - edge, neptuneRadius + edge, perpDist);
+        shadowFactor = 1.0 - shadow * 0.7;
+      }
+
+      gl_FragColor = vec4(pale * shadowFactor, texColor.a * 0.05);
     }
   `,
   side: THREE.DoubleSide,
@@ -1625,6 +1659,7 @@ function applyMinDots() {
   ringUniforms.saturnRadius.value = saturn.userData.size * saturnS;
   // Neptune's rings track the body's apparent size the same way.
   neptuneTiltGroup.scale.setScalar(neptuneMesh.scale.x);
+  neptuneRingUniforms.neptuneRadius.value = neptuneMesh.userData.size * neptuneMesh.scale.x;
 }
 
 // Hide a body's orbit ring once you've zoomed in close enough that the body is
@@ -2207,7 +2242,10 @@ function resetSimulation() {
     ringUniforms.saturnPos.value.copy(saturnMesh.position);
   }
   // Sync Neptune's ring group to the new position
-  if (neptuneMesh) neptuneTiltGroup.position.copy(neptuneMesh.position);
+  if (neptuneMesh) {
+    neptuneTiltGroup.position.copy(neptuneMesh.position);
+    neptuneRingUniforms.neptunePos.value.copy(neptuneMesh.position);
+  }
 
   // Orient Earth so the sub-solar point sits at longitude (12 − UTC)×15°E.
   // Three.js sphere UVs put Greenwich at +X when rotation.y=0, and a +Y turn maps
@@ -3702,6 +3740,7 @@ function animate(){
       m.rotation.z = 28.3 * (Math.PI / 180);
 
       neptuneTiltGroup.position.copy(m.position);
+      neptuneRingUniforms.neptunePos.value.copy(m.position);
     }
     // Dwarf planets: spin + axial tilt from data (Haumea spins fast about its short
     // axis, Pluto highly tilted, etc.).
