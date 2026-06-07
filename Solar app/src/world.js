@@ -862,12 +862,16 @@ data.forEach(p=>{
   let material;
 
   if (p.name === "Jupiter") {
+    // Tinted below white so the bright sun-facing side doesn't clip to white under
+    // the 1.5-intensity sunlight — keeps the band detail visible on the lit hemisphere.
     material = new THREE.MeshStandardMaterial({
-      map: jupiterTexture
+      map: jupiterTexture,
+      color: 0xb0b0b0
     });
   } else if (p.name === "Saturn") {
     material = new THREE.MeshStandardMaterial({
-      map: saturnTexture
+      map: saturnTexture,
+      color: 0xb0b0b0
     });
   } else if (p.name === "Uranus") {
     material = new THREE.MeshStandardMaterial({
@@ -1362,11 +1366,13 @@ const ringMaterial = new THREE.ShaderMaterial({
 
       float shadowFactor = 1.0;
       if (proj < 0.0) {
-        // Fragment is on the side facing away from the Sun
+        // Fragment is on the side facing away from the Sun → inside Saturn's shadow
+        // cylinder (perpDist < Saturn's radius). Strong, near-black shadow band cast
+        // across the night side of the rings, like NASA's Eyes.
         float perpDist = length(ringPoint - proj * toSun);
-        float edge = saturnRadius * 0.08;
+        float edge = saturnRadius * 0.06;
         float shadow = 1.0 - smoothstep(saturnRadius - edge, saturnRadius + edge, perpDist);
-        shadowFactor = 1.0 - shadow * 0.55;
+        shadowFactor = 1.0 - shadow * 0.92;
       }
 
       gl_FragColor = vec4(texColor.rgb * shadowFactor, texColor.a);
