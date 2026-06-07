@@ -1487,7 +1487,11 @@ saturnTiltGroup.add(ring);
 // scene (like Saturn's) so it stays put while Neptune's body spins; tracked onto
 // Neptune and min-dot-scaled each frame.
 const neptuneTiltGroup = new THREE.Object3D();
-neptuneTiltGroup.rotation.z = 28.3 * (Math.PI / 180); // Neptune's axial tilt
+// Sit the ring in the SAME tilted plane as Triton's orbit (data: orbitTiltX 40,
+// orbitTiltZ 28) so the two share an orientation, but roll a touch less to the left
+// (32° vs 40°) so the ring is slightly less aggressively tilted than the orbit.
+neptuneTiltGroup.rotation.x = 32 * (Math.PI / 180);
+neptuneTiltGroup.rotation.z = 28 * (Math.PI / 180);
 scene.add(neptuneTiltGroup);
 
 const neptuneRingUniforms = { map: { value: ringTexture } };

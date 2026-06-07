@@ -428,7 +428,7 @@ All current knowledge of Uranus comes from this single flyby, leaving many aspec
 name:"Neptune",
 dist:300.70,size:0.0016458,color:0x3366ff,speed:0.0000002014,e:0.0113,i:1.77,Om:131.78,w:276.34,period:164.8,
 moons:[
-  {name:"Triton", size:0.00009044,dist:0.023714,speed:-0.002062,color:0xd9cdbf,orbitTiltX:-40,orbitTiltZ:28,
+  {name:"Triton", size:0.00009044,dist:0.023714,speed:-0.002062,color:0xd9cdbf,orbitTiltX:40,orbitTiltZ:28,
    info:`<b>Triton</b><br><br>Neptune's largest moon (~2,710 km across) and the only large moon in the Solar System with a retrograde orbit — it circles Neptune backwards relative to the planet's spin, strong evidence it was a Kuiper Belt object captured by Neptune's gravity. It is geologically active, with nitrogen geysers, and is slowly spiralling inward; in the far future it will be torn apart into a ring.<br>`}
 ],
 info:`<b>Neptune</b><br><br>
