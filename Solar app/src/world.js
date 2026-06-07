@@ -1270,6 +1270,10 @@ function makeAsteroidGeometry(radius, seed) {
     d = Math.max(0.78, d);
     pos.setXYZ(i, n.x * radius * d, n.y * radius * d * ey, n.z * radius * d * ez);
   }
+  // The asymmetric lumps shift the shape's centroid off the origin, which would make
+  // the moon sit (and wobble, as it tumbles) off its orbit line — and min-dot scaling
+  // amplifies that offset. Recenter the geometry so it sits exactly on its orbit point.
+  geo.center();
   geo.computeVertexNormals();
   return geo;
 }
@@ -1363,8 +1367,8 @@ const jupiterMoons = [io, europa, ganymede, callisto];
 // spun in lock-step with Charon's orbital angle about this plane's normal (see animate).
 const plutoMesh = meshes.find(m => m.userData.name === "Pluto");
 const plutoTiltGroup = new THREE.Object3D();   // Pluto's equatorial plane (not min-dot scaled)
-plutoTiltGroup.rotation.x = 122.5 * (Math.PI / 180);
-plutoTiltGroup.rotation.z = 0 * (Math.PI / 180);
+plutoTiltGroup.rotation.x = 112.5 * (Math.PI / 180);
+plutoTiltGroup.rotation.z = 22.25 * (Math.PI / 180);
 scene.add(plutoTiltGroup);
 // Reusable handles for Pluto's locked spin (set each frame in animate).
 const _plutoSpinAxis = new THREE.Vector3(0, 1, 0);
