@@ -46,6 +46,19 @@ Object.defineProperty(ctx, 'orbitsVisible', { get: () => orbitsVisible });
 Object.defineProperty(ctx, 'listVisible',   { get: () => listVisible });
 ctx.keplerEscapeToGalaxy = () => escapeKeplerToGalaxy();
 
+// ── Power / heat management ──────────────────────────────────────────────────
+// Instead of pinning the GPU at the display's full refresh rate forever (120fps on
+// a ProMotion Mac), the render loop is paced: full rate while anything is moving
+// (camera, a fly-to, or the sim running above real-time), a gentle idle heartbeat
+// when the scene is effectively static, and nothing at all while the tab/window is
+// hidden. The loop never stops, so the view can't freeze — it just idles down,
+// which is what lets the laptop fan settle when you leave it running.
+const FPS_ACTIVE = 60;    // cap during interaction / visible motion
+const FPS_IDLE   = 10;    // ~static scene; 10fps keeps the sim clock accurate against the 100ms delta cap
+let _lastDrawMs    = 0;   // timestamp of the last frame we actually rendered
+let _camDirtyUntil = 0;   // stay at full rate until this time — refreshed on every camera change
+controls.addEventListener('change', () => { _camDirtyUntil = performance.now() + 250; });
+
 controls.enablePan = false;
 controls.maxDistance = 1000000;
 controls.minDistance = 0.0008;   // true-scale: allow approaching a focused body to ~just outside the near plane
@@ -3371,6 +3384,21 @@ document.getElementById('andromedaBtn').onclick = () => {
 function animate(){
   requestAnimationFrame(animate);
 
+  // ── Frame pacing (see FPS_ACTIVE / FPS_IDLE / _camDirtyUntil above) ──────────
+  // Hidden tab/window → draw nothing. Otherwise render at full rate only while
+  // something is actually changing, and idle down when it isn't.
+  if (document.hidden) return;
+  const _frameNow = performance.now();
+  const _active =
+    isFlyingTo ||                                  // a fly-to / transition is animating
+    _frameNow < _camDirtyUntil ||                  // camera moved very recently
+    speed > SPEED_REALLIFE * 1.5 ||                // sim running fast enough to see motion
+    galacticViewActive || spaceshipViewActive ||   // these views animate continuously
+    !!viewManager.active;                          // a standalone room is driving the frame
+  const _interval = 1000 / (_active ? FPS_ACTIVE : FPS_IDLE);
+  if (_frameNow - _lastDrawMs < _interval * 0.95) return; // too soon — let the GPU idle
+  _lastDrawMs = _frameNow;
+
   // Map-scale readout — runs for every view (rooms included) before the room
   // hands itself this frame below.
   updateScaleReadout();
@@ -4200,6 +4228,7 @@ window.addEventListener("keydown", e => {
 
 // Resize
 window.addEventListener("resize", ()=>{
+  _camDirtyUntil = performance.now() + 250; // force full-rate redraw through the resize
   camera.aspect = innerWidth/innerHeight;
   camera.updateProjectionMatrix();
   if (viewManager.active && viewManager.active.camera) {
