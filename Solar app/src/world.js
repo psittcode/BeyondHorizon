@@ -59,6 +59,16 @@ let _lastDrawMs    = 0;   // timestamp of the last frame we actually rendered
 let _camDirtyUntil = 0;   // stay at full rate until this time — refreshed on every camera change
 controls.addEventListener('change', () => { _camDirtyUntil = performance.now() + 250; });
 
+// Cap a per-frame rotation step so a short-period body (a moon) doesn't alias at extreme
+// time-warp: without this its orbital angle can advance >π in one frame, landing it at a
+// random phase every frame, which — zoomed in, with the locked camera following it —
+// reads as a violent shake. The cap only engages at very high speed; normal/moderate
+// speeds pass straight through, so the motion stays exact where it actually matters.
+function cappedSpin(step) {
+  const MAX = 0.12;
+  return Math.abs(step) > MAX ? Math.sign(step) * MAX : step;
+}
+
 controls.enablePan = false;
 controls.maxDistance = 1000000;
 controls.minDistance = 0.0008;   // true-scale: allow approaching a focused body to ~just outside the near plane
@@ -4064,7 +4074,7 @@ function animate(){
     // Tidally locked: the Moon mesh is parented to moonGroup, so the group's orbital
     // rotation alone keeps one face (its near side) toward Earth. Adding a second spin
     // to the mesh would double-rotate it (showing all sides), so it is NOT applied.
-    moonGroup.rotation.y += 0.0004434 * speed * deltaScale;
+    moonGroup.rotation.y += cappedSpin(0.0004434 * speed * deltaScale);
   }
 
   // 🪐 Jupiter moons follow Jupiter in world space
@@ -4075,7 +4085,7 @@ function animate(){
     jupiterMoons.forEach(m => {
       if (m.group) {
         m.group.position.copy(jupiterWorldPos);
-        m.group.rotation.y += m.speed * speed * deltaScale;
+        m.group.rotation.y += cappedSpin(m.speed * speed * deltaScale);
       }
     });
 
@@ -4090,10 +4100,11 @@ function animate(){
     plutoMesh.getWorldPosition(plutoWorldPos);
     plutoTiltGroup.position.copy(plutoWorldPos);
     plutoMoons.forEach(m => {
-      m.group.rotation.y += m.speed * speed * deltaScale;
-      // Irregular moons tumble chaotically (Nix/Hydra really do). Cap the per-frame
-      // step so that at extreme time-warp the shape spins smoothly instead of aliasing
-      // into a jittery flicker.
+      // Cap the per-frame orbital step (see cappedSpin) so these short-period moons don't
+      // alias into a shake at extreme time-warp.
+      m.group.rotation.y += cappedSpin(m.speed * speed * deltaScale);
+      // Irregular moons tumble chaotically (Nix/Hydra really do) — same cap so the shape
+      // spins smoothly instead of flickering at high warp.
       if (m.irregular) {
         const tumble = Math.min(0.004 * speed * deltaScale, 0.12);
         m.mesh.rotation.y += tumble;
@@ -4115,7 +4126,7 @@ function animate(){
     neptuneMesh.getWorldPosition(neptuneWorldPos);
     neptuneMoons.forEach(m => {
       m.tilt.position.copy(neptuneWorldPos);   // tilt holds the inclined orbit plane + ring
-      m.group.rotation.y += m.speed * speed * deltaScale;
+      m.group.rotation.y += cappedSpin(m.speed * speed * deltaScale);
     });
   }
 
@@ -4125,7 +4136,7 @@ function animate(){
     uranusMesh.getWorldPosition(uranusWorldPos);
     uranusMoonGroup.position.copy(uranusWorldPos);
     uranusMoons.forEach(m => {
-      m.group.rotation.y += m.speed * speed * deltaScale;
+      m.group.rotation.y += cappedSpin(m.speed * speed * deltaScale);
     });
   }
 
