@@ -1194,20 +1194,20 @@ document.getElementById("toggleOrbits").addEventListener("click", () => {
 function _mulberry32(a){ return function(){ a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
 function _randUnit(rand){ let x, y, z, l; do { x = rand()*2-1; y = rand()*2-1; z = rand()*2-1; l = x*x+y*y+z*z; } while (l > 1 || l < 1e-4); l = Math.sqrt(l); return new THREE.Vector3(x/l, y/l, z/l); }
 function makeAsteroidGeometry(radius, seed) {
-  const geo = new THREE.IcosahedronGeometry(radius, 4);
+  const geo = new THREE.IcosahedronGeometry(radius, 5);          // finer mesh → smoother surface
   const rand = _mulberry32((seed >>> 0) || 1);
-  const ey = 0.66 + rand() * 0.18, ez = 0.56 + rand() * 0.18;   // elongation (x stays 1 → chunky potato)
+  const ey = 0.70 + rand() * 0.16, ez = 0.62 + rand() * 0.16;   // elongation (x stays 1 → chunky potato)
   const waves = [];
-  for (let k = 0; k < 9; k++) {
-    const f = 0.8 + rand() * 2.6;                                // mostly low frequencies → smooth, rounded lumps
-    waves.push({ dir: _randUnit(rand), f, amp: 0.17 / (1 + f * 0.5), ph: rand() * Math.PI * 2 });
+  for (let k = 0; k < 7; k++) {
+    const f = 0.6 + rand() * 1.5;                                // only LOW frequencies → big soft lumps, no spikes
+    waves.push({ dir: _randUnit(rand), f, amp: 0.10 / (1 + f * 0.4), ph: rand() * Math.PI * 2 });
   }
   const pos = geo.attributes.position, n = new THREE.Vector3();
   for (let i = 0; i < pos.count; i++) {
     n.fromBufferAttribute(pos, i).normalize();
     let d = 1.0;
     for (const w of waves) d += w.amp * Math.sin(n.dot(w.dir) * w.f * Math.PI * 2.0 + w.ph);
-    d = Math.max(0.6, d);
+    d = Math.max(0.78, d);
     pos.setXYZ(i, n.x * radius * d, n.y * radius * d * ey, n.z * radius * d * ez);
   }
   geo.computeVertexNormals();
