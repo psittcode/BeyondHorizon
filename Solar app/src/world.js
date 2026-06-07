@@ -1318,7 +1318,11 @@ scene.add(saturnTiltGroup);
 const ringUniforms = {
   map:           { value: ringTexture },
   saturnPos:     { value: new THREE.Vector3() },
-  saturnRadius:  { value: saturn.userData.size }   // updated each frame to Saturn's apparent radius
+  saturnRadius:  { value: saturn.userData.size },  // updated each frame to Saturn's apparent radius
+  // Ring-plane normal (constant: rings tilted 26.7° about Z). Used to cast the planet
+  // shadow along the Sun direction projected into the ring plane — a long shadow.
+  ringNormal:    { value: new THREE.Vector3(Math.sin(26.7 * Math.PI / 180),
+                                            -Math.cos(26.7 * Math.PI / 180), 0) }
 };
 
 // Ring span keeps the old 1.5×–2.5× body-radius proportions (matches the texture),
@@ -1343,6 +1347,7 @@ const ringMaterial = new THREE.ShaderMaterial({
     uniform sampler2D map;
     uniform vec3 saturnPos;
     uniform float saturnRadius;
+    uniform vec3 ringNormal;
     varying vec2 vUv;
     varying vec3 vWorldPos;
     #include <logdepthbuf_pars_fragment>
@@ -1357,22 +1362,27 @@ const ringMaterial = new THREE.ShaderMaterial({
       vec4 texColor = texture2D(map, vec2(t, 0.5));
       if (texColor.a < 0.01) discard;
 
-      // Direction from Saturn toward the Sun (Sun is at origin)
       vec3 toSun = normalize(-saturnPos);
       vec3 ringPoint = vWorldPos - saturnPos;
 
-      // Project ring point onto the sun direction
-      float proj = dot(ringPoint, toSun);
+      // Cast the shadow along the Sun direction PROJECTED into the ring plane, so it
+      // stretches as a long band across the night side of the rings — Saturn is near
+      // its equinox season (sun grazing the rings), the iconic long ring shadow in
+      // NASA's Eyes — instead of a short stub near the planet.
+      vec3 nrm = normalize(ringNormal);
+      vec3 sunFlat = toSun - dot(toSun, nrm) * nrm;
+      float sfl = length(sunFlat);
+      vec3 shadowDir = sfl > 0.001 ? sunFlat / sfl : toSun;
 
+      float proj = dot(ringPoint, shadowDir);
       float shadowFactor = 1.0;
       if (proj < 0.0) {
-        // Fragment is on the side facing away from the Sun → inside Saturn's shadow
-        // cylinder (perpDist < Saturn's radius). Strong, near-black shadow band cast
-        // across the night side of the rings, like NASA's Eyes.
-        float perpDist = length(ringPoint - proj * toSun);
-        float edge = saturnRadius * 0.06;
+        // Inside Saturn's shadow band (perpendicular distance to the shadow axis is
+        // within Saturn's radius), on the side away from the (in-plane) Sun direction.
+        float perpDist = length(ringPoint - proj * shadowDir);
+        float edge = saturnRadius * 0.10;
         float shadow = 1.0 - smoothstep(saturnRadius - edge, saturnRadius + edge, perpDist);
-        shadowFactor = 1.0 - shadow * 0.92;
+        shadowFactor = 1.0 - shadow * 0.7;
       }
 
       gl_FragColor = vec4(texColor.rgb * shadowFactor, texColor.a);
