@@ -1487,17 +1487,28 @@ saturnTiltGroup.add(ring);
 // scene (like Saturn's) so it stays put while Neptune's body spins; tracked onto
 // Neptune and min-dot-scaled each frame.
 const neptuneTiltGroup = new THREE.Object3D();
-// Sit the ring in roughly the same tilted plane as Triton's orbit, but rolled the
-// opposite way from the orbit: its right side sits a little LOWER and its left side
-// HIGHER (rotation.x = -12°). rotation.z keeps Neptune's ~28° axial tilt.
-neptuneTiltGroup.rotation.x = -12 * (Math.PI / 180);
-neptuneTiltGroup.rotation.z = 28 * (Math.PI / 180);
+// Ring orientation (hand-tuned). rotation.x is the left/right roll (positive = right
+// side higher), rotation.z is the axial tilt. Neptune's spin axis (below) is derived
+// from this plane's normal, so the ring always stays Neptune's equatorial plane.
+neptuneTiltGroup.rotation.x = 38 * (Math.PI / 180);
+neptuneTiltGroup.rotation.z = -28 * (Math.PI / 180);
 scene.add(neptuneTiltGroup);
 
 // Ring-plane normal in world space (the container only ever rotates, never re-tilts at
 // runtime, so this is constant). Used to project the Sun direction into the ring plane
 // for the cast shadow, exactly like Saturn's rings.
 const _neptuneRingNormal = new THREE.Vector3(0, 1, 0).applyEuler(neptuneTiltGroup.rotation).normalize();
+
+// Neptune's spin: rotate about a FIXED axis equal to the ring-plane normal, so the ring
+// is Neptune's equatorial plane and the pole stays put (no wobble). We can't get this
+// from Euler angles — incrementing rotation.y while a tilt is on rotation.x/z makes the
+// pole trace a cone (the up/down "bobbing"). Instead we set the quaternion each frame as
+// (fixed tilt that maps local +Y onto the ring normal) × (spin about local +Y).
+const _neptuneSpinTilt = new THREE.Quaternion().setFromUnitVectors(
+  new THREE.Vector3(0, 1, 0), _neptuneRingNormal);
+const _neptuneSpinAxis = new THREE.Vector3(0, 1, 0);
+const _neptuneSpinQ = new THREE.Quaternion();
+let neptuneSpinAngle = 0;
 
 const neptuneRingUniforms = {
   map:           { value: ringTexture },
@@ -3736,8 +3747,11 @@ function animate(){
       m.rotation.z = 97.8 * (Math.PI / 180);
     }
     if (m.userData.name === "Neptune") {
-      m.rotation.y += 0.01806 * speed * deltaScale;
-      m.rotation.z = 28.3 * (Math.PI / 180);
+      // Spin about the fixed, ring-aligned axis (see _neptuneSpinTilt) so the pole stays
+      // put instead of bobbing: orientation = tilt × spin-about-local-Y.
+      neptuneSpinAngle += 0.01806 * speed * deltaScale;
+      m.quaternion.copy(_neptuneSpinTilt)
+        .multiply(_neptuneSpinQ.setFromAxisAngle(_neptuneSpinAxis, neptuneSpinAngle));
 
       neptuneTiltGroup.position.copy(m.position);
       neptuneRingUniforms.neptunePos.value.copy(m.position);
