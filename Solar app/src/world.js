@@ -1645,42 +1645,31 @@ neptuneTiltGroup.add(neptuneRing);
 // open ellipse NASA's Eyes shows. Same scene-parented + per-frame tracked pattern as
 // Saturn/Neptune (position follows Uranus, min-dot-scaled, planet shadow on the night side).
 const uranusMesh = meshes.find(m => m.userData.name === "Uranus");
+// The ring plane is oriented in resetSimulation() so its normal points along the
+// Uranus→Sun radial — a face-on "shield" toward the Sun, near-vertical from the side.
+// The Uranian moons (added later) parent to THIS group so they share the ring plane.
 const uranusTiltGroup = new THREE.Object3D();
-uranusTiltGroup.rotation.x = 60 * (Math.PI / 180);   // hand-tuned to NASA Eyes' open-ellipse view
-uranusTiltGroup.rotation.z = 12 * (Math.PI / 180);
 scene.add(uranusTiltGroup);
 
-const _uranusRingNormal = new THREE.Vector3(0, 1, 0).applyEuler(uranusTiltGroup.rotation).normalize();
 const URANUS_RING_OUTER = 4.0;   // geometry outer edge, in Uranus radii (reaches the Mu ring)
-const uranusRingUniforms = {
-  uranusPos:    { value: new THREE.Vector3() },
-  uranusRadius: { value: uranusMesh.userData.size },  // updated each frame to the apparent radius
-  ringNormal:   { value: _uranusRingNormal },
-  outerMul:     { value: URANUS_RING_OUTER }
-};
+const uranusRingUniforms = { outerMul: { value: URANUS_RING_OUTER } };
 const uranusRingGeometry = new THREE.RingGeometry(
   uranusMesh.userData.size * 1.55, uranusMesh.userData.size * URANUS_RING_OUTER, 160);
 const uranusRingMaterial = new THREE.ShaderMaterial({
   uniforms: uranusRingUniforms,
   vertexShader: `
     varying vec2 vUv;
-    varying vec3 vWorldPos;
     #include <common>
     #include <logdepthbuf_pars_vertex>
     void main() {
       vUv = uv;
-      vWorldPos = (modelMatrix * vec4(position, 1.0)).xyz;
       gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
       #include <logdepthbuf_vertex>
     }
   `,
   fragmentShader: `
-    uniform vec3 uranusPos;
-    uniform float uranusRadius;
-    uniform vec3 ringNormal;
     uniform float outerMul;
     varying vec2 vUv;
-    varying vec3 vWorldPos;
     #include <logdepthbuf_pars_fragment>
     float band(float r, float c, float w){ float x = (r - c) / w; return exp(-x * x); }
     // Flat-topped "ribbon" band (a defined width with soft edges) — used for the dusty
@@ -1701,41 +1690,26 @@ const uranusRingMaterial = new THREE.ShaderMaterial({
         + band(physR,1.749,0.007) + band(physR,1.786,0.007)
         + band(physR,1.846,0.006) + band(physR,1.863,0.006)
         + band(physR,1.890,0.007) + band(physR,1.957,0.008);
-      vec3  mainsCol = vec3(0.50, 0.47, 0.45);    // dark neutral grey
+      vec3  mainsCol = vec3(0.46, 0.44, 0.42);    // dark neutral grey
 
-      // Epsilon — the prominent outermost main ring (brighter, slightly wider).
+      // Epsilon — the prominent outermost main ring.
       float eps    = band(physR, 2.00, 0.012);
-      vec3  epsCol = vec3(0.82, 0.80, 0.77);
+      vec3  epsCol = vec3(0.62, 0.60, 0.57);
 
-      // Faint dusty outer rings as defined ribbons: Nu (red, rocky) thicker, Mu (blue, ice) thickest.
+      // Faint dusty outer rings as defined ribbons: Nu (deep red, rocky) thicker,
+      // Mu (deep blue, ice) thickest.
       float nu    = ribbon(physR, 2.63, 0.10, 0.05);
-      vec3  nuCol = vec3(0.60, 0.30, 0.26);
+      vec3  nuCol = vec3(0.34, 0.07, 0.05);   // deep red
       float mu    = ribbon(physR, 3.50, 0.22, 0.07);
-      vec3  muCol = vec3(0.32, 0.46, 0.66);
+      vec3  muCol = vec3(0.06, 0.11, 0.32);   // deep blue
 
       vec3  col = mainsCol * mains + epsCol * eps + nuCol * nu + muCol * mu;
-      // Whites (main rings + Epsilon) dimmed down so they no longer dominate; the
-      // coloured Nu/Mu ribbons read at a similar, gentle level (~2% reflectance feel).
-      float a   = mains * 0.16 + eps * 0.30 + nu * 0.17 + mu * 0.16;
-      if (a < 0.004) discard;
+      // Much dimmer overall — Uranus's rings reflect only ~2% of sunlight, so everything
+      // is kept very faint; the whites no longer dominate.
+      float a   = mains * 0.08 + eps * 0.15 + nu * 0.16 + mu * 0.16;
+      if (a < 0.003) discard;
 
-      // Uranus's shadow across the night side of the rings (same construction as Saturn/Neptune).
-      vec3 toSun = normalize(-uranusPos);
-      vec3 ringPoint = vWorldPos - uranusPos;
-      vec3 nrm = normalize(ringNormal);
-      vec3 sunFlat = toSun - dot(toSun, nrm) * nrm;
-      float sfl = length(sunFlat);
-      vec3 shadowDir = sfl > 0.001 ? sunFlat / sfl : toSun;
-      float proj = dot(ringPoint, shadowDir);
-      float shadowFactor = 1.0;
-      if (proj < 0.0) {
-        float perpDist = length(ringPoint - proj * shadowDir);
-        float edge = uranusRadius * 0.10;
-        float shadow = 1.0 - smoothstep(uranusRadius - edge, uranusRadius + edge, perpDist);
-        shadowFactor = 1.0 - shadow * 0.7;
-      }
-
-      gl_FragColor = vec4(col * shadowFactor, a * shadowFactor);
+      gl_FragColor = vec4(col, a);
     }
   `,
   side: THREE.DoubleSide,
@@ -1836,7 +1810,6 @@ function applyMinDots() {
   neptuneTiltGroup.scale.setScalar(neptuneMesh.scale.x);
   neptuneRingUniforms.neptuneRadius.value = neptuneMesh.userData.size * neptuneMesh.scale.x;
   uranusTiltGroup.scale.setScalar(uranusMesh.scale.x);
-  uranusRingUniforms.uranusRadius.value = uranusMesh.userData.size * uranusMesh.scale.x;
 }
 
 // Hide a body's orbit ring once you've zoomed in close enough that the body is
@@ -2424,10 +2397,16 @@ function resetSimulation() {
     neptuneTiltGroup.position.copy(neptuneMesh.position);
     neptuneRingUniforms.neptunePos.value.copy(neptuneMesh.position);
   }
-  // Sync Uranus's ring group to the new position
+  // Sync Uranus's ring group + orient its plane along the Uranus→Sun radial, so the
+  // rings read as a face-on "shield" when the camera faces the Sun and as a near-
+  // vertical sliver from the side — tilted slightly back — matching NASA's Eyes. The
+  // moon orbits (added later) parent to this same group, so they share the ring plane.
   if (uranusMesh) {
     uranusTiltGroup.position.copy(uranusMesh.position);
-    uranusRingUniforms.uranusPos.value.copy(uranusMesh.position);
+    const radial = uranusMesh.position.clone().normalize();                 // Uranus → away from Sun
+    const tiltAxis = new THREE.Vector3(0, 1, 0).cross(radial).normalize();  // horizontal, ⟂ to radial
+    const ringNormal = radial.clone().applyAxisAngle(tiltAxis, 12 * Math.PI / 180); // slight back-tilt
+    uranusTiltGroup.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), ringNormal);
   }
 
   // Orient Earth so the sub-solar point sits at longitude (12 − UTC)×15°E.
@@ -3934,7 +3913,6 @@ function animate(){
       m.rotation.z = 97.8 * (Math.PI / 180);
 
       uranusTiltGroup.position.copy(m.position);
-      uranusRingUniforms.uranusPos.value.copy(m.position);
     }
     if (m.userData.name === "Neptune") {
       // Spin about the fixed, ring-aligned axis (see _neptuneSpinTilt) so the pole stays
