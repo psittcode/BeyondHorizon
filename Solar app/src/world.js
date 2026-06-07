@@ -1269,12 +1269,30 @@ const jupiterMoons = [io, europa, ganymede, callisto];
 // the ecliptic for v1 (the real ~119° tilt is invisible at this scale).
 const plutoMesh = meshes.find(m => m.userData.name === "Pluto");
 const plutoMoons = [];
+const plutoMoonOrbitLines = [];
 if (plutoMesh && plutoMesh.userData.moons) {
   plutoMesh.userData.moons.forEach(mn => {
     const mo = createMoon(mn.size, mn.dist, mn.speed, mn.color, mn.info, null,
                           Math.random() * Math.PI * 2);
     mo.mesh.userData.name = mn.name;
     plutoMoons.push(mo);
+
+    // Orbit ring at the moon's true semi-major axis, so Pluto's system is spaced
+    // accurately. Parented to the scene, repositioned onto Pluto each frame; hidden
+    // (via ownerMesh) when zoomed into Pluto itself, shown at system-framing zoom.
+    const pts = [];
+    for (let i = 0; i <= 128; i++) {
+      const a = (i / 128) * Math.PI * 2;
+      pts.push(new THREE.Vector3(Math.cos(a) * mn.dist, 0, Math.sin(a) * mn.dist));
+    }
+    const line = new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints(pts),
+      new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.15 })
+    );
+    line.userData.ownerMesh = plutoMesh;
+    scene.add(line);
+    orbitLines.push(line);
+    plutoMoonOrbitLines.push(line);
   });
 }
 
@@ -3546,6 +3564,7 @@ function animate(){
       m.group.position.copy(plutoWorldPos);
       m.group.rotation.y += m.speed * speed * deltaScale;
     });
+    plutoMoonOrbitLines.forEach(line => { line.position.copy(plutoWorldPos); });
   }
 
   // Dynamic near plane: keep it at ~5% of the distance to whatever we're orbiting,
