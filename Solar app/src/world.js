@@ -1194,7 +1194,9 @@ document.getElementById("toggleOrbits").addEventListener("click", () => {
 function _mulberry32(a){ return function(){ a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
 function _randUnit(rand){ let x, y, z, l; do { x = rand()*2-1; y = rand()*2-1; z = rand()*2-1; l = x*x+y*y+z*z; } while (l > 1 || l < 1e-4); l = Math.sqrt(l); return new THREE.Vector3(x/l, y/l, z/l); }
 function makeAsteroidGeometry(radius, seed) {
-  const geo = new THREE.IcosahedronGeometry(radius, 5);          // finer mesh → smoother surface
+  // Indexed sphere (shared vertices) so computeVertexNormals() averages them into
+  // SMOOTH normals. An icosphere is non-indexed → faceted/blocky shading.
+  const geo = new THREE.SphereGeometry(radius, 128, 96);
   const rand = _mulberry32((seed >>> 0) || 1);
   const ey = 0.70 + rand() * 0.16, ez = 0.62 + rand() * 0.16;   // elongation (x stays 1 → chunky potato)
   const waves = [];
