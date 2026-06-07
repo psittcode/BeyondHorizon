@@ -1346,14 +1346,27 @@ if (plutoMesh && plutoMesh.userData.moons) {
 // moon's `texture` field. Negative speed in the data gives the true retrograde orbit.
 const neptuneMesh = meshes.find(m => m.userData.name === "Neptune");
 const neptuneMoons = [];
-const neptuneMoonOrbitLines = [];
+const neptuneMoonTilts = [];   // per-moon orbit-plane tilt containers, parked on Neptune each frame
 if (neptuneMesh && neptuneMesh.userData.moons) {
   neptuneMesh.userData.moons.forEach(mn => {
     const mo = createMoon(mn.size, mn.dist, mn.speed, mn.color, mn.info,
                           mn.texture ? textureLoader.load(mn.texture) : null,
                           Math.random() * Math.PI * 2);
     mo.mesh.userData.name = mn.name;
+
+    // Triton's orbit is steeply inclined (and retrograde), so NASA's Eyes shows it as a
+    // lopsided, tilted ellipse — not a flat ecliptic circle centred on Neptune. Put the
+    // spinning orbit group AND its ring inside a tilt container so the whole plane is
+    // inclined; the container (not the group) is the thing parked on Neptune each frame.
+    const tilt = new THREE.Object3D();
+    tilt.rotation.x = (mn.orbitTiltX || 0) * (Math.PI / 180);
+    tilt.rotation.z = (mn.orbitTiltZ || 0) * (Math.PI / 180);
+    scene.add(tilt);
+    scene.remove(mo.group);        // createMoon parented it to the scene — reparent under the tilt
+    tilt.add(mo.group);
+    mo.tilt = tilt;
     neptuneMoons.push(mo);
+    neptuneMoonTilts.push(tilt);
 
     const pts = [];
     for (let i = 0; i <= 128; i++) {
@@ -1365,9 +1378,8 @@ if (neptuneMesh && neptuneMesh.userData.moons) {
       new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.15 })
     );
     line.userData.ownerMesh = neptuneMesh;
-    scene.add(line);
+    tilt.add(line);                // ring rides the same tilt; its world position follows the container
     orbitLines.push(line);
-    neptuneMoonOrbitLines.push(line);
   });
 }
 
@@ -1505,9 +1517,10 @@ const neptuneRingMaterial = new THREE.ShaderMaterial({
       vec4 texColor = texture2D(map, vec2(t, 0.5));
       if (texColor.a < 0.01) discard;
       // Wash the banding out toward a cool pale grey-blue, then knock the alpha
-      // right down so the whole ring is a ghostly haze.
-      vec3 pale = mix(texColor.rgb, vec3(0.72, 0.78, 0.88), 0.8);
-      gl_FragColor = vec4(pale, texColor.a * 0.12);
+      // right down so the whole ring is a barely-there ghostly haze (NASA's Eyes
+      // shows Neptune's rings as almost invisible wisps).
+      vec3 pale = mix(texColor.rgb, vec3(0.72, 0.78, 0.88), 0.85);
+      gl_FragColor = vec4(pale, texColor.a * 0.05);
     }
   `,
   side: THREE.DoubleSide,
@@ -1643,7 +1656,7 @@ const helioObjects = [
   ...orbitLines,
   ...jupiterMoons.map(jm => jm.group),
   ...plutoMoons.map(pm => pm.group),
-  ...neptuneMoons.map(nm => nm.group),
+  ...neptuneMoonTilts,
 ];
 
 // Click interaction
@@ -3739,10 +3752,9 @@ function animate(){
     const neptuneWorldPos = new THREE.Vector3();
     neptuneMesh.getWorldPosition(neptuneWorldPos);
     neptuneMoons.forEach(m => {
-      m.group.position.copy(neptuneWorldPos);
+      m.tilt.position.copy(neptuneWorldPos);   // tilt holds the inclined orbit plane + ring
       m.group.rotation.y += m.speed * speed * deltaScale;
     });
-    neptuneMoonOrbitLines.forEach(line => { line.position.copy(neptuneWorldPos); });
   }
 
   // Dynamic near plane: keep it at ~5% of the distance to whatever we're orbiting,
