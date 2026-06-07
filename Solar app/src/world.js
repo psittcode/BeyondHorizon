@@ -1270,10 +1270,31 @@ function makeAsteroidGeometry(radius, seed) {
     d = Math.max(0.78, d);
     pos.setXYZ(i, n.x * radius * d, n.y * radius * d * ey, n.z * radius * d * ez);
   }
-  // The asymmetric lumps shift the shape's centroid off the origin, which would make
-  // the moon sit (and wobble, as it tumbles) off its orbit line — and min-dot scaling
-  // amplifies that offset. Recenter the geometry so it sits exactly on its orbit point.
-  geo.center();
+  // The asymmetric lumps shift the shape's centre of MASS off the origin, which makes
+  // the moon sit off its orbit line and swing (jitter) as it tumbles — min-dot scaling
+  // amplifies it. Bounding-box centring (geo.center) isn't enough for an asymmetric
+  // potato, so recentre on the true VOLUME centroid via signed tetrahedra.
+  {
+    const idx = geo.index, p = geo.attributes.position;
+    const va = new THREE.Vector3(), vb = new THREE.Vector3(), vc = new THREE.Vector3(), cr = new THREE.Vector3();
+    let vol = 0, cx = 0, cy = 0, cz = 0;
+    for (let t = 0; t < idx.count; t += 3) {
+      va.fromBufferAttribute(p, idx.getX(t));
+      vb.fromBufferAttribute(p, idx.getX(t + 1));
+      vc.fromBufferAttribute(p, idx.getX(t + 2));
+      cr.crossVectors(vb, vc);
+      const v = va.dot(cr);                      // 6× signed volume of tetra (origin,a,b,c)
+      vol += v;
+      cx += (va.x + vb.x + vc.x) * v;
+      cy += (va.y + vb.y + vc.y) * v;
+      cz += (va.z + vb.z + vc.z) * v;
+    }
+    if (Math.abs(vol) > 1e-30) {
+      cx /= 4 * vol; cy /= 4 * vol; cz /= 4 * vol;
+      for (let i = 0; i < p.count; i++) p.setXYZ(i, p.getX(i) - cx, p.getY(i) - cy, p.getZ(i) - cz);
+      p.needsUpdate = true;
+    }
+  }
   geo.computeVertexNormals();
   return geo;
 }
@@ -4070,10 +4091,13 @@ function animate(){
     plutoTiltGroup.position.copy(plutoWorldPos);
     plutoMoons.forEach(m => {
       m.group.rotation.y += m.speed * speed * deltaScale;
-      // Irregular moons tumble chaotically (Nix/Hydra really do).
+      // Irregular moons tumble chaotically (Nix/Hydra really do). Cap the per-frame
+      // step so that at extreme time-warp the shape spins smoothly instead of aliasing
+      // into a jittery flicker.
       if (m.irregular) {
-        m.mesh.rotation.y += 0.004 * speed * deltaScale;
-        m.mesh.rotation.x += 0.0026 * speed * deltaScale;
+        const tumble = Math.min(0.004 * speed * deltaScale, 0.12);
+        m.mesh.rotation.y += tumble;
+        m.mesh.rotation.x += tumble * 0.65;
       }
     });
     // Mutual tidal lock: spin Pluto about the orbit-plane normal in lock-step with
