@@ -309,6 +309,7 @@ Jupiter remains a key target for understanding gas giant formation and early Sol
 {
 name:"Saturn",
 dist:95.83,size:0.0038925,color:0xffddaa,speed:0.000001127,e:0.0565,i:2.49,Om:113.66,w:339.39,period:29.45,
+ellipsoid:[1.035,0.934,1.035], // oblate — equator bulges, poles flatten (flattening ~0.098, the most of any planet)
 info:`
 <b>Saturn</b><br><br>
 
