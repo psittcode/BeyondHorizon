@@ -65,7 +65,7 @@ controls.addEventListener('change', () => { _camDirtyUntil = performance.now() +
 // reads as a violent shake. The cap only engages at very high speed; normal/moderate
 // speeds pass straight through, so the motion stays exact where it actually matters.
 function cappedSpin(step) {
-  const MAX = 0.12;
+  const MAX = 0.05;   // gentle enough that even zoomed in at max warp the motion reads smooth
   return Math.abs(step) > MAX ? Math.sign(step) * MAX : step;
 }
 
@@ -1426,9 +1426,14 @@ if (plutoMesh && plutoMesh.userData.moons) {
 
     // Orbit ring at the moon's true semi-major axis, riding the same tilted plane;
     // hidden (via ownerMesh) when zoomed into Pluto itself, shown at system-framing zoom.
+    // Segment count is sagitta-based (chord gap < 0.1× the moon's radius): these moons
+    // are SO tiny that a fixed 128-segment ring's chord gap exceeds their radius, leaving
+    // them visibly off the polyline (and appearing to vibrate against it as they orbit).
+    const segs = Math.min(2048, Math.max(128,
+      Math.ceil(Math.PI * Math.sqrt(mn.dist / (2 * 0.1 * mn.size)))));
     const pts = [];
-    for (let i = 0; i <= 128; i++) {
-      const a = (i / 128) * Math.PI * 2;
+    for (let i = 0; i <= segs; i++) {
+      const a = (i / segs) * Math.PI * 2;
       pts.push(new THREE.Vector3(Math.cos(a) * mn.dist, 0, Math.sin(a) * mn.dist));
     }
     const line = new THREE.Line(
