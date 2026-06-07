@@ -1085,6 +1085,25 @@ function buildOrbitPoints(m, segs) {
 }
 
 // 🪐 ORBIT LINES
+// Per-planet orbit-ring tints — each orbit coloured to match that body's real
+// appearance (Mars reddish, Neptune deep blue, Saturn pale gold, etc.). Anything
+// not listed falls back to white. Edit a value here to recolour that orbit.
+const ORBIT_COLORS = {
+  Mercury:  0xa9a29b,  // grey
+  Venus:    0xe6c98f,  // warm cream-yellow
+  Earth:    0x4a90d9,  // blue
+  Mars:     0xd95b3a,  // rusty red-orange
+  Ceres:    0x9a9088,  // dark asteroid grey
+  Jupiter:  0xd9a878,  // banded tan-orange
+  Saturn:   0xe6d6a0,  // pale gold
+  Uranus:   0x9fe3e8,  // pale cyan
+  Neptune:  0x4c63d4,  // deep blue
+  Pluto:    0xc9b49a,  // tan-grey
+  Haumea:   0xdcdce4,  // icy off-white
+  Makemake: 0xc88f6a,  // reddish-brown
+  Eris:     0xcfd2d6,  // bright icy grey
+};
+
 const orbitLines = [];
 meshes.forEach(m => {
   // Segment count is chosen per orbit so the polygon's chord stays within ~0.1×
@@ -1101,7 +1120,10 @@ meshes.forEach(m => {
   const points = buildOrbitPoints(m, segs);
   const orbit = new THREE.Line(
     new THREE.BufferGeometry().setFromPoints(points),
-    new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.15 })
+    new THREE.LineBasicMaterial({
+      color: ORBIT_COLORS[m.userData.name] || 0xffffff,
+      transparent: true, opacity: 0.3
+    })
   );
   orbit.userData.ownerMesh = m;   // hide this ring when zoomed in close to its planet
   scene.add(orbit);
