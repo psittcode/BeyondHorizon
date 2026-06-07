@@ -1363,7 +1363,8 @@ const jupiterMoons = [io, europa, ganymede, callisto];
 // spun in lock-step with Charon's orbital angle about this plane's normal (see animate).
 const plutoMesh = meshes.find(m => m.userData.name === "Pluto");
 const plutoTiltGroup = new THREE.Object3D();   // Pluto's equatorial plane (not min-dot scaled)
-plutoTiltGroup.rotation.x = (plutoMesh && plutoMesh.userData.tilt || 0) * (Math.PI / 180);
+plutoTiltGroup.rotation.x = 122.5 * (Math.PI / 180);
+plutoTiltGroup.rotation.z = 0 * (Math.PI / 180);
 scene.add(plutoTiltGroup);
 // Reusable handles for Pluto's locked spin (set each frame in animate).
 const _plutoSpinAxis = new THREE.Vector3(0, 1, 0);
