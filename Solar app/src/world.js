@@ -17,7 +17,7 @@ const scene = new THREE.Scene();
 // of magnitude (a moon ~1e-4 units vs the galaxy skybox ~2e4 units). A tiny near
 // plane lets you approach a planet until it fills the screen at true size; the
 // logarithmic depth buffer (set on the renderer below) keeps that range usable.
-const camera = new THREE.PerspectiveCamera(75, innerWidth/innerHeight, 0.0004, 1000000);
+const camera = new THREE.PerspectiveCamera(75, innerWidth/innerHeight, 0.00002, 1000000);
 camera.position.set(0, 22, 110);
 
 // Tilt the camera's "up" vector by 23.4° so the ecliptic plane appears inclined
@@ -1774,6 +1774,11 @@ function flyToObject(obj) {
   const size = obj.userData.size || obj.userData.trueRadius || 0.2;
   const offset = new THREE.Vector3(0, size * 2, size * 8);
   const endPos = targetPos.clone().add(offset);
+
+  // Let the zoom-in get proportionally close to whatever body we're framing — the
+  // tiny dwarf planets need a far smaller min distance than the big planets, or you'd
+  // be clamped ~25× their radius away (a dot) instead of ~2× (filling the view).
+  controls.minDistance = Math.max(0.00002, size * 2.0);
 
   // Time-based (not per-frame) so it's a fixed ~3s glide on any display refresh rate.
   const FLY_MS = 3000;
