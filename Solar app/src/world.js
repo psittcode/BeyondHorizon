@@ -1683,6 +1683,12 @@ const uranusRingMaterial = new THREE.ShaderMaterial({
     varying vec3 vWorldPos;
     #include <logdepthbuf_pars_fragment>
     float band(float r, float c, float w){ float x = (r - c) / w; return exp(-x * x); }
+    // Flat-topped "ribbon" band (a defined width with soft edges) — used for the dusty
+    // outer Nu/Mu rings so they read as broad ribbons rather than diffuse gaussian smears.
+    float ribbon(float r, float c, float halfW, float edge){
+      return smoothstep(c - halfW - edge, c - halfW, r)
+           * (1.0 - smoothstep(c + halfW, c + halfW + edge, r));
+    }
     void main() {
       #include <logdepthbuf_fragment>
       // Physical radius in Uranus-radii (rr = 1.0 at the geometry's outer edge).
@@ -1701,14 +1707,16 @@ const uranusRingMaterial = new THREE.ShaderMaterial({
       float eps    = band(physR, 2.00, 0.012);
       vec3  epsCol = vec3(0.82, 0.80, 0.77);
 
-      // Faint dusty outer rings: Nu (red, rocky) and Mu (blue, ice).
-      float nu    = band(physR, 2.63, 0.05);
-      vec3  nuCol = vec3(0.62, 0.34, 0.30);
-      float mu    = band(physR, 3.82, 0.08);
-      vec3  muCol = vec3(0.34, 0.46, 0.64);
+      // Faint dusty outer rings as defined ribbons: Nu (red, rocky) thicker, Mu (blue, ice) thickest.
+      float nu    = ribbon(physR, 2.63, 0.10, 0.05);
+      vec3  nuCol = vec3(0.60, 0.30, 0.26);
+      float mu    = ribbon(physR, 3.50, 0.22, 0.07);
+      vec3  muCol = vec3(0.32, 0.46, 0.66);
 
       vec3  col = mainsCol * mains + epsCol * eps + nuCol * nu + muCol * mu;
-      float a   = mains * 0.34 + eps * 0.62 + nu * 0.16 + mu * 0.14;  // dark/faint (~2% reflectance feel)
+      // Whites (main rings + Epsilon) dimmed down so they no longer dominate; the
+      // coloured Nu/Mu ribbons read at a similar, gentle level (~2% reflectance feel).
+      float a   = mains * 0.16 + eps * 0.30 + nu * 0.17 + mu * 0.16;
       if (a < 0.004) discard;
 
       // Uranus's shadow across the night side of the rings (same construction as Saturn/Neptune).
