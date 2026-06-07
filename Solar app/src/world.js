@@ -1655,6 +1655,16 @@ const uranusMesh = meshes.find(m => m.userData.name === "Uranus");
 const uranusTiltGroup = new THREE.Object3D();
 scene.add(uranusTiltGroup);
 
+// Uranus spins about its ring-plane normal (its rotation axis = the ring plane's axis,
+// so the rings are Uranus's equatorial plane). Like Neptune, we can't get this from Euler
+// angles without the pole "bobbing", so each frame we set the quaternion as
+// (fixed tilt onto the ring normal) × (spin about local +Y). _uranusSpinTilt is copied
+// from uranusTiltGroup.quaternion in resetSimulation(), once the ring plane is oriented.
+const _uranusSpinTilt = new THREE.Quaternion();
+const _uranusSpinAxis = new THREE.Vector3(0, 1, 0);
+const _uranusSpinQ = new THREE.Quaternion();
+let uranusSpinAngle = 0;
+
 const URANUS_RING_OUTER = 4.0;   // geometry outer edge, in Uranus radii (reaches the Mu ring)
 const uranusRingUniforms = { outerMul: { value: URANUS_RING_OUTER } };
 const uranusRingGeometry = new THREE.RingGeometry(
@@ -1717,7 +1727,7 @@ const uranusRingMaterial = new THREE.ShaderMaterial({
       vec3  col = innerCol * inner + mainsCol * mains + epsCol * eps + nuCol * nu + muCol * mu;
       // Much dimmer overall — Uranus's rings reflect only ~2% of sunlight, so everything
       // is kept very faint; the whites no longer dominate and the red/blue stay subtle.
-      float a   = inner * 0.05 + mains * 0.08 + eps * 0.15 + nu * 0.09 + mu * 0.09;
+      float a   = inner * 0.10 + mains * 0.04 + eps * 0.15 + nu * 0.15 + mu * 0.15;
       if (a < 0.003) discard;
 
       gl_FragColor = vec4(col, a);
@@ -1755,7 +1765,7 @@ if (uranusMesh && uranusMesh.userData.moons) {
     let parent = uranusMoonGroup;
     if (mn.incl) {
       const tilt = new THREE.Object3D();
-      tilt.rotation.x = mn.incl * (Math.PI / 180);
+      tilt.rotation.z = mn.incl * (Math.PI / 180);
       uranusMoonGroup.add(tilt);
       parent = tilt;
     }
@@ -2476,6 +2486,7 @@ function resetSimulation() {
     const tiltAxis = new THREE.Vector3(0, 1, 0).cross(radial).normalize();  // horizontal, ⟂ to radial
     const ringNormal = radial.clone().applyAxisAngle(tiltAxis, 12 * Math.PI / 180); // slight back-tilt
     uranusTiltGroup.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), ringNormal);
+    _uranusSpinTilt.copy(uranusTiltGroup.quaternion);   // Uranus spins about this same ring-plane axis
     // Moons share the ring plane.
     if (typeof uranusMoonGroup !== 'undefined' && uranusMoonGroup) {
       uranusMoonGroup.position.copy(uranusMesh.position);
@@ -3983,8 +3994,11 @@ function animate(){
       ringUniforms.saturnPos.value.copy(m.position);
     }
     if (m.userData.name === "Uranus") {
-      m.rotation.y -= 0.01687 * speed * deltaScale;
-      m.rotation.z = 97.8 * (Math.PI / 180);
+      // Spin about the fixed ring-plane axis (see _uranusSpinTilt) so the rotation axis
+      // matches the ring plane and the pole stays put: orientation = tilt × spin-about-Y.
+      uranusSpinAngle -= 0.01687 * speed * deltaScale;
+      m.quaternion.copy(_uranusSpinTilt)
+        .multiply(_uranusSpinQ.setFromAxisAngle(_uranusSpinAxis, uranusSpinAngle));
 
       uranusTiltGroup.position.copy(m.position);
     }
