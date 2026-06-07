@@ -1748,7 +1748,18 @@ if (uranusMesh && uranusMesh.userData.moons) {
                           Math.random() * Math.PI * 2);
     mo.mesh.userData.name = mn.name;
     scene.remove(mo.group);        // createMoon parented it to the scene — move it into the ring plane
-    uranusMoonGroup.add(mo.group);
+
+    // Most moons sit in the ring plane (parent = uranusMoonGroup). Miranda is the only
+    // one with a real orbital inclination, so it gets a small tilt sub-container so its
+    // orbit (and ring) sits at an angle to the others.
+    let parent = uranusMoonGroup;
+    if (mn.incl) {
+      const tilt = new THREE.Object3D();
+      tilt.rotation.x = mn.incl * (Math.PI / 180);
+      uranusMoonGroup.add(tilt);
+      parent = tilt;
+    }
+    parent.add(mo.group);
     uranusMoons.push(mo);
 
     const pts = [];
@@ -1761,7 +1772,7 @@ if (uranusMesh && uranusMesh.userData.moons) {
       new THREE.LineBasicMaterial({ color: ORBIT_COLORS.Uranus, transparent: true, opacity: 0.3 })
     );
     line.userData.ownerMesh = uranusMesh;
-    uranusMoonGroup.add(line);     // orbit ring rides the same ring-plane container
+    parent.add(line);              // orbit ring rides the same (possibly inclined) plane as the moon
     orbitLines.push(line);
     uranusMoonOrbitLines.push(line);
   });
