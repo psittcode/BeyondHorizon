@@ -1183,7 +1183,7 @@ for (let i = 0; i <= 128; i++) {
 }
 const moonOrbitLine = new THREE.Line(
   new THREE.BufferGeometry().setFromPoints(moonOrbitPoints),
-  new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.15 })
+  new THREE.LineBasicMaterial({ color: ORBIT_COLORS.Earth, transparent: true, opacity: 0.3 })
 );
 moonOrbitLine.userData.ownerMesh = earth;   // hide the Moon's ring when zoomed in close to Earth
 moonGroup.add(moonOrbitLine);
@@ -1199,7 +1199,7 @@ const jupiterMoonOrbitLines = [];
   }
   const orbitLine = new THREE.Line(
     new THREE.BufferGeometry().setFromPoints(pts),
-    new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.15 })
+    new THREE.LineBasicMaterial({ color: ORBIT_COLORS.Jupiter, transparent: true, opacity: 0.3 })
   );
   orbitLine.userData.ownerMesh = jupiter;   // hide these rings when zoomed in close to Jupiter
   scene.add(orbitLine);
@@ -1366,7 +1366,7 @@ if (plutoMesh && plutoMesh.userData.moons) {
     }
     const line = new THREE.Line(
       new THREE.BufferGeometry().setFromPoints(pts),
-      new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.15 })
+      new THREE.LineBasicMaterial({ color: ORBIT_COLORS.Pluto, transparent: true, opacity: 0.3 })
     );
     line.userData.ownerMesh = plutoMesh;
     scene.add(line);
@@ -1412,7 +1412,7 @@ if (neptuneMesh && neptuneMesh.userData.moons) {
     }
     const line = new THREE.Line(
       new THREE.BufferGeometry().setFromPoints(pts),
-      new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.15 })
+      new THREE.LineBasicMaterial({ color: ORBIT_COLORS.Neptune, transparent: true, opacity: 0.3 })
     );
     line.userData.ownerMesh = neptuneMesh;
     tilt.add(line);                // ring rides the same tilt; its world position follows the container
