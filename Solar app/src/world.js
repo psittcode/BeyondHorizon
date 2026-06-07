@@ -1105,14 +1105,17 @@ const ORBIT_COLORS = {
 };
 
 const orbitLines = [];
+const dwarfOrbitLines = [];   // far dwarf orbits — re-expressed camera-relative each frame (see animate)
 meshes.forEach(m => {
   // Segment count is chosen per orbit so the polygon's chord stays within ~0.1×
   // the planet's (true-scale, tiny) radius of the real circle — otherwise the
   // chord-vs-arc gap (which grows with orbit radius) leaves big outer planets
   // visibly floating off their ring. sagitta ≈ dist·π²/(2N²) ≤ 0.1·radius.
+  // The cap is high (32768) because the tiny, far dwarf planets (Pluto…Eris) need
+  // ~15k–23k segments to keep that gap below their minuscule radius.
   const dist = m.userData.dist;
   const targetSagitta = (m.userData.size || 0.001) * 0.1;
-  const segs = Math.min(4096, Math.max(256,
+  const segs = Math.min(32768, Math.max(256,
     Math.ceil(Math.PI * Math.sqrt(dist / (2 * targetSagitta)))));
   // Every body's ring is now its real inclined ellipse (Sun at the focus) from its
   // orbital elements; Mercury's also carries its precessing perihelion.
@@ -1128,6 +1131,22 @@ meshes.forEach(m => {
   orbit.userData.ownerMesh = m;   // hide this ring when zoomed in close to its planet
   scene.add(orbit);
   orbitLines.push(orbit);
+
+  // Dwarf orbits sit 28–680 units from the origin, where float32 vertex precision
+  // (~3–6e-5) is comparable to these tiny bodies' radii — so the static world-space
+  // line jitters against the float64-positioned planet as the camera moves (the
+  // "shake on zoom"). Keep the exact double-precision world points; animate() then
+  // re-expresses the line in camera-relative coordinates each frame (small numbers
+  // near the camera → crisp), which is exactly why the moon orbits stay stable.
+  if (m.userData.kind === "dwarf") {
+    const wp = new Float64Array(points.length * 3);
+    for (let k = 0; k < points.length; k++) {
+      wp[k * 3] = points[k].x; wp[k * 3 + 1] = points[k].y; wp[k * 3 + 2] = points[k].z;
+    }
+    orbit.userData._dwarfWorld = wp;
+    orbit.frustumCulled = false;  // local verts become camera-relative; stale bounds would mis-cull
+    dwarfOrbitLines.push(orbit);
+  }
 });
 
 // Mercury precession trail — an accumulating polyline of Mercury's actual path,
@@ -3892,6 +3911,26 @@ function animate(){
   // Hide a body's orbit ring when zoomed in close to it (solar view only — the
   // alternate views manage orbit-line visibility themselves).
   if (!galacticViewActive && !spaceshipViewActive) updateOrbitRingProximity();
+
+  // Re-express the far dwarf orbit rings in camera-relative coordinates so they sit
+  // exactly on their (float64-positioned) planet and don't shimmer on zoom. Skipped
+  // for hidden rings. See dwarfOrbitLines where the exact world points are stashed.
+  if (dwarfOrbitLines.length) {
+    const cx = camera.position.x, cy = camera.position.y, cz = camera.position.z;
+    for (const line of dwarfOrbitLines) {
+      if (!line.visible) continue;
+      const wp = line.userData._dwarfWorld;
+      const attr = line.geometry.attributes.position;
+      const arr = attr.array;
+      for (let k = 0, n = arr.length; k < n; k += 3) {
+        arr[k]     = wp[k]     - cx;
+        arr[k + 1] = wp[k + 1] - cy;
+        arr[k + 2] = wp[k + 2] - cz;
+      }
+      attr.needsUpdate = true;
+      line.position.set(cx, cy, cz);
+    }
+  }
 
 // Galactic view — advance solar system + Earth dot along corkscrew path
   if (galacticViewActive) {
