@@ -17,7 +17,10 @@ const scene = new THREE.Scene();
 // of magnitude (a moon ~1e-4 units vs the galaxy skybox ~2e4 units). A tiny near
 // plane lets you approach a planet until it fills the screen at true size; the
 // logarithmic depth buffer (set on the renderer below) keeps that range usable.
-const camera = new THREE.PerspectiveCamera(75, innerWidth/innerHeight, 0.00002, 1000000);
+const camera = new THREE.PerspectiveCamera(75, innerWidth/innerHeight, 0.0004, 1000000);
+// The near plane is adjusted dynamically each frame (see animate) so you can zoom
+// into bodies of ANY size — down to Pluto's tiny moons — without them clipping,
+// while keeping depth precision when zoomed out.
 camera.position.set(0, 22, 110);
 
 // Tilt the camera's "up" vector by 23.4° so the ecliptic plane appears inclined
@@ -1775,10 +1778,10 @@ function flyToObject(obj) {
   const offset = new THREE.Vector3(0, size * 2, size * 8);
   const endPos = targetPos.clone().add(offset);
 
-  // Let the zoom-in get proportionally close to whatever body we're framing — the
-  // tiny dwarf planets need a far smaller min distance than the big planets, or you'd
-  // be clamped ~25× their radius away (a dot) instead of ~2× (filling the view).
-  controls.minDistance = Math.max(0.00002, size * 2.0);
+  // Let the zoom-in get proportionally close to whatever body we're framing — tiny
+  // bodies (dwarf planets, Pluto's moons) need a far smaller min distance than the big
+  // planets, or you'd be clamped many radii away (a dot) instead of ~2× (filling view).
+  controls.minDistance = Math.max(0.0000001, size * 2.0);
 
   // Time-based (not per-frame) so it's a fixed ~3s glide on any display refresh rate.
   const FLY_MS = 3000;
@@ -3543,6 +3546,26 @@ function animate(){
       m.group.position.copy(plutoWorldPos);
       m.group.rotation.y += m.speed * speed * deltaScale;
     });
+  }
+
+  // Dynamic near plane: keep it at ~5% of the distance to whatever we're orbiting,
+  // capped at the default 0.0004 when zoomed out. So zooming into a body of any size
+  // (even Pluto's 16-km moons) never clips it on the near plane, while the wide views
+  // keep their depth precision. The galactic/spaceship views use the fixed default
+  // (resetting it in case we entered them while zoomed into something tiny). The BH
+  // composer view manages its own camera, so it's left alone.
+  if (!bhRendererSettings) {
+    let _wantNear;
+    if (galacticViewActive || spaceshipViewActive) {
+      _wantNear = 0.0004;
+    } else {
+      const _tDist = camera.position.distanceTo(controls.target);
+      _wantNear = Math.max(1e-9, Math.min(0.0004, _tDist * 0.05));
+    }
+    if (Math.abs(camera.near - _wantNear) > _wantNear * 0.15) {
+      camera.near = _wantNear;
+      camera.updateProjectionMatrix();
+    }
   }
 
   // True-scale visibility: size every body for the current zoom (dot when far,
