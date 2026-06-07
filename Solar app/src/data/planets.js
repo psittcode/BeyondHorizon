@@ -485,13 +485,13 @@ kind:"dwarf",texture:"pluto.png",tilt:122.5,spinY:0.0019,
 moons:[
   {name:"Charon",  size:0.0000405,dist:0.00131,speed:0.001896,color:0xb9b4ad,
    info:`<b>Charon</b><br><br>Pluto's largest moon — about half Pluto's diameter, making the pair almost a double dwarf planet. The two are mutually tidally locked, always showing the same face to each other, and orbit a common point (barycenter) that lies in the space between them.<br>`},
-  {name:"Styx",    size:0.00000053,dist:0.00285,speed:0.000601,color:0x999999,
+  {name:"Styx",    size:0.00000053,dist:0.00285,speed:0.000601,color:0x999999,irregular:true,
    info:`<b>Styx</b><br><br>A tiny, irregular moon of Pluto (~16 km across), discovered in 2012. It orbits beyond Charon in a near-circular path and tumbles chaotically.<br>`},
-  {name:"Nix",     size:0.00000167,dist:0.00326,speed:0.000487,color:0xb0a89c,
+  {name:"Nix",     size:0.00000167,dist:0.00326,speed:0.000487,color:0xb0a89c,irregular:true,
    info:`<b>Nix</b><br><br>A small, elongated moon of Pluto (~50 km), discovered in 2005. Like Pluto's other small moons it rotates chaotically rather than being tidally locked.<br>`},
-  {name:"Kerberos",size:0.00000060,dist:0.00386,speed:0.000376,color:0x8f8f8f,
+  {name:"Kerberos",size:0.00000060,dist:0.00386,speed:0.000376,color:0x8f8f8f,irregular:true,
    info:`<b>Kerberos</b><br><br>A small, dark, double-lobed moon of Pluto (~19 km), discovered in 2011 between the orbits of Nix and Hydra.<br>`},
-  {name:"Hydra",   size:0.00000167,dist:0.00433,speed:0.000317,color:0xb0a89c,
+  {name:"Hydra",   size:0.00000167,dist:0.00433,speed:0.000317,color:0xb0a89c,irregular:true,
    info:`<b>Hydra</b><br><br>Pluto's outermost known moon (~51 km), discovered in 2005. Its bright, water-ice surface tumbles unpredictably as it orbits.<br>`}
 ],
 info:`<b>Pluto</b><br><br>

@@ -1185,6 +1185,35 @@ document.getElementById("toggleOrbits").addEventListener("click", () => {
 
 
 
+// Procedural "generic asteroid" geometry — a bumpy, irregular, elongated potato, like
+// the generic model NASA's Eyes uses for Pluto's tiny moons (Styx/Nix/Kerberos/Hydra:
+// each panel there literally says "represented by a generic model"). Displaces an
+// icosphere by a sum of random plane-waves (multi-scale lumps) and elongates it. The
+// shape is baked into the geometry so the min-dot scaler (uniform scale) still works;
+// each moon gets its own seed for variety.
+function _mulberry32(a){ return function(){ a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+function _randUnit(rand){ let x, y, z, l; do { x = rand()*2-1; y = rand()*2-1; z = rand()*2-1; l = x*x+y*y+z*z; } while (l > 1 || l < 1e-4); l = Math.sqrt(l); return new THREE.Vector3(x/l, y/l, z/l); }
+function makeAsteroidGeometry(radius, seed) {
+  const geo = new THREE.IcosahedronGeometry(radius, 4);
+  const rand = _mulberry32((seed >>> 0) || 1);
+  const ey = 0.66 + rand() * 0.18, ez = 0.56 + rand() * 0.18;   // elongation (x stays 1 → chunky potato)
+  const waves = [];
+  for (let k = 0; k < 9; k++) {
+    const f = 0.8 + rand() * 2.6;                                // mostly low frequencies → smooth, rounded lumps
+    waves.push({ dir: _randUnit(rand), f, amp: 0.17 / (1 + f * 0.5), ph: rand() * Math.PI * 2 });
+  }
+  const pos = geo.attributes.position, n = new THREE.Vector3();
+  for (let i = 0; i < pos.count; i++) {
+    n.fromBufferAttribute(pos, i).normalize();
+    let d = 1.0;
+    for (const w of waves) d += w.amp * Math.sin(n.dot(w.dir) * w.f * Math.PI * 2.0 + w.ph);
+    d = Math.max(0.6, d);
+    pos.setXYZ(i, n.x * radius * d, n.y * radius * d * ey, n.z * radius * d * ez);
+  }
+  geo.computeVertexNormals();
+  return geo;
+}
+
 // helper function to create a moon
 function createMoon(size, distance, speed, color, infoText, texture, startAngle) {
   const group = new THREE.Object3D();
@@ -1275,10 +1304,18 @@ const plutoMesh = meshes.find(m => m.userData.name === "Pluto");
 const plutoMoons = [];
 const plutoMoonOrbitLines = [];
 if (plutoMesh && plutoMesh.userData.moons) {
-  plutoMesh.userData.moons.forEach(mn => {
+  plutoMesh.userData.moons.forEach((mn, idx) => {
     const mo = createMoon(mn.size, mn.dist, mn.speed, mn.color, mn.info, null,
                           Math.random() * Math.PI * 2);
     mo.mesh.userData.name = mn.name;
+    // The tiny moons are irregular, bumpy asteroids — swap the sphere for a
+    // procedural lumpy shape (Charon stays round). Give it a slow tumble.
+    if (mn.irregular) {
+      mo.mesh.geometry.dispose();
+      mo.mesh.geometry = makeAsteroidGeometry(mn.size, 1013 * (idx + 1) + 7);
+      mo.irregular = true;
+      mo.mesh.rotation.set(Math.random() * 6.28, Math.random() * 6.28, Math.random() * 6.28);
+    }
     plutoMoons.push(mo);
 
     // Orbit ring at the moon's true semi-major axis, so Pluto's system is spaced
@@ -3585,6 +3622,11 @@ function animate(){
     plutoMoons.forEach(m => {
       m.group.position.copy(plutoWorldPos);
       m.group.rotation.y += m.speed * speed * deltaScale;
+      // Irregular moons tumble chaotically (Nix/Hydra really do).
+      if (m.irregular) {
+        m.mesh.rotation.y += 0.004 * speed * deltaScale;
+        m.mesh.rotation.x += 0.0026 * speed * deltaScale;
+      }
     });
     plutoMoonOrbitLines.forEach(line => { line.position.copy(plutoWorldPos); });
   }
