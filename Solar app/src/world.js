@@ -2268,7 +2268,6 @@ function flyToObject(obj) {
   // real size, so planets and the Sun are all nicely framed at true scale).
   const size = obj.userData.size || obj.userData.trueRadius || 0.2;
   const offset = new THREE.Vector3(0, size * 2, size * 8);
-  const endPos = targetPos.clone().add(offset);
 
   // Let the zoom-in get proportionally close to whatever body we're framing — tiny
   // bodies (dwarf planets, Pluto's moons) need a far smaller min distance than the big
@@ -2287,10 +2286,16 @@ function flyToObject(obj) {
     if (t > 1) t = 1;
     const ease = t * t * (3 - 2 * t);
 
+    // Track the body's CURRENT position every frame — at high time-warp a fast body
+    // (a moon, or any body riding Pluto's motion) can travel a long way during the ~3s
+    // glide. The camera's destination is recomputed as (current position + offset), so
+    // we always arrive nicely framed beside it instead of flying to where it used to be
+    // (which left you parked far away, watching it zip around).
     const currentTarget = new THREE.Vector3();
     obj.getWorldPosition(currentTarget);
+    const currentEnd = currentTarget.clone().add(offset);
 
-    camera.position.lerpVectors(startPos, endPos, ease);
+    camera.position.lerpVectors(startPos, currentEnd, ease);
     controls.target.lerpVectors(startTarget, currentTarget, ease);
     controls.update();
 
