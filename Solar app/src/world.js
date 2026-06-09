@@ -2266,50 +2266,33 @@ function flyToObject(obj) {
   lockedObject = obj;
 
   const startPos = camera.position.clone();
-  const startTarget = controls.target.clone();
 
   // Frame at a fixed multiple of the body's TRUE radius (offset scales with the
   // real size, so planets and the Sun are all nicely framed at true scale).
   const size = obj.userData.size || obj.userData.trueRadius || 0.2;
   const offset = new THREE.Vector3(0, size * 2, size * 8);
 
+  // We glide by lerping the camera's OFFSET from the target (not its absolute world
+  // position), and every frame place the camera at (current target position + offset).
+  // Because the camera rides the target's current position, the body stays rock-stable
+  // in view for the whole glide — only the zoom (offset magnitude) changes. This makes
+  // the zoom-in natural even at extreme time-warp, when the body races across space:
+  // no swinging, no "flew to where it used to be" (far), no overshoot (too close).
+  const startOffset = startPos.clone().sub(targetPos);   // current camera offset from the target
+
   // Let the zoom-in get proportionally close to whatever body we're framing — tiny
   // bodies (dwarf planets, Pluto's moons) need a far smaller min distance than the big
   // planets, or you'd be clamped many radii away (a dot) instead of ~2× (filling view).
   controls.minDistance = Math.max(0.0000001, size * 2.0);
 
-  // Time-based (not per-frame) so it's a fixed ~3s glide on any display refresh rate.
-  const FLY_MS = 3000;
-  let _flyLast = performance.now();
-  let t = 0;
-  function flyTo() {
-    if (myGeneration !== flyGeneration) { isFlyingTo = false; return; } // cancelled
-    const _now = performance.now();
-    t += (_now - _flyLast) / FLY_MS;
-    _flyLast = _now;
-    if (t > 1) t = 1;
-    const ease = t * t * (3 - 2 * t);
-
-    // Track the body's CURRENT position every frame — at high time-warp a fast body
-    // (a moon, or any body riding Pluto's motion) can travel a long way during the ~3s
-    // glide. The camera's destination is recomputed as (current position + offset), so
-    // we always arrive nicely framed beside it instead of flying to where it used to be
-    // (which left you parked far away, watching it zip around).
-    const currentTarget = new THREE.Vector3();
-    obj.getWorldPosition(currentTarget);
-    const currentEnd = currentTarget.clone().add(offset);
-
-    camera.position.lerpVectors(startPos, currentEnd, ease);
-    controls.target.lerpVectors(startTarget, currentTarget, ease);
-    controls.update();
-
-    if (t < 1) {
-      requestAnimationFrame(flyTo);
-    } else {
-      isFlyingTo = false;
-    }
-  }
-  flyTo();
+  // Hand the glide to animate() (see the camera-follow block there): it lerps the offset
+  // from its current value to `offset` over ~3s while always parking the camera at
+  // (current target position + offset). Running it there — after the body's position is
+  // updated for the frame — keeps the body centred even at extreme time-warp.
+  _flyObj = obj;
+  _flyOffset.copy(offset);
+  _flyStartOffset.copy(startOffset);
+  _flyStartMs = performance.now();
 }
 
 window.addEventListener("click", e => {
@@ -2467,6 +2450,15 @@ updateSpeedLabel(); // show label on load
 let lockedObject = null;
 let flyGeneration = 0;
 let isFlyingTo = false;
+// Fly-to state, driven each frame inside animate() (after positions update, before
+// render) so the focused body stays perfectly centred at any time-warp.
+let _flyObj = null;
+let _flyStartMs = 0;
+const _flyDurMs = 3000;
+const _flyStartOffset = new THREE.Vector3();
+const _flyOffset = new THREE.Vector3();
+const _camTmpA = new THREE.Vector3();
+const _camTmpB = new THREE.Vector3();
 
 // Simulation time — starts at the real current date/time
 let simulationDate = new Date();
@@ -4395,13 +4387,26 @@ function animate(){
   }
 
   // Lock camera target to selected object (only after fly animation completes)
-  if (lockedObject && !isFlyingTo) {
-    const targetPos = new THREE.Vector3();
-    lockedObject.getWorldPosition(targetPos);
-
-    const delta = targetPos.clone().sub(controls.target);
-    controls.target.copy(targetPos);
-    camera.position.add(delta);
+  // Camera follow — runs after every body position is updated this frame and before the
+  // render, so the focused body is always framed off its CURRENT position (no race with
+  // the simulation step, which is what made fast bodies fly off-frame at high time-warp).
+  if (isFlyingTo && _flyObj) {
+    // Glide: lerp the camera's offset from the (moving) target toward the framing offset,
+    // always sitting at target+offset → the body stays centred while we zoom in.
+    _flyObj.getWorldPosition(_camTmpA);
+    const _t = Math.min(1, (performance.now() - _flyStartMs) / _flyDurMs);
+    const _ease = _t * _t * (3 - 2 * _t);
+    _camTmpB.lerpVectors(_flyStartOffset, _flyOffset, _ease);
+    camera.position.copy(_camTmpA).add(_camTmpB);
+    controls.target.copy(_camTmpA);
+    controls.update();
+    if (_t >= 1) isFlyingTo = false;
+  } else if (lockedObject) {
+    // Steady lock: translate the camera by however far the body moved this frame.
+    lockedObject.getWorldPosition(_camTmpA);
+    _camTmpB.copy(_camTmpA).sub(controls.target);
+    controls.target.copy(_camTmpA);
+    camera.position.add(_camTmpB);
     controls.update();
   }
 
