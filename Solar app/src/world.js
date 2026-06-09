@@ -4124,9 +4124,13 @@ function animate(){
       // Irregular moons tumble chaotically (Nix/Hydra really do). Cap the RATE (so it can't
       // alias into a jittery flicker at extreme warp) but keep the step proportional to real
       // time (× deltaScale) so it's SMOOTH at any frame rate — capping the step to a constant
-      // is what made it stutter. It may spin fast at high warp, but smoothly.
+      // is what made it stutter. The rate cap stays GENTLE (~1.1°/frame at 60fps): these are
+      // elongated lumpy potatoes, so a fast spin swings the long axis toward/edge-on to the
+      // camera ~3×/sec — reading as flashing/"too close"/shaking when zoomed in at high warp
+      // (smooth spheres like Charon and the planets don't show this, as spin can't change
+      // their silhouette). The × deltaScale keeps it smooth/proportional at any frame rate.
       if (m.irregular) {
-        const tumble = Math.min(0.004 * speed, 0.3) * deltaScale;
+        const tumble = Math.min(0.004 * speed, 0.02) * deltaScale;
         m.mesh.rotation.y += tumble;
         m.mesh.rotation.x += tumble * 0.65;
       }
