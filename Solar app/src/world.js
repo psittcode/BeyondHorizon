@@ -4118,10 +4118,13 @@ function animate(){
       // Cap the per-frame orbital step (see moonOrbitStep) so these short-period moons don't
       // alias into a shake at extreme time-warp.
       m.group.rotation.y += moonOrbitStep(m.speed * speed * deltaScale, m.distance);
-      // Irregular moons tumble chaotically (Nix/Hydra really do) — same cap so the shape
-      // spins smoothly instead of flickering at high warp.
+      // Irregular moons tumble chaotically (Nix/Hydra really do), but cap the self-spin to
+      // a gentle ~1.1°/frame. Because these are LUMPY shapes (not smooth spheres like a
+      // planet), a fast spin makes the silhouette flip wildly each frame — that's the
+      // "jittery/glitchy" rotation seen from ~100k× upward. The cap only engages above
+      // ~100k× (real/low speeds pass through), so the tumble stays smooth when you zoom in.
       if (m.irregular) {
-        const tumble = Math.min(0.004 * speed * deltaScale, 0.12);
+        const tumble = Math.min(0.004 * speed * deltaScale, 0.02);
         m.mesh.rotation.y += tumble;
         m.mesh.rotation.x += tumble * 0.65;
       }
