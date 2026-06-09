@@ -59,18 +59,21 @@ let _lastDrawMs    = 0;   // timestamp of the last frame we actually rendered
 let _camDirtyUntil = 0;   // stay at full rate until this time — refreshed on every camera change
 controls.addEventListener('change', () => { _camDirtyUntil = performance.now() + 250; });
 
-// Per-frame orbital step for a moon, capped two ways so it never "shakes":
-//  1. an absolute aliasing cap (never advance >0.05 rad/frame), and
-//  2. a ZOOM-AWARE cap: limit the moon's on-screen travel to a few px per frame at the
-//     current zoom. At extreme time-warp a tiny moon's orbit otherwise sweeps thousands
-//     of px/frame when you're zoomed in, dragging the camera (which follows it) and making
-//     its orbit ring and neighbours shake violently. _moonStepWorldCap (set each frame from
-//     the camera→target distance) is the max world displacement allowed; dividing by the
-//     orbit radius converts it to an angular cap. When zoomed out it's loose → full rate.
+// Per-frame orbital step for a moon. `rate` is the angular speed (rad per 1/60 s); the
+// returned step is rate × deltaScale, i.e. proportional to REAL elapsed time, so the
+// motion stays SMOOTH at any (even uneven) frame rate. The rate is capped two ways before
+// scaling, so it never aliases or sweeps the screen:
+//  1. an absolute cap (rate ≤ 0.05/frame), and
+//  2. a ZOOM-AWARE cap: limit on-screen travel to a few px at the current zoom — at
+//     extreme time-warp a tiny moon's orbit would otherwise sweep thousands of px/frame
+//     when zoomed in, dragging the (following) camera and shaking its ring + neighbours.
+// Capping the resulting STEP to a constant (the old approach) decoupled it from real time,
+// which is what produced the visible stutter/jitter — so we cap the RATE, then scale.
 let _moonStepWorldCap = Infinity;
-function moonOrbitStep(rate, orbitRadius) {
+function moonOrbitStep(rate, orbitRadius, deltaScale) {
   const cap = Math.min(0.05, _moonStepWorldCap / Math.max(orbitRadius, 1e-12));
-  return Math.abs(rate) > cap ? Math.sign(rate) * cap : rate;
+  const r = Math.abs(rate) > cap ? Math.sign(rate) * cap : rate;
+  return r * deltaScale;
 }
 
 controls.enablePan = false;
@@ -4089,7 +4092,7 @@ function animate(){
     // Tidally locked: the Moon mesh is parented to moonGroup, so the group's orbital
     // rotation alone keeps one face (its near side) toward Earth. Adding a second spin
     // to the mesh would double-rotate it (showing all sides), so it is NOT applied.
-    moonGroup.rotation.y += moonOrbitStep(0.0004434 * speed * deltaScale, MOON_ORBIT_DIST);
+    moonGroup.rotation.y += moonOrbitStep(0.0004434 * speed, MOON_ORBIT_DIST, deltaScale);
   }
 
   // 🪐 Jupiter moons follow Jupiter in world space
@@ -4100,7 +4103,7 @@ function animate(){
     jupiterMoons.forEach(m => {
       if (m.group) {
         m.group.position.copy(jupiterWorldPos);
-        m.group.rotation.y += moonOrbitStep(m.speed * speed * deltaScale, m.distance);
+        m.group.rotation.y += moonOrbitStep(m.speed * speed, m.distance, deltaScale);
       }
     });
 
@@ -4117,14 +4120,13 @@ function animate(){
     plutoMoons.forEach(m => {
       // Cap the per-frame orbital step (see moonOrbitStep) so these short-period moons don't
       // alias into a shake at extreme time-warp.
-      m.group.rotation.y += moonOrbitStep(m.speed * speed * deltaScale, m.distance);
-      // Irregular moons tumble chaotically (Nix/Hydra really do), but cap the self-spin to
-      // a gentle ~1.1°/frame. Because these are LUMPY shapes (not smooth spheres like a
-      // planet), a fast spin makes the silhouette flip wildly each frame — that's the
-      // "jittery/glitchy" rotation seen from ~100k× upward. The cap only engages above
-      // ~100k× (real/low speeds pass through), so the tumble stays smooth when you zoom in.
+      m.group.rotation.y += moonOrbitStep(m.speed * speed, m.distance, deltaScale);
+      // Irregular moons tumble chaotically (Nix/Hydra really do). Cap the RATE (so it can't
+      // alias into a jittery flicker at extreme warp) but keep the step proportional to real
+      // time (× deltaScale) so it's SMOOTH at any frame rate — capping the step to a constant
+      // is what made it stutter. It may spin fast at high warp, but smoothly.
       if (m.irregular) {
-        const tumble = Math.min(0.004 * speed * deltaScale, 0.02);
+        const tumble = Math.min(0.004 * speed, 0.3) * deltaScale;
         m.mesh.rotation.y += tumble;
         m.mesh.rotation.x += tumble * 0.65;
       }
@@ -4144,7 +4146,7 @@ function animate(){
     neptuneMesh.getWorldPosition(neptuneWorldPos);
     neptuneMoons.forEach(m => {
       m.tilt.position.copy(neptuneWorldPos);   // tilt holds the inclined orbit plane + ring
-      m.group.rotation.y += moonOrbitStep(m.speed * speed * deltaScale, m.distance);
+      m.group.rotation.y += moonOrbitStep(m.speed * speed, m.distance, deltaScale);
     });
   }
 
@@ -4154,7 +4156,7 @@ function animate(){
     uranusMesh.getWorldPosition(uranusWorldPos);
     uranusMoonGroup.position.copy(uranusWorldPos);
     uranusMoons.forEach(m => {
-      m.group.rotation.y += moonOrbitStep(m.speed * speed * deltaScale, m.distance);
+      m.group.rotation.y += moonOrbitStep(m.speed * speed, m.distance, deltaScale);
     });
   }
 
