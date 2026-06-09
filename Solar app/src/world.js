@@ -4164,6 +4164,34 @@ function animate(){
     });
   }
 
+  // Lock camera target to selected object (only after fly animation completes)
+  // Camera follow — runs after every body position is updated this frame but BEFORE the
+  // distance-dependent sizing below (near plane, min-dot scaling, orbit-ring proximity),
+  // so those all measure against the camera's FINAL position for this frame. Running it
+  // after that sizing left the min-dot scaler measuring a fast-orbiting moon against the
+  // camera's stale (pre-follow) position — its parent had carried it a large world step
+  // since the camera last centred — so the moon's scale pumped 1.5×–2.2× every frame
+  // (violent shake/flash/"too close") even though its on-screen distance was rock-stable.
+  if (isFlyingTo && _flyObj) {
+    // Glide: lerp the camera's offset from the (moving) target toward the framing offset,
+    // always sitting at target+offset → the body stays centred while we zoom in.
+    _flyObj.getWorldPosition(_camTmpA);
+    const _t = Math.min(1, (performance.now() - _flyStartMs) / _flyDurMs);
+    const _ease = _t * _t * (3 - 2 * _t);
+    _camTmpB.lerpVectors(_flyStartOffset, _flyOffset, _ease);
+    camera.position.copy(_camTmpA).add(_camTmpB);
+    controls.target.copy(_camTmpA);
+    controls.update();
+    if (_t >= 1) isFlyingTo = false;
+  } else if (lockedObject) {
+    // Steady lock: translate the camera by however far the body moved this frame.
+    lockedObject.getWorldPosition(_camTmpA);
+    _camTmpB.copy(_camTmpA).sub(controls.target);
+    controls.target.copy(_camTmpA);
+    camera.position.add(_camTmpB);
+    controls.update();
+  }
+
   // Dynamic near plane: keep it at ~5% of the distance to whatever we're orbiting,
   // capped at the default 0.0004 when zoomed out. So zooming into a body of any size
   // (even Pluto's 16-km moons) never clips it on the near plane, while the wide views
@@ -4393,30 +4421,6 @@ function animate(){
   if (terraformedMarsMaterial) {
     terraformedMarsMaterial.uniforms.sunDirection.value
       .copy(marsMesh.position.clone().negate().normalize());
-  }
-
-  // Lock camera target to selected object (only after fly animation completes)
-  // Camera follow — runs after every body position is updated this frame and before the
-  // render, so the focused body is always framed off its CURRENT position (no race with
-  // the simulation step, which is what made fast bodies fly off-frame at high time-warp).
-  if (isFlyingTo && _flyObj) {
-    // Glide: lerp the camera's offset from the (moving) target toward the framing offset,
-    // always sitting at target+offset → the body stays centred while we zoom in.
-    _flyObj.getWorldPosition(_camTmpA);
-    const _t = Math.min(1, (performance.now() - _flyStartMs) / _flyDurMs);
-    const _ease = _t * _t * (3 - 2 * _t);
-    _camTmpB.lerpVectors(_flyStartOffset, _flyOffset, _ease);
-    camera.position.copy(_camTmpA).add(_camTmpB);
-    controls.target.copy(_camTmpA);
-    controls.update();
-    if (_t >= 1) isFlyingTo = false;
-  } else if (lockedObject) {
-    // Steady lock: translate the camera by however far the body moved this frame.
-    lockedObject.getWorldPosition(_camTmpA);
-    _camTmpB.copy(_camTmpA).sub(controls.target);
-    controls.target.copy(_camTmpA);
-    camera.position.add(_camTmpB);
-    controls.update();
   }
 
   // Use the lensing composer (gravitational-warp + photon-ring + halo +
