@@ -501,13 +501,18 @@ kind:"dwarf",texture:"pluto.png",tilt:122.5,spinY:0.0019,
 moons:[
   {name:"Charon",  size:0.0000405,dist:0.00131,speed:0.001896,color:0xb9b4ad,texture:"charon.png",
    info:`<b>Charon</b><br><br>Pluto's largest moon — about half Pluto's diameter, making the pair almost a double dwarf planet. The two are mutually tidally locked, always showing the same face to each other, and orbit a common point (barycenter) that lies in the space between them.<br>`},
-  {name:"Styx",    size:0.00000053,dist:0.00285,speed:0.000601,color:0x999999,irregular:true,texture:"asteroid.png",
+  // `spin` = self-rotation rate (rad per frame at 1×), real-life accurate: these four
+  // are chaotic rotators, NOT tidally locked. Calibrated like the planets (spin =
+  // 0.01212 / rotationPeriodDays) from the New Horizons periods (Showalter & Hamilton
+  // 2015): Styx 3.24 d, Nix 1.83 d, Kerberos 5.31 d, Hydra 0.43 d — so Hydra spins
+  // ~89× per orbit, Nix ~14×, Styx/Kerberos ~6×. Scales with the speed slider.
+  {name:"Styx",    size:0.00000053,dist:0.00285,speed:0.000601,color:0x999999,irregular:true,spin:0.003741,texture:"asteroid.png",
    info:`<b>Styx</b><br><br>A tiny, irregular moon of Pluto (~16 km across), discovered in 2012. It orbits beyond Charon in a near-circular path and tumbles chaotically.<br><br><i>Note: Pluto's small moons are too small and distant to have been imaged in detail — this 3D shape and surface are an illustrative, made-up stand-in, not the real appearance (as NASA's Eyes also notes).</i><br>`},
-  {name:"Nix",     size:0.00000167,dist:0.00326,speed:0.000487,color:0xb0a89c,irregular:true,texture:"asteroid.png",
+  {name:"Nix",     size:0.00000167,dist:0.00326,speed:0.000487,color:0xb0a89c,irregular:true,spin:0.006627,texture:"asteroid.png",
    info:`<b>Nix</b><br><br>A small, elongated moon of Pluto (~50 km), discovered in 2005. Like Pluto's other small moons it rotates chaotically rather than being tidally locked.<br><br><i>Note: Pluto's small moons are too small and distant to have been imaged in detail — this 3D shape and surface are an illustrative, made-up stand-in, not the real appearance (as NASA's Eyes also notes).</i><br>`},
-  {name:"Kerberos",size:0.00000060,dist:0.00386,speed:0.000376,color:0x8f8f8f,irregular:true,texture:"asteroid.png",
+  {name:"Kerberos",size:0.00000060,dist:0.00386,speed:0.000376,color:0x8f8f8f,irregular:true,spin:0.002283,texture:"asteroid.png",
    info:`<b>Kerberos</b><br><br>A small, dark, double-lobed moon of Pluto (~19 km), discovered in 2011 between the orbits of Nix and Hydra.<br><br><i>Note: Pluto's small moons are too small and distant to have been imaged in detail — this 3D shape and surface are an illustrative, made-up stand-in, not the real appearance (as NASA's Eyes also notes).</i><br>`},
-  {name:"Hydra",   size:0.00000167,dist:0.00433,speed:0.000317,color:0xb0a89c,irregular:true,texture:"asteroid.png",
+  {name:"Hydra",   size:0.00000167,dist:0.00433,speed:0.000317,color:0xb0a89c,irregular:true,spin:0.028219,texture:"asteroid.png",
    info:`<b>Hydra</b><br><br>Pluto's outermost known moon (~51 km), discovered in 2005. Its bright, water-ice surface tumbles unpredictably as it orbits.<br><br><i>Note: Pluto's small moons are too small and distant to have been imaged in detail — this 3D shape and surface are an illustrative, made-up stand-in, not the real appearance (as NASA's Eyes also notes).</i><br>`}
 ],
 info:`<b>Pluto</b><br><br>

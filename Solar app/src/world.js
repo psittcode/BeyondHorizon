@@ -1425,6 +1425,7 @@ if (plutoMesh && plutoMesh.userData.moons) {
       mo.mesh.geometry.dispose();
       mo.mesh.geometry = makeAsteroidGeometry(mn.size, 1013 * (idx + 1) + 7);
       mo.irregular = true;
+      mo.spin = mn.spin || 0.004;   // real self-rotation rate (rad/frame at 1×); see planets.js
       mo.mesh.rotation.set(Math.random() * 6.28, Math.random() * 6.28, Math.random() * 6.28);
     }
     scene.remove(mo.group);          // reparent into Pluto's tilted equatorial plane
@@ -4121,18 +4122,17 @@ function animate(){
       // Cap the per-frame orbital step (see moonOrbitStep) so these short-period moons don't
       // alias into a shake at extreme time-warp.
       m.group.rotation.y += moonOrbitStep(m.speed * speed, m.distance, deltaScale);
-      // Irregular moons tumble chaotically (Nix/Hydra really do). Cap the RATE (so it can't
-      // alias into a jittery flicker at extreme warp) but keep the step proportional to real
-      // time (× deltaScale) so it's SMOOTH at any frame rate — capping the step to a constant
-      // is what made it stutter. The rate cap stays GENTLE (~1.1°/frame at 60fps): these are
-      // elongated lumpy potatoes, so a fast spin swings the long axis toward/edge-on to the
-      // camera ~3×/sec — reading as flashing/"too close"/shaking when zoomed in at high warp
-      // (smooth spheres like Charon and the planets don't show this, as spin can't change
-      // their silhouette). The × deltaScale keeps it smooth/proportional at any frame rate.
+      // Irregular moons spin chaotically (real fact — they're NOT tidally locked). Use each
+      // moon's real self-rotation rate (m.spin, from planets.js) and scale it with the speed
+      // slider exactly like the planets do (× speed × deltaScale, uncapped), so faster time-
+      // warp = faster spin. No cap is needed: the shake/flash that used to appear here was the
+      // min-dot scaler sizing the moon off a stale pre-follow camera position (now fixed by
+      // running the camera-follow before applyMinDots), not the spin itself. The small x term
+      // keeps the tumble looking multi-axis (these moons tumble on a wandering axis).
       if (m.irregular) {
-        const tumble = Math.min(0.004 * speed, 0.02) * deltaScale;
-        m.mesh.rotation.y += tumble;
-        m.mesh.rotation.x += tumble * 0.65;
+        const spin = m.spin * speed * deltaScale;
+        m.mesh.rotation.y += spin;
+        m.mesh.rotation.x += spin * 0.3;
       }
     });
     // Mutual tidal lock: spin Pluto about the orbit-plane normal in lock-step with
