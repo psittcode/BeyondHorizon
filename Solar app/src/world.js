@@ -1417,7 +1417,7 @@ if (plutoMesh && plutoMesh.userData.moons) {
   plutoMesh.userData.moons.forEach((mn, idx) => {
     const mo = createMoon(mn.size, mn.dist, mn.speed, mn.color, mn.info,
                           mn.texture ? textureLoader.load(mn.texture) : null,
-                          Math.random() * Math.PI * 2);
+                          0);  // real phase is seeded from MOON_EPHEMERIS in resetSimulation()
     mo.mesh.userData.name = mn.name;
     // The tiny moons are irregular, bumpy asteroids — swap the sphere for a
     // procedural lumpy shape (Charon stays round). Give it a slow tumble.
@@ -2502,6 +2502,24 @@ const PLANET_EPHEMERIS = {
 };
 const J2000_MS = new Date('2000-01-01T12:00:00Z').getTime();
 
+// Pluto's moons — mean longitude L = (Ω+ω+M) at epoch 2000-01-01.5 (which equals
+// J2000_MS above) and mean motion n = 360/period (deg/day), from JPL PLU060 (Brozović &
+// Jacobson 2024, ssd.jpl.nasa.gov/sats/elem, Pluto-equator frame). resetSimulation() uses
+// these to seed each moon's orbital phase to its REAL position for the current date — like
+// the planets above — instead of a random start angle.
+// Caveat: the small moons' real inclinations are tiny (<0.5°) so we render them coplanar in
+// plutoTiltGroup, and that group's azimuth zero-point is an art-directed tilt (not the ICRF
+// node), so the whole fan carries one constant rotation offset. Net: the moons' positions
+// RELATIVE to each other and their evolution over time are real; absolute orientation vs the
+// real sky is approximate.
+const MOON_EPHEMERIS = {
+  Charon:   { L0: 304.1, n: 56.3645 },
+  Styx:     { L0: 320.6, n: 17.8571 },
+  Nix:      { L0:   9.6, n: 14.4869 },
+  Kerberos: { L0: 262.5, n: 11.1906 },
+  Hydra:    { L0: 228.6, n:  9.4241 },
+};
+
 function resetSimulation() {
   const now = new Date();
   simulationDate = now;
@@ -2519,6 +2537,19 @@ function resetSimulation() {
     const nu = nuFromMean(el.angle, el.e);
     orbitalToXYZ(el.dist, el.e, el.i, el.Om, el.w, nu, m.position);
   });
+
+  // Seed Pluto's moons to their real orbital phase for `now` (mean longitude L = L0 + n·days),
+  // replacing the random start angle. Each moon's group.rotation.y is its orbital angle in the
+  // tilted Pluto-equator plane; animate() advances it from here each frame. Charon's phase also
+  // drives Pluto's tidal-lock spin. See MOON_EPHEMERIS for the frame caveat.
+  if (typeof plutoMoons !== 'undefined' && plutoMoons.length) {
+    plutoMoons.forEach(m => {
+      const ep = MOON_EPHEMERIS[m.mesh.userData.name];
+      if (!ep) return;
+      const L = ep.L0 + ep.n * daysSinceJ2000;               // mean longitude now (deg)
+      m.group.rotation.y = (((L % 360) + 360) % 360) * (Math.PI / 180);
+    });
+  }
 
   // Sync Saturn's ring group to the new position
   const saturnMesh = meshes.find(m => m.userData.name === 'Saturn');
