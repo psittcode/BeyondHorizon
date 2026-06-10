@@ -59,6 +59,24 @@ let _lastDrawMs    = 0;   // timestamp of the last frame we actually rendered
 let _camDirtyUntil = 0;   // stay at full rate until this time — refreshed on every camera change
 controls.addEventListener('change', () => { _camDirtyUntil = performance.now() + 250; });
 
+// Diagnostic FPS meter (press F to toggle). Reports the ACTUAL rendered framerate over a
+// rolling 0.5s window plus the worst frame time in that window (so spikes show). NB: by
+// design the loop idles to ~10fps when the scene is static and ramps to 60 while you
+// interact — so the number to watch is what it reads WHILE you zoom/drag.
+let _fpsMeterOn = true;
+let _fpsFrames = 0, _fpsWinStart = performance.now(), _fpsWorstMs = 0;
+function fpsMeterTick(now, dtMs) {
+  if (!_fpsMeterOn) return;
+  _fpsFrames++;
+  if (dtMs > _fpsWorstMs) _fpsWorstMs = dtMs;
+  if (now - _fpsWinStart >= 500) {
+    const fps = _fpsFrames * 1000 / (now - _fpsWinStart);
+    const el = document.getElementById('fpsMeter');
+    if (el) el.textContent = `${fps.toFixed(0)} fps · ${_fpsWorstMs.toFixed(0)} ms peak`;
+    _fpsFrames = 0; _fpsWinStart = now; _fpsWorstMs = 0;
+  }
+}
+
 // Per-frame orbital step for a moon. `rate` is the angular speed (rad per 1/60 s); the
 // returned step is rate × deltaScale, i.e. proportional to REAL elapsed time, so the
 // motion stays SMOOTH at any (even uneven) frame rate. The rate is capped two ways before
@@ -3713,7 +3731,9 @@ function animate(){
   // high-refresh displays toward the 60fps cap). Idle keeps a tight 0.95 to throttle hard.
   const _frac = _active ? 0.75 : 0.95;
   if (_frameNow - _lastDrawMs < _interval * _frac) return;
+  const _dtDraw = _frameNow - _lastDrawMs;
   _lastDrawMs = _frameNow;
+  fpsMeterTick(_frameNow, _dtDraw);
 
   // Map-scale readout — runs for every view (rooms included) before the room
   // hands itself this frame below.
@@ -4623,6 +4643,12 @@ showBodiesList();
 window.addEventListener("keydown", e => {
   if (e.key === "Escape") {
     lockedObject = null;
+  }
+  if (e.key === "f" || e.key === "F") {
+    if (e.target && /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return;
+    _fpsMeterOn = !_fpsMeterOn;
+    const el = document.getElementById('fpsMeter');
+    if (el) el.style.display = _fpsMeterOn ? 'block' : 'none';
   }
 });
 

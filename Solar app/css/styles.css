@@ -470,3 +470,20 @@
       opacity: 0.85;
     }
   
+
+/* Diagnostic FPS meter (toggle with the F key). Fixed top-left, non-interactive. */
+#fpsMeter {
+  position: fixed;
+  top: 8px;
+  left: 8px;
+  z-index: 10000;
+  padding: 3px 8px;
+  font: 12px/1.2 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color: #8effa6;
+  background: rgba(0, 0, 0, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 4px;
+  pointer-events: none;
+  user-select: none;
+  white-space: nowrap;
+}
