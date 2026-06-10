@@ -3705,7 +3705,14 @@ function animate(){
     galacticViewActive || spaceshipViewActive ||   // these views animate continuously
     !!viewManager.active;                          // a standalone room is driving the frame
   const _interval = 1000 / (_active ? FPS_ACTIVE : FPS_IDLE);
-  if (_frameNow - _lastDrawMs < _interval * 0.95) return; // too soon — let the GPU idle
+  // "Too soon" skip-gate. The fraction must leave enough margin below a vsync that normal
+  // refresh jitter can't trip it: at 60fps the interval is 16.67ms, and the old 0.95 factor
+  // (15.83ms) sat <1ms under a vsync, so jitter randomly dropped real 60Hz frames to the next
+  // vsync (~33ms) — that's the zoom/pan stutter, even though each frame is <2ms of work. Use a
+  // generous 0.75 when ACTIVE (~12.5ms → ~4ms margin on 60Hz, never skips; still halves very-
+  // high-refresh displays toward the 60fps cap). Idle keeps a tight 0.95 to throttle hard.
+  const _frac = _active ? 0.75 : 0.95;
+  if (_frameNow - _lastDrawMs < _interval * _frac) return;
   _lastDrawMs = _frameNow;
 
   // Map-scale readout — runs for every view (rooms included) before the room
