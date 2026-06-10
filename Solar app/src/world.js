@@ -57,7 +57,17 @@ const FPS_ACTIVE = 60;    // cap during interaction / visible motion
 const FPS_IDLE   = 10;    // ~static scene; 10fps keeps the sim clock accurate against the 100ms delta cap
 let _lastDrawMs    = 0;   // timestamp of the last frame we actually rendered
 let _camDirtyUntil = 0;   // stay at full rate until this time — refreshed on every camera change
-controls.addEventListener('change', () => { _camDirtyUntil = performance.now() + 250; });
+// How long to hold full 60fps after the last interaction before idling down. Generous
+// (2s) so brief pauses while zooming/looking around a body don't snap to the 10fps idle
+// floor (which read as "low fps when zoomed into Pluto"); it still settles when you walk
+// away. Marked dirty both by OrbitControls' 'change' AND directly by raw wheel/pointer
+// input — relying on 'change' alone could miss frames and leave a zoom rendering at 10fps.
+const CAM_DIRTY_MS = 2000;
+const markCameraActive = () => { _camDirtyUntil = performance.now() + CAM_DIRTY_MS; };
+controls.addEventListener('change', markCameraActive);
+renderer.domElement.addEventListener('wheel',       markCameraActive, { passive: true });
+renderer.domElement.addEventListener('pointerdown', markCameraActive);
+renderer.domElement.addEventListener('pointermove', e => { if (e.buttons) markCameraActive(); });
 
 // Diagnostic FPS meter (press F to toggle). Reports the ACTUAL rendered framerate over a
 // rolling 0.5s window plus the worst frame time in that window (so spikes show). NB: by
@@ -4654,7 +4664,7 @@ window.addEventListener("keydown", e => {
 
 // Resize
 window.addEventListener("resize", ()=>{
-  _camDirtyUntil = performance.now() + 250; // force full-rate redraw through the resize
+  markCameraActive(); // force full-rate redraw through the resize
   camera.aspect = innerWidth/innerHeight;
   camera.updateProjectionMatrix();
   if (viewManager.active && viewManager.active.camera) {
