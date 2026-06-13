@@ -874,6 +874,20 @@ tempCompareEarth.position.set(SUN_TRUE_RADIUS * 1.05, 0, 0);
 tempCompareEarth.visible = false; // off by default; toggled from the Sun's info panel
 scene.add(tempCompareEarth);
 
+// Same idea for Jupiter — the largest planet (~10x Earth radius, but still ~1/10
+// the Sun's radius). Parked just off the Sun's limb at true scale so the size gap
+// reads by eye; toggled from the Sun's info panel, off by default.
+const TEMP_JUPITER_TRUE_RADIUS = 69911 / 14959787.07;
+const tempCompareJupiter = new THREE.Mesh(
+  new THREE.SphereGeometry(TEMP_JUPITER_TRUE_RADIUS, 48, 48),
+  new THREE.MeshBasicMaterial({ map: jupiterTexture })
+);
+// Offset slightly in z from the comparison Earth so, if both are toggled on, the
+// tiny Earth sits beside Jupiter rather than buried inside it.
+tempCompareJupiter.position.set(SUN_TRUE_RADIUS * 1.05, 0, TEMP_JUPITER_TRUE_RADIUS * 2.5);
+tempCompareJupiter.visible = false;
+scene.add(tempCompareJupiter);
+
 
 // SUN GLOW — light-orb sprite (matches the galactic-core glow style)
 // Camera-facing canvas sprite with a soft radial gradient, so the Sun reads
@@ -2016,13 +2030,22 @@ const mouse = new THREE.Vector2();
 // alongside the tempCompareEarth block.
 function refreshSunPanel() {
   const pc = document.getElementById("panelContent");
-  const label = tempCompareEarth.visible ? "Hide Earth (size comparison)" : "Show Earth (size comparison)";
-  const btnHtml = `<button id="sunCompareEarthBtn" style="background:rgba(255,255,255,0.15);color:white;border:1px solid rgba(255,255,255,0.4);padding:6px 12px;cursor:pointer;border-radius:4px;font-size:13px;margin-bottom:10px;width:100%;display:block">${label}</button>`;
+  const btnStyle = "background:rgba(255,255,255,0.15);color:white;border:1px solid rgba(255,255,255,0.4);padding:6px 12px;cursor:pointer;border-radius:4px;font-size:13px;margin-bottom:10px;width:100%;display:block";
+  const earthLabel = tempCompareEarth.visible ? "Hide Earth (size comparison)" : "Show Earth (size comparison)";
+  const jupiterLabel = tempCompareJupiter.visible ? "Hide Jupiter (size comparison)" : "Show Jupiter (size comparison)";
+  const btnHtml =
+    `<button id="sunCompareEarthBtn" style="${btnStyle}">${earthLabel}</button>` +
+    `<button id="sunCompareJupiterBtn" style="${btnStyle}">${jupiterLabel}</button>`;
   const splitAt = SUN_INFO.indexOf('<br><br>') + '<br><br>'.length;
   pc.innerHTML = SUN_INFO.substring(0, splitAt) + btnHtml + SUN_INFO.substring(splitAt);
   document.getElementById("sunCompareEarthBtn").addEventListener("click", (e) => {
     e.stopPropagation();
     tempCompareEarth.visible = !tempCompareEarth.visible;
+    refreshSunPanel(); // update the button label
+  });
+  document.getElementById("sunCompareJupiterBtn").addEventListener("click", (e) => {
+    e.stopPropagation();
+    tempCompareJupiter.visible = !tempCompareJupiter.visible;
     refreshSunPanel(); // update the button label
   });
 }
