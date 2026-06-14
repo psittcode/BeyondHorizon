@@ -1865,9 +1865,11 @@ if (uranusMesh && uranusMesh.userData.moons) {
     let parent = uranusMoonGroup;
     if (mn.incl) {
       const tilt = new THREE.Object3D();
-      // Default Euler order XYZ applies Z first (the incl tilt about the Z axis), then Y —
-      // so `node` swings the already-tilted plane around the vertical, choosing the
-      // *direction* the orbit leans (its ascending node) without changing the tilt amount.
+      // Default Euler order XYZ applies Z first (the incl tilt about the Z axis), then Y,
+      // then X. `node` (Y) swings the already-tilted plane around the vertical, choosing the
+      // *direction* the orbit leans (its ascending node); `xtilt` (X) adds an extra tilt
+      // about the X axis. All three combine into one orientation for Miranda's orbit plane.
+      tilt.rotation.x = (mn.xtilt || 0) * (Math.PI / 180);  // tilt about X axis (deg) — adjust via data
       tilt.rotation.y = (mn.node || 0) * (Math.PI / 180);   // tilt direction (deg) — adjust via data
       tilt.rotation.z = mn.incl * (Math.PI / 180);          // tilt amount (deg)
       uranusMoonGroup.add(tilt);
