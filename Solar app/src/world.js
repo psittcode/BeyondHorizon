@@ -1851,7 +1851,6 @@ const uranusMoonGroup = new THREE.Object3D();
 scene.add(uranusMoonGroup);
 const uranusMoons = [];
 const uranusMoonOrbitLines = [];
-let mirandaTiltObj = null;   // TEMP DEV: captured tilt container for the Miranda orbit tuner panel
 if (uranusMesh && uranusMesh.userData.moons) {
   uranusMesh.userData.moons.forEach(mn => {
     const mo = createMoon(mn.size, mn.dist, mn.speed, mn.color, mn.info,
@@ -1865,17 +1864,14 @@ if (uranusMesh && uranusMesh.userData.moons) {
     // orbit (and ring) sits at an angle to the others.
     let parent = uranusMoonGroup;
     if (mn.incl) {
+      // Miranda is the only Uranus moon with a real inclination (≈4.34° to Uranus's
+      // equator). `node` (optional) rotates which way that tilt points — an arbitrary
+      // reference-frame choice that doesn't change the inclination, default 0.
       const tilt = new THREE.Object3D();
-      // Default Euler order XYZ applies Z first (the incl tilt about the Z axis), then Y,
-      // then X. `node` (Y) swings the already-tilted plane around the vertical, choosing the
-      // *direction* the orbit leans (its ascending node); `xtilt` (X) adds an extra tilt
-      // about the X axis. All three combine into one orientation for Miranda's orbit plane.
-      tilt.rotation.x = (mn.xtilt || 0) * (Math.PI / 180);  // tilt about X axis (deg) — adjust via data
-      tilt.rotation.y = (mn.node || 0) * (Math.PI / 180);   // tilt direction (deg) — adjust via data
-      tilt.rotation.z = mn.incl * (Math.PI / 180);          // tilt amount (deg)
+      tilt.rotation.y = (mn.node || 0) * (Math.PI / 180);   // node: tilt direction (deg, optional)
+      tilt.rotation.z = mn.incl * (Math.PI / 180);          // inclination to Uranus's equator (deg)
       uranusMoonGroup.add(tilt);
       parent = tilt;
-      if (mn.name === "Miranda") mirandaTiltObj = tilt;   // TEMP DEV: for the tuner panel
     }
     parent.add(mo.group);
     uranusMoons.push(mo);
@@ -1895,55 +1891,6 @@ if (uranusMesh && uranusMesh.userData.moons) {
     uranusMoonOrbitLines.push(line);
   });
 }
-
-// ===== TEMP DEV: Miranda orbit-tilt tuner panel wiring — REMOVE LATER =====
-// Live-drives mirandaTiltObj's X/Y/Z rotation from the sliders in index.html, and the
-// Save button downloads the three degree values as miranda-tilt.json (to Downloads) so
-// they can be baked back into planets.js (xtilt / node / incl).
-(function wireMirandaTuner() {
-  const panel = document.getElementById("mirandaTuner");
-  if (!panel || !mirandaTiltObj) { if (panel) panel.style.display = "none"; return; }
-  const sx = document.getElementById("mtX"), sy = document.getElementById("mtY"), sz = document.getElementById("mtZ");
-  const vx = document.getElementById("mtXVal"), vy = document.getElementById("mtYVal"), vz = document.getElementById("mtZVal");
-  const status = document.getElementById("mtStatus");
-  const R2D = 180 / Math.PI, D2R = Math.PI / 180;
-
-  // Seed sliders from the current values baked in planets.js.
-  const initX = +(mirandaTiltObj.rotation.x * R2D).toFixed(1);
-  const initY = +(mirandaTiltObj.rotation.y * R2D).toFixed(1);
-  const initZ = +(mirandaTiltObj.rotation.z * R2D).toFixed(1);
-  sx.value = initX; sy.value = initY; sz.value = initZ;
-
-  function apply() {
-    const x = parseFloat(sx.value), y = parseFloat(sy.value), z = parseFloat(sz.value);
-    mirandaTiltObj.rotation.x = x * D2R;
-    mirandaTiltObj.rotation.y = y * D2R;
-    mirandaTiltObj.rotation.z = z * D2R;
-    vx.textContent = x + "°"; vy.textContent = y + "°"; vz.textContent = z + "°";
-  }
-  [sx, sy, sz].forEach(s => s.addEventListener("input", apply));
-  apply();
-
-  document.getElementById("mtReset").addEventListener("click", () => {
-    sx.value = initX; sy.value = initY; sz.value = initZ; apply();
-    status.textContent = "Reset to saved values.";
-  });
-
-  document.getElementById("mtSave").addEventListener("click", () => {
-    const data = {
-      xtilt: parseFloat(sx.value),   // → tilt.rotation.x
-      node:  parseFloat(sy.value),   // → tilt.rotation.y
-      incl:  parseFloat(sz.value),   // → tilt.rotation.z
-    };
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = "miranda-tilt.json";
-    document.body.appendChild(a); a.click(); a.remove();
-    status.textContent = `Saved miranda-tilt.json → xtilt:${data.xtilt} node:${data.node} incl:${data.incl}`;
-  });
-})();
-// ===== END TEMP DEV =====
 
 // 👇 ADD IT HERE (outside the loop)
 meshes.forEach(m => {

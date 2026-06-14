@@ -440,39 +440,5 @@ Speed<br>
 
 <script type="module" src="./src/main.js"></script>
 
-<!-- ===== TEMP DEV PANEL: Miranda orbit tilt tuner — REMOVE LATER ===== -->
-<div id="mirandaTuner" style="
-  position:fixed; top:80px; right:16px; z-index:9999;
-  background:rgba(10,12,20,0.92); border:1px solid #6cf; border-radius:8px;
-  padding:12px 14px; font-family:monospace; font-size:12px; color:#cde;
-  width:230px; box-shadow:0 4px 18px rgba(0,0,0,0.5);">
-  <div style="font-weight:bold; color:#6cf; margin-bottom:8px;">🛰️ Miranda Orbit Tilt (DEV)</div>
-
-  <div style="margin-bottom:8px;">
-    <div style="display:flex; justify-content:space-between;">
-      <span>X tilt (xtilt)</span><b id="mtXVal">0°</b></div>
-    <input id="mtX" type="range" min="-180" max="180" step="0.5" value="0" style="width:100%;">
-  </div>
-  <div style="margin-bottom:8px;">
-    <div style="display:flex; justify-content:space-between;">
-      <span>Y dir (node)</span><b id="mtYVal">0°</b></div>
-    <input id="mtY" type="range" min="-180" max="180" step="0.5" value="0" style="width:100%;">
-  </div>
-  <div style="margin-bottom:10px;">
-    <div style="display:flex; justify-content:space-between;">
-      <span>Z amount (incl)</span><b id="mtZVal">0°</b></div>
-    <input id="mtZ" type="range" min="-180" max="180" step="0.5" value="0" style="width:100%;">
-  </div>
-
-  <div style="display:flex; gap:6px;">
-    <button id="mtSave" style="flex:1; padding:6px; background:#2a7; border:none;
-      border-radius:5px; color:#fff; font-weight:bold; cursor:pointer;">Save</button>
-    <button id="mtReset" style="flex:0 0 auto; padding:6px 10px; background:#555; border:none;
-      border-radius:5px; color:#fff; cursor:pointer;">Reset</button>
-  </div>
-  <div id="mtStatus" style="margin-top:8px; font-size:11px; color:#8f9; min-height:14px;"></div>
-</div>
-<!-- ===== END TEMP DEV PANEL ===== -->
-
 </body>
 </html>
