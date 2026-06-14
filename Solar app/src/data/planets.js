@@ -377,7 +377,7 @@ It has been known since ancient times and is visible to the naked eye, appearing
 name:"Uranus",
 dist:191.91,size:0.0016953,color:0x66ccff,speed:0.000000395,e:0.0457,i:45.0,Om:74.00,w:96.99,period:84.02,
 moons:[
-  {name:"Miranda", size:0.00001576,dist:0.008649,speed:0.008577,color:0x9a9590,incl:6.5,
+  {name:"Miranda", size:0.00001576,dist:0.008649,speed:0.008577,color:0x9a9590,incl:3.5,node:0,
    info:`<b>Miranda</b><br><br>The smallest and innermost of Uranus's five major moons (~470 km across). Despite its size it has one of the most extreme, jumbled surfaces in the Solar System — giant fault canyons up to 20 km deep and patchwork "coronae", likely from a violent past or tidal heating.<br>`},
   {name:"Ariel",   size:0.00003870,dist:0.012761,speed:0.004810,color:0xb4aea6,
    info:`<b>Ariel</b><br><br>The brightest of Uranus's moons (~1,160 km across), with a relatively young surface criss-crossed by extensive rift valleys and signs of past resurfacing — hinting at geological activity in its history.<br>`},
