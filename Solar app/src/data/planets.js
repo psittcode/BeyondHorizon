@@ -377,15 +377,15 @@ It has been known since ancient times and is visible to the naked eye, appearing
 name:"Uranus",
 dist:191.91,size:0.0016953,color:0x66ccff,speed:0.000000395,e:0.0457,i:0.77,Om:74.00,w:96.99,period:84.02,
 moons:[
-  {name:"Miranda", size:0.00001576,dist:0.008649,speed:0.008577,color:0x9a9590,incl:4.34,
+  {name:"Miranda", size:0.00001576,dist:0.008649,speed:0.008577,color:0x9a9590,incl:4.34,texture:"Miranda.png",
    info:`<b>Miranda</b><br><br>The smallest and innermost of Uranus's five major moons (~470 km across). Despite its size it has one of the most extreme, jumbled surfaces in the Solar System — giant fault canyons up to 20 km deep and patchwork "coronae", likely from a violent past or tidal heating.<br>`},
-  {name:"Ariel",   size:0.00003870,dist:0.012761,speed:0.004810,color:0xb4aea6,
+  {name:"Ariel",   size:0.00003870,dist:0.012761,speed:0.004810,color:0xb4aea6,texture:"Ariel.png",
    info:`<b>Ariel</b><br><br>The brightest of Uranus's moons (~1,160 km across), with a relatively young surface criss-crossed by extensive rift valleys and signs of past resurfacing — hinting at geological activity in its history.<br>`},
-  {name:"Umbriel", size:0.00003908,dist:0.017781,speed:0.002925,color:0x7f7a75,
+  {name:"Umbriel", size:0.00003908,dist:0.017781,speed:0.002925,color:0x7f7a75,texture:"Umbriel.png",
    info:`<b>Umbriel</b><br><br>The darkest of Uranus's major moons (~1,170 km across), with an ancient, heavily cratered surface. Its most striking feature is "Wunda", a bright ring on the crater floor of unknown origin.<br>`},
-  {name:"Titania", size:0.00005270,dist:0.029139,speed:0.001392,color:0xbcb4aa,
+  {name:"Titania", size:0.00005270,dist:0.029139,speed:0.001392,color:0xbcb4aa,texture:"Titania.png",
    info:`<b>Titania</b><br><br>Uranus's largest moon (~1,580 km across). Its surface shows enormous fault canyons (Messina Chasmata stretches ~1,500 km) formed as a subsurface ocean may have frozen and expanded early in its history.<br>`},
-  {name:"Oberon",  size:0.00005090,dist:0.039005,speed:0.000900,color:0xa89e94,
+  {name:"Oberon",  size:0.00005090,dist:0.039005,speed:0.000900,color:0xa89e94,texture:"Oberon.png",
    info:`<b>Oberon</b><br><br>The outermost of Uranus's major moons (~1,520 km across), with an old, cratered surface and dark material on several crater floors. Named, like the others, after characters from Shakespeare and Pope.<br>`}
 ],
 info:`<b>Uranus</b><br><br>

@@ -1846,7 +1846,7 @@ uranusTiltGroup.add(uranusRing);
 // plane, so they ride uranusMoonGroup, which shares the ring-plane orientation (set in
 // resetSimulation). That group is NOT min-dot scaled (unlike the ring), so the moons
 // stay at their real orbital distances; only each moon mesh is min-dot-scaled for
-// visibility. Untextured for now — drop a `texture` into each moon's data entry later.
+// visibility. Each moon is textured via the `texture` field in its data entry.
 const uranusMoonGroup = new THREE.Object3D();
 scene.add(uranusMoonGroup);
 const uranusMoons = [];
