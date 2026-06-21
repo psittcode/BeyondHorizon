@@ -962,7 +962,7 @@ data.forEach(p=>{
       uSaturnCenter:   { value: new THREE.Vector3() },
       uRingNormal:     { value: new THREE.Vector3() },   // set after saturnTiltGroup exists
       uSaturnRadius:   { value: 1 },
-      uShadowStrength: { value: 0.82 }
+      uShadowStrength: { value: 0.70 }
     };
     material.onBeforeCompile = (shader) => {
       Object.assign(shader.uniforms, saturnRingShadow);
@@ -993,7 +993,10 @@ data.forEach(p=>{
           '      float rr = length(q) / uSaturnRadius;           // radius in Saturn-radii\n' +
           '      float t = rr - 1.5;                             // ring spans 1.5R (t=0) → 2.5R (t=1)\n' +
           '      if (t >= 0.0 && t <= 1.0) {\n' +
-          '        float occ = texture2D(uRingMap, vec2(t, 0.5)).a;   // ring opacity at that radius\n' +
+          '        // Push opacity through a contrast curve: only the dense B/A rings cast a\n' +
+          '        // strong shadow, while the faint C ring and the Cassini Division read as\n' +
+          '        // clean bright breaks — a crisp, structured shadow, not a broad smudge.\n' +
+          '        float occ = smoothstep(0.12, 0.9, texture2D(uRingMap, vec2(t, 0.5)).a);\n' +
           '        diffuseColor.rgb *= (1.0 - occ * uShadowStrength);\n' +
           '      }\n' +
           '    }\n' +
