@@ -2433,6 +2433,70 @@ let enceladusPlume = null;
   tMesh.add(shell);
 })();
 
+// 🟡 Venus's atmosphere. Venus is wrapped in a thick, opaque, highly reflective sulphuric-acid
+// cloud deck — from space it's a featureless pale-yellow ball with a bright hazy limb. Same
+// fresnel rim shell as Titan, but pale cream-yellow and a touch broader/softer (Venus's
+// atmosphere is much deeper and brighter), sun-masked to the lit limb only.
+(function buildVenusAtmosphere() {
+  const venusMesh = meshes.find(m => m.userData.name === "Venus");
+  if (!venusMesh) return;
+  const R = venusMesh.userData.size;
+  const geo = new THREE.SphereGeometry(R * 1.12, 64, 48);   // a bit broader than Titan's rim
+  const mat = new THREE.ShaderMaterial({
+    transparent: true, depthWrite: false, side: THREE.BackSide, blending: THREE.AdditiveBlending,
+    uniforms: {
+      uColor:    { value: new THREE.Color('#e8e0bf') },   // pale cream-yellow cloud haze
+      uCoef:     { value: 0.62 },
+      uPower:    { value: 7.0 },                           // softer, broader than Titan's tight rim
+      uStrength: { value: 1.25 }
+    },
+    vertexShader: `
+      varying vec3 vNormal;
+      varying vec3 vView;
+      varying vec3 vWorldNormal;
+      varying vec3 vWorldPos;
+      #include <common>
+      #include <logdepthbuf_pars_vertex>
+      void main() {
+        vNormal = normalize(normalMatrix * normal);
+        vWorldNormal = normalize(mat3(modelMatrix) * normal);
+        vWorldPos = (modelMatrix * vec4(position, 1.0)).xyz;
+        vec4 mv = modelViewMatrix * vec4(position, 1.0);
+        vView = normalize(-mv.xyz);
+        gl_Position = projectionMatrix * mv;
+        #include <logdepthbuf_vertex>
+      }
+    `,
+    fragmentShader: `
+      uniform vec3 uColor;
+      uniform float uCoef;
+      uniform float uPower;
+      uniform float uStrength;
+      varying vec3 vNormal;
+      varying vec3 vView;
+      varying vec3 vWorldNormal;
+      varying vec3 vWorldPos;
+      #include <common>
+      #include <logdepthbuf_pars_fragment>
+      void main() {
+        #include <logdepthbuf_fragment>
+        float rim = pow(max(0.0, uCoef - dot(vNormal, vView)), uPower);
+        // Reflect the BackSide (far) normal to the near hemisphere, then mask by the Sun (at
+        // the world origin) so only the sunlit limb glows — see the Titan atmosphere for why.
+        vec3 N = normalize(vWorldNormal);
+        vec3 V = normalize(cameraPosition - vWorldPos);
+        vec3 nearN = normalize(N - 2.0 * dot(N, V) * V);
+        float sunMask = smoothstep(0.0, 0.40, dot(nearN, normalize(-vWorldPos)));
+        gl_FragColor = vec4(uColor, rim * uStrength * sunMask);
+      }
+    `
+  });
+  const shell = new THREE.Mesh(geo, mat);
+  shell.frustumCulled = false;
+  shell.renderOrder = 3;
+  venusMesh.add(shell);
+})();
+
 // ☄️ Asteroid belt + Kuiper belt — faint particle bands in the ecliptic (XZ). True-scale
 // asteroids are far sub-pixel, so each is drawn as a fixed-size point (sizeAttenuation off)
 // → the swarm reads as a dotted band at any zoom. Distributed in an annulus with a soft
