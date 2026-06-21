@@ -1977,6 +1977,19 @@ const _uranusSpinAxis = new THREE.Vector3(0, 1, 0);
 const _uranusSpinQ = new THREE.Quaternion();
 let uranusSpinAngle = 0;
 
+// Uranus's spin axis is FIXED in space (~97.77° obliquity — it lies almost in its orbital
+// plane), pointing at a fixed sky direction; it does NOT track the Sun. Orient the ring /
+// equatorial plane to that fixed normal ONCE here. As Uranus moves along its 84-yr orbit the
+// rings therefore appear open or edge-on to us depending on the geometry — exactly like the
+// real planet — instead of always presenting face-on. URANUS_NODE_LON is the ecliptic
+// longitude the north pole leans toward (tuned to match NASA's Eyes at the current date).
+const URANUS_OBLIQUITY = 97.77 * Math.PI / 180;
+const URANUS_NODE_LON  = 167 * Math.PI / 180;
+const uranusFixedNormal = new THREE.Vector3(0, 1, 0).applyAxisAngle(
+  new THREE.Vector3(Math.cos(URANUS_NODE_LON), 0, Math.sin(URANUS_NODE_LON)), URANUS_OBLIQUITY).normalize();
+uranusTiltGroup.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), uranusFixedNormal);
+_uranusSpinTilt.copy(uranusTiltGroup.quaternion);   // Uranus spins about this same fixed ring-plane axis
+
 const URANUS_RING_OUTER = 4.0;   // geometry outer edge, in Uranus radii (reaches the Mu ring)
 const uranusRingUniforms = { outerMul: { value: URANUS_RING_OUTER } };
 const uranusRingGeometry = new THREE.RingGeometry(
@@ -3093,18 +3106,11 @@ function resetSimulation() {
     neptuneTiltGroup.position.copy(neptuneMesh.position);
     neptuneRingUniforms.neptunePos.value.copy(neptuneMesh.position);
   }
-  // Sync Uranus's ring group + orient its plane along the Uranus→Sun radial, so the
-  // rings read as a face-on "shield" when the camera faces the Sun and as a near-
-  // vertical sliver from the side — tilted slightly back — matching NASA's Eyes. The
-  // moon orbits (added later) parent to this same group, so they share the ring plane.
+  // Sync Uranus's ring group to its position. Orientation is FIXED in inertial space (set at
+  // construction — Uranus's pole points at a fixed sky direction, not the Sun), so we only
+  // copy the position here and keep the moon group aligned to the same fixed plane.
   if (uranusMesh) {
     uranusTiltGroup.position.copy(uranusMesh.position);
-    const radial = uranusMesh.position.clone().normalize();                 // Uranus → away from Sun
-    const tiltAxis = new THREE.Vector3(0, 1, 0).cross(radial).normalize();  // horizontal, ⟂ to radial
-    const ringNormal = radial.clone().applyAxisAngle(tiltAxis, 12 * Math.PI / 180); // slight back-tilt
-    uranusTiltGroup.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), ringNormal);
-    _uranusSpinTilt.copy(uranusTiltGroup.quaternion);   // Uranus spins about this same ring-plane axis
-    // Moons share the ring plane.
     if (typeof uranusMoonGroup !== 'undefined' && uranusMoonGroup) {
       uranusMoonGroup.position.copy(uranusMesh.position);
       uranusMoonGroup.quaternion.copy(uranusTiltGroup.quaternion);
