@@ -310,6 +310,27 @@ Jupiter remains a key target for understanding gas giant formation and early Sol
 name:"Saturn",
 dist:95.83,size:0.0038925,color:0xffddaa,speed:0.000001127,e:0.0565,i:2.49,Om:113.66,w:339.39,period:29.45,
 ellipsoid:[1.035,0.934,1.035], // oblate — equator bulges, poles flatten (flattening ~0.098, the most of any planet)
+// 🌙 Saturn's seven major moons — Mimas, Enceladus, Tethys, Dione, Rhea, Titan, Iapetus —
+// at their true semi-major axes (1 unit = 14.96M km), true mean radii, and speeds scaled
+// by 1/period (K≈0.012119, the same constant the other systems use). The inner six orbit
+// essentially in Saturn's equatorial/ring plane; only the bodies with a non-trivial
+// inclination to that plane carry an `incl` (Mimas 1.57°, Tethys 1.09°, Iapetus 15.47°).
+moons:[
+  {name:"Mimas", size:0.00001325,dist:0.012402,speed:0.012865,color:0xcfcfcf,incl:1.574,texture:"Mimas.png",
+   info:`<b>Mimas</b><br><br>The innermost and smallest of Saturn's major moons (~396 km across), orbiting in just 0.94 days. It is dominated by the 130-km impact crater Herschel, whose central peak gives Mimas its famous "Death Star" profile. Despite its frozen, heavily cratered surface, gravity data hint at a subsurface ocean.<br>`},
+  {name:"Enceladus", size:0.00001685,dist:0.015906,speed:0.008846,color:0xffffff,texture:"Enceladus.png",
+   info:`<b>Enceladus</b><br><br>A brilliant ice world (~504 km across) and the most reflective body in the Solar System (~99% albedo). Geysers at its south pole jet water vapour and ice from a global subsurface ocean into space — feeding Saturn's faint E ring — making Enceladus a leading candidate in the search for life.<br>`},
+  {name:"Tethys", size:0.00003550,dist:0.019694,speed:0.006419,color:0xdedede,incl:1.091,texture:"Tethys.png",
+   info:`<b>Tethys</b><br><br>An icy moon (~1,062 km across) made almost entirely of water ice, so light it would float on water. It bears the enormous Ithaca Chasma canyon, stretching most of the way around the moon, and the giant Odysseus impact basin (~400 km wide).<br>`},
+  {name:"Dione", size:0.00003753,dist:0.025227,speed:0.004428,color:0xd0d0cf,texture:"Dione.png",
+   info:`<b>Dione</b><br><br>A dense, icy moon (~1,123 km across) whose trailing hemisphere is laced with bright "wispy terrain" — networks of tall ice cliffs formed by tectonic fracturing. It shares its orbit with two small Trojan moons, Helene and Polydeuces.<br>`},
+  {name:"Rhea", size:0.00005106,dist:0.035235,speed:0.002682,color:0xcccccc,texture:"Rhea.png",
+   info:`<b>Rhea</b><br><br>Saturn's second-largest moon (~1,527 km across), an ancient, heavily cratered ball of ice and rock. It has a tenuous oxygen-and-carbon-dioxide exosphere and was once suspected of hosting its own faint ring system.<br>`},
+  {name:"Titan", size:0.00017211,dist:0.081676,speed:0.000760,color:0xe3a857,incl:0.35,texture:"Titan.png",
+   info:`<b>Titan</b><br><br>Saturn's largest moon (~5,150 km across) and the second-largest in the Solar System — bigger than the planet Mercury. It is the only moon with a thick atmosphere (mostly nitrogen, denser than Earth's at the surface) and the only other world known to have stable surface liquid: lakes and rivers of methane and ethane. ESA's Huygens probe landed here in 2005.<br>`},
+  {name:"Iapetus", size:0.00004910,dist:0.238023,speed:0.000153,color:0x9a8b78,incl:15.47,node:40,texture:"Iapetus.png",
+   info:`<b>Iapetus</b><br><br>The outermost major moon (~1,469 km across), orbiting far out on a strongly inclined path (~15.5° to Saturn's equator). It is two-toned — a coal-black leading hemisphere (Cassini Regio) and a bright, icy trailing one — and circled by a towering equatorial ridge up to 20 km high that gives it a walnut shape.<br>`}
+],
 info:`
 <b>Saturn</b><br><br>
 

@@ -1892,6 +1892,56 @@ if (uranusMesh && uranusMesh.userData.moons) {
   });
 }
 
+// 🌙 Saturn's 7 major moons — Mimas, Enceladus, Tethys, Dione, Rhea, Titan, Iapetus — at
+// their true semi-major axes (true scale). They orbit in Saturn's equatorial plane = the
+// ring plane, so saturnMoonGroup carries the same fixed 26.7° tilt as saturnTiltGroup
+// (Saturn's axial tilt). That group is NOT min-dot scaled (unlike the ring), so the moons
+// stay at their real orbital distances; only each moon mesh is min-dot-scaled for
+// visibility. Iapetus alone has a strongly inclined orbit (~15.5°), so like Miranda at
+// Uranus it gets a small tilt sub-container. Each moon is textured via its data `texture`.
+const saturnMoonGroup = new THREE.Object3D();
+saturnMoonGroup.rotation.z = 26.7 * (Math.PI / 180);   // share Saturn's equatorial/ring plane
+scene.add(saturnMoonGroup);
+const saturnMoons = [];
+const saturnMoonOrbitLines = [];
+if (saturn && saturn.userData.moons) {
+  saturn.userData.moons.forEach(mn => {
+    const mo = createMoon(mn.size, mn.dist, mn.speed, mn.color, mn.info,
+                          mn.texture ? textureLoader.load(mn.texture) : null,
+                          Math.random() * Math.PI * 2);
+    mo.mesh.userData.name = mn.name;
+    scene.remove(mo.group);        // createMoon parented it to the scene — move it into the ring plane
+
+    // Inner six moons sit in the ring plane (parent = saturnMoonGroup). A moon with a real
+    // inclination (Iapetus, and minor tilts for Mimas/Tethys) gets a tilt sub-container so
+    // its orbit (and the orbit ring) sits at an angle to the equatorial plane.
+    let parent = saturnMoonGroup;
+    if (mn.incl) {
+      const tilt = new THREE.Object3D();
+      tilt.rotation.y = (mn.node || 0) * (Math.PI / 180);   // node: tilt direction (deg, optional)
+      tilt.rotation.z = mn.incl * (Math.PI / 180);          // inclination to Saturn's equator (deg)
+      saturnMoonGroup.add(tilt);
+      parent = tilt;
+    }
+    parent.add(mo.group);
+    saturnMoons.push(mo);
+
+    const pts = [];
+    for (let i = 0; i <= 128; i++) {
+      const a = (i / 128) * Math.PI * 2;
+      pts.push(new THREE.Vector3(Math.cos(a) * mn.dist, 0, Math.sin(a) * mn.dist));
+    }
+    const line = new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints(pts),
+      new THREE.LineBasicMaterial({ color: ORBIT_COLORS.Saturn, transparent: true, opacity: 0.3 })
+    );
+    line.userData.ownerMesh = saturn;
+    parent.add(line);              // orbit ring rides the same (possibly inclined) plane as the moon
+    orbitLines.push(line);
+    saturnMoonOrbitLines.push(line);
+  });
+}
+
 // 👇 ADD IT HERE (outside the loop)
 meshes.forEach(m => {
   m.castShadow = true;
@@ -1975,6 +2025,7 @@ function applyMinDots() {
   plutoMoons.forEach(pm => minDotScale(pm.mesh, pm.mesh.userData.trueRadius));
   neptuneMoons.forEach(nm => minDotScale(nm.mesh, nm.mesh.userData.trueRadius));
   uranusMoons.forEach(um => minDotScale(um.mesh, um.mesh.userData.trueRadius));
+  saturnMoons.forEach(sm => minDotScale(sm.mesh, sm.mesh.userData.trueRadius));
   // Saturn's rings: match the body's apparent size and keep the shadow term correct.
   const saturnS = saturn.scale.x; // set by the meshes loop above
   saturnTiltGroup.scale.setScalar(saturnS);
@@ -2418,6 +2469,15 @@ window.addEventListener("click", e => {
     const uHits = raycaster.intersectObjects(uranusMoons.map(um => um.mesh), false);
     uranusMesh.visible = uranusWasVisible;
     if (uHits.length > 0) { flyToObject(uHits[0].object); return; }
+  }
+
+  // Check Saturn's moons (hide Saturn so it can't block them)
+  if (saturnMoons.length && saturn) {
+    const saturnWasVisible = saturn.visible;
+    saturn.visible = false;
+    const sHits = raycaster.intersectObjects(saturnMoons.map(sm => sm.mesh), false);
+    saturn.visible = saturnWasVisible;
+    if (sHits.length > 0) { flyToObject(sHits[0].object); return; }
   }
 
   // Check everything else
@@ -4259,6 +4319,16 @@ function animate(){
     });
   }
 
+  // 🪐 Saturn's moons follow Saturn in world space (orbits ride the shared ring-plane group)
+  if (saturnMoons.length && saturn) {
+    const saturnWorldPos = new THREE.Vector3();
+    saturn.getWorldPosition(saturnWorldPos);
+    saturnMoonGroup.position.copy(saturnWorldPos);
+    saturnMoons.forEach(m => {
+      m.group.rotation.y += moonOrbitStep(m.speed * speed, m.distance, deltaScale);
+    });
+  }
+
   // Lock camera target to selected object (only after fly animation completes)
   // Camera follow — runs after every body position is updated this frame but BEFORE the
   // distance-dependent sizing below (near plane, min-dot scaling, orbit-ring proximity),
@@ -4590,6 +4660,13 @@ const bodyList = [
   { label: "　 ◦ Ganymede", obj: ganymede.mesh },
   { label: "　 ◦ Callisto", obj: callisto.mesh },
   { label: " • Saturn", obj: meshes.find(m => m.userData.name === "Saturn") },
+  { label: "　 ◦ Mimas",     obj: (saturnMoons.find(p => p.mesh.userData.name === "Mimas") || {}).mesh },
+  { label: "　 ◦ Enceladus", obj: (saturnMoons.find(p => p.mesh.userData.name === "Enceladus") || {}).mesh },
+  { label: "　 ◦ Tethys",    obj: (saturnMoons.find(p => p.mesh.userData.name === "Tethys") || {}).mesh },
+  { label: "　 ◦ Dione",     obj: (saturnMoons.find(p => p.mesh.userData.name === "Dione") || {}).mesh },
+  { label: "　 ◦ Rhea",      obj: (saturnMoons.find(p => p.mesh.userData.name === "Rhea") || {}).mesh },
+  { label: "　 ◦ Titan",     obj: (saturnMoons.find(p => p.mesh.userData.name === "Titan") || {}).mesh },
+  { label: "　 ◦ Iapetus",   obj: (saturnMoons.find(p => p.mesh.userData.name === "Iapetus") || {}).mesh },
   { label: " • Uranus", obj: meshes.find(m => m.userData.name === "Uranus") },
   { label: "　 ◦ Miranda", obj: (uranusMoons.find(p => p.mesh.userData.name === "Miranda") || {}).mesh },
   { label: "　 ◦ Ariel",   obj: (uranusMoons.find(p => p.mesh.userData.name === "Ariel") || {}).mesh },
