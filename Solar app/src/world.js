@@ -2266,19 +2266,25 @@ let enceladusPlume = null;
 // so only the annulus outside the limb shows — and the glow is brightest right at the limb,
 // fading outward into space (the `uCoef − dot` term), never washing over the surface.
 // Parented to the Titan mesh so it rides the orbit and shares the moon's min-dot scale.
+// ===== TEMP: live-tunable Titan glow params (remove/bake when finalized) =====
+const TITAN_GLOW_DEFAULTS = { size: 1.09, coef: 0.55, power: 5.5, strength: 0.7, color: '#e7be62' };
+let titanGlowParams = Object.assign({}, TITAN_GLOW_DEFAULTS);
+try { const _t = JSON.parse(localStorage.getItem('titanGlow') || 'null'); if (_t) Object.assign(titanGlowParams, _t); } catch (e) {}
+// ===== END TEMP =====
+let titanGlow = null;
 (function buildTitanAtmosphere() {
   const titan = saturnMoons.find(m => m.mesh.userData.name === "Titan");
   if (!titan) return;
   const tMesh = titan.mesh;
   const R = tMesh.userData.trueRadius;
-  const geo = new THREE.SphereGeometry(R * 1.09, 64, 48);   // thin shell → narrow rim
+  const geo = new THREE.SphereGeometry(R, 64, 48);   // sized via shell.scale (= rim radius mult)
   const mat = new THREE.ShaderMaterial({
     transparent: true, depthWrite: false, side: THREE.BackSide, blending: THREE.AdditiveBlending,
     uniforms: {
-      uColor:    { value: new THREE.Color(0xe7be62) },   // muted yellow-orange smog
-      uCoef:     { value: 0.55 },                         // rim offset
-      uPower:    { value: 5.5 },                          // falloff sharpness (tight rim)
-      uStrength: { value: 0.7 }                           // overall faintness
+      uColor:    { value: new THREE.Color(titanGlowParams.color) },   // muted yellow-orange smog
+      uCoef:     { value: titanGlowParams.coef },                     // rim offset
+      uPower:    { value: titanGlowParams.power },                    // falloff sharpness (tight rim)
+      uStrength: { value: titanGlowParams.strength }                  // overall faintness
     },
     vertexShader: `
       varying vec3 vNormal;
@@ -2313,9 +2319,11 @@ let enceladusPlume = null;
     `
   });
   const shell = new THREE.Mesh(geo, mat);
+  shell.scale.setScalar(titanGlowParams.size);   // rim radius as a multiple of the moon
   shell.frustumCulled = false;
   shell.renderOrder = 3;
   tMesh.add(shell);
+  titanGlow = { shell, uniforms: mat.uniforms };
 })();
 
 // 👇 ADD IT HERE (outside the loop)
@@ -5761,5 +5769,76 @@ Object.assign(window, {
   flyToSolarSystem, flyToMilkyWay, spaceshipBackBtn,
   returnToMainMenu, collapseGalacticLegend, expandGalacticLegend,
 });
+
+// ============================================================================
+// TEMP: Titan glow live editor (remove once settings are baked in)
+// Sliders + colour picker feed `titanGlowParams`, applied straight into the
+// rim shader/scale in real time. Save persists to localStorage and prints the
+// values to relay back for baking in.
+// ============================================================================
+function applyTitanGlow() {
+  if (!titanGlow) return;
+  titanGlow.uniforms.uCoef.value = titanGlowParams.coef;
+  titanGlow.uniforms.uPower.value = titanGlowParams.power;
+  titanGlow.uniforms.uStrength.value = titanGlowParams.strength;
+  titanGlow.uniforms.uColor.value.set(titanGlowParams.color);
+  titanGlow.shell.scale.setScalar(titanGlowParams.size);
+}
+(function buildTitanGlowEditor() {
+  if (!titanGlow) return;
+  const fields = [
+    { key: 'size',     label: 'Rim size',   min: 1.0, max: 1.6,  step: 0.005 },
+    { key: 'strength', label: 'Strength',   min: 0,   max: 2,    step: 0.01 },
+    { key: 'power',    label: 'Rim tightness', min: 1, max: 14,  step: 0.1 },
+    { key: 'coef',     label: 'Rim reach',  min: 0,   max: 1,    step: 0.01 },
+  ];
+  const panel = document.createElement('div');
+  panel.id = 'titanEditor';
+  panel.style.cssText =
+    'position:fixed;left:12px;bottom:12px;z-index:99999;width:264px;padding:12px 14px;' +
+    'background:rgba(10,14,22,0.92);border:1px solid rgba(255,255,255,0.18);border-radius:10px;' +
+    'color:#e8eef6;font:12px/1.4 system-ui,sans-serif;backdrop-filter:blur(4px);box-shadow:0 6px 24px rgba(0,0,0,0.5)';
+  let html = '<div style="font-weight:600;margin-bottom:8px">🟡 Titan glow</div>' +
+    '<label style="display:flex;align-items:center;gap:8px;margin:6px 0">Colour <input id="tg_color" type="color" style="flex:1;height:24px;background:none;border:0;cursor:pointer"></label>';
+  fields.forEach(f => {
+    html += `<label style="display:block;margin:6px 0 1px">${f.label}: <span id="tg_${f.key}_v"></span></label>` +
+      `<input id="tg_${f.key}" type="range" min="${f.min}" max="${f.max}" step="${f.step}" style="width:100%">`;
+  });
+  html += '<div style="display:flex;gap:8px;margin-top:8px">' +
+    '<button id="tg_save"  style="flex:1;padding:6px;border-radius:6px;border:0;background:#22c55e;color:#06210f;font-weight:600;cursor:pointer">Save</button>' +
+    '<button id="tg_reset" style="padding:6px 10px;border-radius:6px;border:1px solid rgba(255,255,255,0.25);background:transparent;color:#e8eef6;cursor:pointer">Reset</button>' +
+    '</div><div id="tg_out" style="margin-top:8px;font-size:11px;color:#9fb3c8;word-break:break-all"></div>';
+  panel.innerHTML = html;
+  ['pointerdown', 'wheel', 'click'].forEach(ev => panel.addEventListener(ev, e => e.stopPropagation()));
+  document.body.appendChild(panel);
+
+  const syncUI = () => {
+    fields.forEach(f => {
+      panel.querySelector('#tg_' + f.key).value = titanGlowParams[f.key];
+      panel.querySelector('#tg_' + f.key + '_v').textContent = (+titanGlowParams[f.key]).toFixed(3);
+    });
+    panel.querySelector('#tg_color').value = titanGlowParams.color;
+  };
+  fields.forEach(f => {
+    panel.querySelector('#tg_' + f.key).addEventListener('input', e => {
+      titanGlowParams[f.key] = parseFloat(e.target.value);
+      panel.querySelector('#tg_' + f.key + '_v').textContent = titanGlowParams[f.key].toFixed(3);
+      applyTitanGlow();
+    });
+  });
+  panel.querySelector('#tg_color').addEventListener('input', e => { titanGlowParams.color = e.target.value; applyTitanGlow(); });
+  panel.querySelector('#tg_save').addEventListener('click', () => {
+    localStorage.setItem('titanGlow', JSON.stringify(titanGlowParams));
+    panel.querySelector('#tg_out').textContent = 'Saved ✓ ' + JSON.stringify(titanGlowParams);
+  });
+  panel.querySelector('#tg_reset').addEventListener('click', () => {
+    Object.assign(titanGlowParams, TITAN_GLOW_DEFAULTS); applyTitanGlow(); syncUI();
+    panel.querySelector('#tg_out').textContent = 'Reset to defaults';
+  });
+  syncUI(); applyTitanGlow();
+})();
+// ============================================================================
+// END TEMP Titan glow editor
+// ============================================================================
 
 
