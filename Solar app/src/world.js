@@ -2360,6 +2360,33 @@ let enceladusPlume = null;
   tMesh.add(shell);
 })();
 
+// ☄️ Asteroid belt + Kuiper belt — faint particle bands in the ecliptic (XZ). True-scale
+// asteroids are far sub-pixel, so each is drawn as a fixed-size point (sizeAttenuation off)
+// → the swarm reads as a dotted band at any zoom. Distributed in an annulus with a soft
+// vertical thickness (triangular falloff) for the real orbital-inclination spread. These are
+// a steady backdrop — per-particle Keplerian orbiting is intentionally not modelled.
+function makeBelt(count, rInner, rOuter, vHalfFrac, color, sizePx, opacity) {
+  const pos = new Float32Array(count * 3);
+  for (let i = 0; i < count; i++) {
+    const r = rInner + Math.random() * (rOuter - rInner);
+    const a = Math.random() * Math.PI * 2;
+    const y = (Math.random() + Math.random() - 1) * r * vHalfFrac;   // triangular: most near the plane
+    pos[i * 3] = Math.cos(a) * r; pos[i * 3 + 1] = y; pos[i * 3 + 2] = Math.sin(a) * r;
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, 0, 0), rOuter * 1.2);
+  const pts = new THREE.Points(geo, new THREE.PointsMaterial({
+    color, size: sizePx, sizeAttenuation: false, transparent: true, opacity, depthWrite: false
+  }));
+  pts.frustumCulled = false;
+  scene.add(pts);
+  return pts;
+}
+// 1 AU = 10 units. Asteroid belt ≈ 2.1–3.3 AU (Ceres sits at 27.7); Kuiper belt ≈ 30–50 AU.
+const asteroidBelt = makeBelt(9000, 21, 33, 0.06, 0x9a8a76, 1.5, 0.75);
+const kuiperBelt   = makeBelt(7000, 300, 500, 0.09, 0x9aa7b0, 1.3, 0.6);
+
 // 👇 ADD IT HERE (outside the loop)
 meshes.forEach(m => {
   m.castShadow = true;
@@ -2495,6 +2522,8 @@ const helioObjects = [
   plutoTiltGroup,
   ...neptuneMoonTilts,
   uranusMoonGroup,
+  asteroidBelt,
+  kuiperBelt,
 ];
 
 // Click interaction
