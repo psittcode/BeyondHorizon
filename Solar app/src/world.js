@@ -1953,6 +1953,79 @@ const neptuneRing = new THREE.Mesh(neptuneRingGeometry, neptuneRingMaterial);
 neptuneRing.rotation.x = Math.PI / 2;
 neptuneTiltGroup.add(neptuneRing);
 
+// 🪐 Jupiter's ring — a faint, dark ring of dust kicked off the inner moons (the main ring
+// sits ~1.7–1.8 Jupiter radii out). Far fainter than Saturn's; we render a thin, dim reddish
+// band in Jupiter's equatorial plane (3.1° tilt). Same scene-parented + per-frame tracked
+// pattern as Saturn/Neptune (reuses the 1-D ring strip, washed dark; planet shadow on the
+// night side). Lives in its own tilt group so it stays put while Jupiter's body spins.
+const jupiterTiltGroup = new THREE.Object3D();
+jupiterTiltGroup.rotation.z = 3.1 * (Math.PI / 180);   // Jupiter's equatorial plane
+scene.add(jupiterTiltGroup);
+const _jupiterRingNormal = new THREE.Vector3(0, 1, 0).applyEuler(jupiterTiltGroup.rotation).normalize();
+const jupiterRingUniforms = {
+  map:           { value: ringTexture },
+  jupiterPos:    { value: new THREE.Vector3() },
+  jupiterRadius: { value: jupiter.userData.size },
+  ringNormal:    { value: _jupiterRingNormal }
+};
+const jupiterRingGeometry = new THREE.RingGeometry(
+  jupiter.userData.size * 1.4, jupiter.userData.size * 1.81, 96);
+const jupiterRingMaterial = new THREE.ShaderMaterial({
+  uniforms: jupiterRingUniforms,
+  vertexShader: `
+    varying vec2 vUv;
+    varying vec3 vWorldPos;
+    #include <common>
+    #include <logdepthbuf_pars_vertex>
+    void main() {
+      vUv = uv;
+      vWorldPos = (modelMatrix * vec4(position, 1.0)).xyz;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      #include <logdepthbuf_vertex>
+    }
+  `,
+  fragmentShader: `
+    uniform sampler2D map;
+    uniform vec3 jupiterPos;
+    uniform float jupiterRadius;
+    uniform vec3 ringNormal;
+    varying vec2 vUv;
+    varying vec3 vWorldPos;
+    #include <logdepthbuf_pars_fragment>
+    void main() {
+      #include <logdepthbuf_fragment>
+      float rr = length(vUv - 0.5) * 2.0;
+      float t  = clamp((rr - 0.6) / 0.4, 0.0, 1.0);
+      vec4 texColor = texture2D(map, vec2(t, 0.5));
+      if (texColor.a < 0.01) discard;
+      // Wash the Saturn banding out to a dim reddish dust tone (Jupiter's ring is dark).
+      vec3 dust = mix(texColor.rgb, vec3(0.42, 0.30, 0.22), 0.85);
+      // Planet shadow across the night side, same construction as Saturn/Neptune.
+      vec3 toSun = normalize(-jupiterPos);
+      vec3 ringPoint = vWorldPos - jupiterPos;
+      vec3 nrm = normalize(ringNormal);
+      vec3 sunFlat = toSun - dot(toSun, nrm) * nrm;
+      float sfl = length(sunFlat);
+      vec3 shadowDir = sfl > 0.001 ? sunFlat / sfl : toSun;
+      float proj = dot(ringPoint, shadowDir);
+      float shadowFactor = 1.0;
+      if (proj < 0.0) {
+        float perpDist = length(ringPoint - proj * shadowDir);
+        float edge = jupiterRadius * 0.10;
+        float shadow = 1.0 - smoothstep(jupiterRadius - edge, jupiterRadius + edge, perpDist);
+        shadowFactor = 1.0 - shadow * 0.7;
+      }
+      gl_FragColor = vec4(dust * shadowFactor, texColor.a * 0.06);
+    }
+  `,
+  side: THREE.DoubleSide,
+  transparent: true,
+  depthWrite: false
+});
+const jupiterRing = new THREE.Mesh(jupiterRingGeometry, jupiterRingMaterial);
+jupiterRing.rotation.x = Math.PI / 2;
+jupiterTiltGroup.add(jupiterRing);
+
 // 🪐 Uranus's rings — 13 known rings, but unlike Saturn's bright bands they are
 // extremely DARK (reflect ~2% of sunlight), narrow and faint. Rendered procedurally:
 // a cluster of thin dark "main" rings (6,5,4,α,β,η,γ,δ,λ), the brighter Epsilon ring
@@ -2482,6 +2555,9 @@ function applyMinDots() {
   neptuneTiltGroup.scale.setScalar(neptuneMesh.scale.x);
   neptuneRingUniforms.neptuneRadius.value = neptuneMesh.userData.size * neptuneMesh.scale.x;
   uranusTiltGroup.scale.setScalar(uranusMesh.scale.x);
+  // Jupiter's faint ring tracks the body's apparent size the same way.
+  jupiterTiltGroup.scale.setScalar(jupiter.scale.x);
+  jupiterRingUniforms.jupiterRadius.value = jupiter.userData.size * jupiter.scale.x;
 }
 
 // Hide a body's orbit ring once you've zoomed in close enough that the body is
@@ -2522,6 +2598,7 @@ const helioObjects = [
   plutoTiltGroup,
   ...neptuneMoonTilts,
   uranusMoonGroup,
+  jupiterTiltGroup,
   asteroidBelt,
   kuiperBelt,
 ];
@@ -3130,6 +3207,11 @@ function resetSimulation() {
   if (saturnMesh) {
     saturnTiltGroup.position.copy(saturnMesh.position);
     ringUniforms.saturnPos.value.copy(saturnMesh.position);
+  }
+  // Sync Jupiter's ring group to the new position
+  if (jupiter) {
+    jupiterTiltGroup.position.copy(jupiter.position);
+    jupiterRingUniforms.jupiterPos.value.copy(jupiter.position);
   }
   // Sync Neptune's ring group to the new position
   if (neptuneMesh) {
@@ -4647,6 +4729,8 @@ function animate(){
     if (m.userData.name === "Jupiter") {
       m.rotation.y += 0.02931 * speed * deltaScale;
       m.rotation.z = 3.1 * (Math.PI / 180);
+      jupiterTiltGroup.position.copy(m.position);
+      jupiterRingUniforms.jupiterPos.value.copy(m.position);
     }
     if (m.userData.name === "Saturn") {
       m.rotation.y += 0.02730 * speed * deltaScale;
