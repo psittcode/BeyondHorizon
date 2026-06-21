@@ -1358,6 +1358,77 @@ function makeAsteroidGeometry(radius, seed) {
   return geo;
 }
 
+// Build an irregular moon from REAL observed proportions. Unlike makeAsteroidGeometry
+// (a random potato for Pluto's unobserved small moons), every number here comes from
+// spacecraft observation: a sphere is scaled to the body's measured triaxial axes,
+// given gentle low-frequency lumps, then has named impact craters carved as smooth
+// bowls (e.g. Phobos's giant Stickney). Recentred on its volume centroid so it rides
+// its orbit cleanly. `meanRadius` is the body's mean radius (units); opts:
+//   axes:[a,b,c]  measured diameters' ratios (auto-normalised to preserve volume)
+//   lumpiness     amplitude of the soft surface undulation (Phobos rough, Deimos smooth)
+//   lumpSeed      deterministic seed so the shape is stable across reloads
+//   craters:[{ dir:[x,y,z], angRadius (rad), depth, rim }]  carved depressions
+function makeMoonShapeGeometry(meanRadius, opts) {
+  const { axes = [1, 1, 1], lumpiness = 0.05, lumpSeed = 1, craters = [] } = opts || {};
+  const geo = new THREE.SphereGeometry(meanRadius, 160, 120);   // hi-res so big craters read cleanly
+  const rand = _mulberry32((lumpSeed >>> 0) || 1);
+  // Normalise the triaxial axes to a geometric mean of 1, so the body keeps the volume
+  // of a meanRadius sphere while taking on the real elongation (Phobos ≈ 27×22×18 km).
+  const gm = Math.cbrt(axes[0] * axes[1] * axes[2]);
+  const ax = axes[0] / gm, ay = axes[1] / gm, az = axes[2] / gm;
+  const waves = [];
+  for (let k = 0; k < 6; k++) {
+    const f = 0.8 + rand() * 1.8;                                // low frequencies → soft lumps, no spikes
+    waves.push({ dir: _randUnit(rand), f, amp: lumpiness / (1 + f * 0.4), ph: rand() * Math.PI * 2 });
+  }
+  const cr = craters.map(c => ({
+    dir: new THREE.Vector3(c.dir[0], c.dir[1], c.dir[2]).normalize(),
+    ang: c.angRadius, depth: c.depth, rim: c.rim || 0
+  }));
+  const pos = geo.attributes.position, n = new THREE.Vector3();
+  for (let i = 0; i < pos.count; i++) {
+    n.fromBufferAttribute(pos, i).normalize();
+    let d = 1.0;
+    for (const w of waves) d += w.amp * Math.sin(n.dot(w.dir) * w.f * Math.PI * 2.0 + w.ph);
+    // Craters: within the crater's angular radius, sink the surface into a parabolic
+    // bowl (deepest at centre) and raise a slight rim just inside the edge.
+    for (const c of cr) {
+      const a = Math.acos(Math.min(1, Math.max(-1, n.dot(c.dir))));
+      if (a < c.ang) {
+        const t = a / c.ang;                                     // 0 centre → 1 rim
+        d += -c.depth * (1 - t * t) + c.rim * Math.exp(-Math.pow((t - 0.93) / 0.10, 2));
+      }
+    }
+    d = Math.max(0.5, d);
+    pos.setXYZ(i, n.x * meanRadius * d * ax, n.y * meanRadius * d * ay, n.z * meanRadius * d * az);
+  }
+  // Recentre on the true VOLUME centroid (signed tetrahedra) so the asymmetric shape
+  // doesn't sit off its orbit line and swing as it rides round — same as makeAsteroidGeometry.
+  {
+    const idx = geo.index, p = geo.attributes.position;
+    const va = new THREE.Vector3(), vb = new THREE.Vector3(), vc = new THREE.Vector3(), crs = new THREE.Vector3();
+    let vol = 0, cx = 0, cy = 0, cz = 0;
+    for (let t = 0; t < idx.count; t += 3) {
+      va.fromBufferAttribute(p, idx.getX(t));
+      vb.fromBufferAttribute(p, idx.getX(t + 1));
+      vc.fromBufferAttribute(p, idx.getX(t + 2));
+      crs.crossVectors(vb, vc);
+      const v = va.dot(crs);
+      vol += v;
+      cx += (va.x + vb.x + vc.x) * v;
+      cy += (va.y + vb.y + vc.y) * v;
+      cz += (va.z + vb.z + vc.z) * v;
+    }
+    if (Math.abs(vol) > 1e-30) {
+      cx /= 4 * vol; cy /= 4 * vol; cz /= 4 * vol;
+      for (let i = 0; i < p.count; i++) p.setXYZ(i, p.getX(i) - cx, p.getY(i) - cy, p.getZ(i) - cz);
+      p.needsUpdate = true;
+    }
+  }
+  geo.computeVertexNormals();
+  return geo;
+}
+
 // helper function to create a moon
 function createMoon(size, distance, speed, color, infoText, texture, startAngle) {
   const group = new THREE.Object3D();
@@ -1438,6 +1509,66 @@ const callisto = createMoon(
 
 // store for animation
 const jupiterMoons = [io, europa, ganymede, callisto];
+
+// 🔴 Mars's moons — Phobos and Deimos. They orbit in Mars's equatorial plane, so
+// marsMoonGroup carries the same fixed 25.2° tilt as Mars's spin axis; each moon also
+// gets its small real inclination via a tilt sub-container. Unlike the round Galilean
+// moons (and unlike Pluto's RANDOM-potato small moons), these two have been imaged by
+// spacecraft, so their meshes are built from real measured triaxial shapes + craters via
+// makeMoonShapeGeometry. They are tidally locked: each is a static child of its rotating
+// orbit group, so its long axis stays pointed at Mars (no free tumble). The group is NOT
+// min-dot scaled, so the moons keep their true orbital distances; only each mesh is.
+const marsMoonGroup = new THREE.Object3D();
+marsMoonGroup.rotation.z = 25.2 * (Math.PI / 180);     // Mars's equatorial plane (= its axial tilt)
+scene.add(marsMoonGroup);
+const marsMoons = [];
+const marsMoonOrbitLines = [];
+if (marsMesh && marsMesh.userData.moons) {
+  marsMesh.userData.moons.forEach(mn => {
+    const mo = createMoon(mn.size, mn.dist, mn.speed, mn.color, mn.info,
+                          mn.texture ? textureLoader.load(mn.texture) : null,
+                          Math.random() * Math.PI * 2);
+    mo.mesh.userData.name = mn.name;
+    // Swap the default sphere for the real observed shape (triaxial + craters).
+    if (mn.shape) {
+      mo.mesh.geometry.dispose();
+      mo.mesh.geometry = makeMoonShapeGeometry(mn.size, mn.shape);
+      // The long axis (local +x) already points radially outward → toward Mars on the near
+      // side, so leaving the mesh un-rotated keeps it tidally locked, like the real moons.
+    }
+    scene.remove(mo.group);            // createMoon parented it to the scene — move into the equatorial plane
+
+    let parent = marsMoonGroup;
+    if (mn.incl) {
+      const tilt = new THREE.Object3D();
+      tilt.rotation.y = (mn.node || 0) * (Math.PI / 180);   // node: tilt direction (deg, optional)
+      tilt.rotation.z = mn.incl * (Math.PI / 180);          // inclination to Mars's equator (deg)
+      marsMoonGroup.add(tilt);
+      parent = tilt;
+    }
+    parent.add(mo.group);
+    marsMoons.push(mo);
+
+    // Orbit ring at the true semi-major axis. These moons are minuscule, so a fixed
+    // 128-gon's chord gap would exceed their radius and they'd appear to vibrate off the
+    // line — use a sagitta-based segment count (chord gap < 0.1× radius), like Pluto's.
+    const segs = Math.min(2048, Math.max(128,
+      Math.ceil(Math.PI * Math.sqrt(mn.dist / (2 * 0.1 * mn.size)))));
+    const pts = [];
+    for (let i = 0; i <= segs; i++) {
+      const a = (i / segs) * Math.PI * 2;
+      pts.push(new THREE.Vector3(Math.cos(a) * mn.dist, 0, Math.sin(a) * mn.dist));
+    }
+    const line = new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints(pts),
+      new THREE.LineBasicMaterial({ color: ORBIT_COLORS.Mars, transparent: true, opacity: 0.3 })
+    );
+    line.userData.ownerMesh = marsMesh;
+    parent.add(line);                  // orbit ring rides the same (possibly inclined) plane as the moon
+    orbitLines.push(line);
+    marsMoonOrbitLines.push(line);
+  });
+}
 
 // 🌑 Pluto's moons — Charon + the four small ones (Styx, Nix, Kerberos, Hydra),
 // built from the Pluto data entry. They all orbit in Pluto's EQUATORIAL plane, which
@@ -2026,6 +2157,7 @@ function applyMinDots() {
   neptuneMoons.forEach(nm => minDotScale(nm.mesh, nm.mesh.userData.trueRadius));
   uranusMoons.forEach(um => minDotScale(um.mesh, um.mesh.userData.trueRadius));
   saturnMoons.forEach(sm => minDotScale(sm.mesh, sm.mesh.userData.trueRadius));
+  marsMoons.forEach(mm => minDotScale(mm.mesh, mm.mesh.userData.trueRadius));
   // Saturn's rings: match the body's apparent size and keep the shadow term correct.
   const saturnS = saturn.scale.x; // set by the meshes loop above
   saturnTiltGroup.scale.setScalar(saturnS);
@@ -2478,6 +2610,15 @@ window.addEventListener("click", e => {
     const sHits = raycaster.intersectObjects(saturnMoons.map(sm => sm.mesh), false);
     saturn.visible = saturnWasVisible;
     if (sHits.length > 0) { flyToObject(sHits[0].object); return; }
+  }
+
+  // Check Mars's moons (hide Mars so it can't block close-orbiting Phobos/Deimos)
+  if (marsMoons.length && marsMesh) {
+    const marsWasVisible = marsMesh.visible;
+    marsMesh.visible = false;
+    const mHits = raycaster.intersectObjects(marsMoons.map(mm => mm.mesh), false);
+    marsMesh.visible = marsWasVisible;
+    if (mHits.length > 0) { flyToObject(mHits[0].object); return; }
   }
 
   // Check everything else
@@ -4329,6 +4470,18 @@ function animate(){
     });
   }
 
+  // 🔴 Mars's moons follow Mars in world space. Each moon is a static child of its orbit
+  // group (no own spin), so advancing only the group keeps it tidally locked — long axis
+  // to Mars — exactly as Phobos and Deimos really are.
+  if (marsMoons.length && marsMesh) {
+    const marsWorldPos = new THREE.Vector3();
+    marsMesh.getWorldPosition(marsWorldPos);
+    marsMoonGroup.position.copy(marsWorldPos);
+    marsMoons.forEach(m => {
+      m.group.rotation.y += moonOrbitStep(m.speed * speed, m.distance, deltaScale);
+    });
+  }
+
   // Lock camera target to selected object (only after fly animation completes)
   // Camera follow — runs after every body position is updated this frame but BEFORE the
   // distance-dependent sizing below (near plane, min-dot scaling, orbit-ring proximity),
@@ -4653,6 +4806,8 @@ const bodyList = [
   { label: "• Earth", obj: meshes.find(m => m.userData.name === "Earth") },
   { label: "　 ◦ Moon", obj: moon },
   { label: " • Mars", obj: meshes.find(m => m.userData.name === "Mars") },
+  { label: "　 ◦ Phobos", obj: (marsMoons.find(p => p.mesh.userData.name === "Phobos") || {}).mesh },
+  { label: "　 ◦ Deimos", obj: (marsMoons.find(p => p.mesh.userData.name === "Deimos") || {}).mesh },
   { label: " • Ceres", obj: meshes.find(m => m.userData.name === "Ceres") },
   { label: " • Jupiter", obj: meshes.find(m => m.userData.name === "Jupiter") },
   { label: "　 ◦ Io", obj: io.mesh },
