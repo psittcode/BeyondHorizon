@@ -1581,6 +1581,16 @@ const callisto = createMoon(
 // store for animation
 const jupiterMoons = [io, europa, ganymede, callisto];
 
+// The Galilean moons orbit in Jupiter's EQUATORIAL plane (Jupiter's obliquity is only
+// ~3.1°), not the ecliptic. Ride them — and their orbit rings — on a shared tilt group
+// (same idea as saturnMoonGroup) so their orbits carry that slight common tilt. The group
+// is positioned onto Jupiter each frame in animate(); the moons keep orbiting via group.rotation.y.
+const jupiterMoonGroup = new THREE.Object3D();
+jupiterMoonGroup.rotation.z = 3.1 * (Math.PI / 180);
+scene.add(jupiterMoonGroup);
+jupiterMoons.forEach(m => { scene.remove(m.group); m.group.position.set(0, 0, 0); jupiterMoonGroup.add(m.group); });
+jupiterMoonOrbitLines.forEach(line => { scene.remove(line); line.position.set(0, 0, 0); jupiterMoonGroup.add(line); });
+
 // 🔴 Mars's moons — Phobos and Deimos. They orbit in Mars's equatorial plane, so
 // marsMoonGroup carries the same fixed 25.2° tilt as Mars's spin axis; each moon also
 // gets its small real inclination via a tilt sub-container. Unlike the round Galilean
@@ -4658,20 +4668,14 @@ function animate(){
     moonGroup.rotation.y += moonOrbitStep(0.0004434 * speed, MOON_ORBIT_DIST, deltaScale);
   }
 
-  // 🪐 Jupiter moons follow Jupiter in world space
+  // 🪐 Jupiter moons follow Jupiter in world space — the whole tilted equatorial plane
+  // (moons + orbit rings) rides Jupiter's position; each moon orbits within it.
   if (typeof jupiterMoons !== "undefined" && jupiterMoons.length) {
     const jupiterWorldPos = new THREE.Vector3();
     jupiter.getWorldPosition(jupiterWorldPos);
-
+    jupiterMoonGroup.position.copy(jupiterWorldPos);
     jupiterMoons.forEach(m => {
-      if (m.group) {
-        m.group.position.copy(jupiterWorldPos);
-        m.group.rotation.y += moonOrbitStep(m.speed * speed, m.distance, deltaScale);
-      }
-    });
-
-    jupiterMoonOrbitLines.forEach(line => {
-      line.position.copy(jupiterWorldPos);
+      if (m.group) m.group.rotation.y += moonOrbitStep(m.speed * speed, m.distance, deltaScale);
     });
   }
 
