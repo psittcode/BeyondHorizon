@@ -2260,23 +2260,25 @@ let enceladusPlume = null;
   enceladusPlume = { points: pts, uniforms, encMesh, flow: 0, flowRate: VAPOR.flow };
 })();
 
-// 🟡 Titan's atmosphere. Titan is the only moon with a thick atmosphere — a hazy nitrogen
-// shroud with an orange photochemical smog that hides its surface and gives it a soft glowing
-// limb. We add a faint fresnel halo: a slightly larger BackSide sphere whose glow peaks at the
-// limb (grazing view angle) and fades outward, tinted muted yellow-orange. Parented to the
-// Titan mesh so it rides the orbit and shares the moon's min-dot scale.
+// 🟡 Titan's atmosphere. Titan is the only moon with a thick atmosphere — a nitrogen haze
+// with orange photochemical smog. We add just a faint OUTWARD rim highlight: a thin BackSide
+// shell ~9% larger than the moon. The planet occludes the shell over its disc (depth test),
+// so only the annulus outside the limb shows — and the glow is brightest right at the limb,
+// fading outward into space (the `uCoef − dot` term), never washing over the surface.
+// Parented to the Titan mesh so it rides the orbit and shares the moon's min-dot scale.
 (function buildTitanAtmosphere() {
   const titan = saturnMoons.find(m => m.mesh.userData.name === "Titan");
   if (!titan) return;
   const tMesh = titan.mesh;
   const R = tMesh.userData.trueRadius;
-  const geo = new THREE.SphereGeometry(R * 1.16, 48, 48);   // ~16% larger than the surface
+  const geo = new THREE.SphereGeometry(R * 1.09, 64, 48);   // thin shell → narrow rim
   const mat = new THREE.ShaderMaterial({
     transparent: true, depthWrite: false, side: THREE.BackSide, blending: THREE.AdditiveBlending,
     uniforms: {
       uColor:    { value: new THREE.Color(0xe7be62) },   // muted yellow-orange smog
-      uPower:    { value: 3.0 },                          // limb-falloff sharpness
-      uStrength: { value: 0.85 }                          // overall faintness
+      uCoef:     { value: 0.55 },                         // rim offset
+      uPower:    { value: 5.5 },                          // falloff sharpness (tight rim)
+      uStrength: { value: 0.7 }                           // overall faintness
     },
     vertexShader: `
       varying vec3 vNormal;
@@ -2293,6 +2295,7 @@ let enceladusPlume = null;
     `,
     fragmentShader: `
       uniform vec3 uColor;
+      uniform float uCoef;
       uniform float uPower;
       uniform float uStrength;
       varying vec3 vNormal;
@@ -2301,10 +2304,11 @@ let enceladusPlume = null;
       #include <logdepthbuf_pars_fragment>
       void main() {
         #include <logdepthbuf_fragment>
-        // Brightest where the shell surface is edge-on to the view (the limb), fading toward
-        // the disc centre and the outer rim — a soft atmospheric halo.
-        float fres = pow(clamp(1.0 - abs(dot(vNormal, vView)), 0.0, 1.0), uPower);
-        gl_FragColor = vec4(uColor, fres * uStrength);
+        // On the (visible) annulus outside the limb the shell faces away from the camera, so
+        // dot < 0; uCoef − dot is largest right at the planet's edge and shrinks outward →
+        // a rim that hugs the limb and fades into space.
+        float rim = pow(max(0.0, uCoef - dot(vNormal, vView)), uPower);
+        gl_FragColor = vec4(uColor, rim * uStrength);
       }
     `
   });
