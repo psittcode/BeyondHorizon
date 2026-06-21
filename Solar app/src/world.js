@@ -2166,11 +2166,9 @@ const ENCELADUS_VENTS = [
   [0.4748,-0.8636,-0.1696], [0.3546,-0.9245,-0.1396], [0.0442,-0.901,-0.4316],
   [0.3309,-0.8802,-0.3403], [0.1462,-0.8543,-0.4988], [-0.0066,-0.9449,-0.3274]
 ];
-// ===== TEMP: live-tunable vapor params (remove/bake when finalized) =====
-const VAPOR_DEFAULTS = { opacity: 0.45, size: 1.0, length: 3.0, spread: 0.40, flow: 0.02, brightness: 0.85, glow: false };
-let vaporParams = Object.assign({}, VAPOR_DEFAULTS);
-try { const _v = JSON.parse(localStorage.getItem('enceladusVapor') || 'null'); if (_v) Object.assign(vaporParams, _v); } catch (e) {}
-// ===== END TEMP =====
+// Vapour look settings, tuned with the live editor then baked in: a faint, wispy,
+// fairly short plume (very low opacity, normal/non-glowing blending).
+const VAPOR = { opacity: 0.03, size: 0.87, length: 1.15, spread: 0.31, flow: 0.12, brightness: 0.51, glow: false };
 let enceladusPlume = null;
 (function buildEnceladusPlume() {
   const enc = saturnMoons.find(m => m.mesh.userData.name === "Enceladus");
@@ -2183,24 +2181,18 @@ let enceladusPlume = null;
   const aDir     = new Float32Array(N * 3);   // outward jet direction (cone around the normal)
   const aPhase0  = new Float32Array(N);       // start offset along the jet (steady-state spread)
   const aSize    = new Float32Array(N);       // per-particle world size
-  // Keep the raw randoms + per-vent bases so the cone spread can be re-tuned live.
-  const pAng = new Float32Array(N), pRad01 = new Float32Array(N), pVent = new Int16Array(N);
-  const ventBasis = [];
   const up = new THREE.Vector3();
   let i = 0;
-  ENCELADUS_VENTS.forEach((v, vi) => {
+  ENCELADUS_VENTS.forEach(v => {
     const n = new THREE.Vector3(v[0], v[1], v[2]).normalize();   // surface normal at the vent
     up.set(0, 1, 0); if (Math.abs(n.dot(up)) > 0.9) up.set(1, 0, 0);
     const t1 = new THREE.Vector3().crossVectors(n, up).normalize();
     const t2 = new THREE.Vector3().crossVectors(n, t1).normalize();
-    ventBasis.push({ n, t1, t2 });
     const base = n.clone().multiplyScalar(R);
     for (let k = 0; k < PER_VENT; k++) {
       position[i * 3] = base.x; position[i * 3 + 1] = base.y; position[i * 3 + 2] = base.z;
       const ang = Math.random() * Math.PI * 2;
-      const rad01 = Math.pow(Math.random(), 0.7);               // 0..1 → scaled by spread
-      pAng[i] = ang; pRad01[i] = rad01; pVent[i] = vi;
-      const rad = rad01 * vaporParams.spread;
+      const rad = Math.pow(Math.random(), 0.7) * VAPOR.spread;  // cone half-spread
       const d = n.clone().addScaledVector(t1, Math.cos(ang) * rad)
                          .addScaledVector(t2, Math.sin(ang) * rad).normalize();
       aDir[i * 3] = d.x; aDir[i * 3 + 1] = d.y; aDir[i * 3 + 2] = d.z;
@@ -2210,25 +2202,24 @@ let enceladusPlume = null;
     }
   });
   const geo = new THREE.BufferGeometry();
-  const dirAttr = new THREE.BufferAttribute(aDir, 3);
   geo.setAttribute('position', new THREE.BufferAttribute(position, 3));
-  geo.setAttribute('aDir', dirAttr);
+  geo.setAttribute('aDir', new THREE.BufferAttribute(aDir, 3));
   geo.setAttribute('aPhase0', new THREE.BufferAttribute(aPhase0, 1));
   geo.setAttribute('aSize', new THREE.BufferAttribute(aSize, 1));
   geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, 0, 0), R * 8);
   const uniforms = {
     uFlow:        { value: 0 },
-    uPlumeLength: { value: R * vaporParams.length },
+    uPlumeLength: { value: R * VAPOR.length },
     uMoonScale:   { value: 1 },                 // refreshed each frame (min-dot scale)
     uSizeK:       { value: 600 },               // pixels per world-unit at unit depth
-    uSizeMul:     { value: vaporParams.size },
-    uOpacity:     { value: vaporParams.opacity },
-    uBrightness:  { value: vaporParams.brightness }
+    uSizeMul:     { value: VAPOR.size },
+    uOpacity:     { value: VAPOR.opacity },
+    uBrightness:  { value: VAPOR.brightness }
   };
   const mat = new THREE.ShaderMaterial({
     uniforms, transparent: true, depthWrite: false,
     // Normal alpha blending → scattering vapour (NOT additive/glowing).
-    blending: vaporParams.glow ? THREE.AdditiveBlending : THREE.NormalBlending,
+    blending: VAPOR.glow ? THREE.AdditiveBlending : THREE.NormalBlending,
     vertexShader: `
       attribute vec3 aDir;
       attribute float aPhase0;
@@ -2266,8 +2257,7 @@ let enceladusPlume = null;
   pts.frustumCulled = false;
   pts.renderOrder = 4;
   encMesh.add(pts);
-  enceladusPlume = { points: pts, uniforms, encMesh, flow: 0, flowRate: vaporParams.flow,
-                     R, dirAttr, pAng, pRad01, pVent, ventBasis, _glow: vaporParams.glow, _spread: vaporParams.spread };
+  enceladusPlume = { points: pts, uniforms, encMesh, flow: 0, flowRate: VAPOR.flow };
 })();
 
 // 👇 ADD IT HERE (outside the loop)
@@ -5714,95 +5704,4 @@ Object.assign(window, {
   returnToMainMenu, collapseGalacticLegend, expandGalacticLegend,
 });
 
-// ============================================================================
-// TEMP: Enceladus vapor live editor (remove once settings are baked in)
-// Sliders feed `vaporParams`, applied straight into the plume in real time.
-// Save persists to localStorage and prints the values to relay back for baking.
-// ============================================================================
-function rebuildVaporDirs() {
-  const P = enceladusPlume; if (!P) return;
-  const a = P.dirAttr.array, sp = vaporParams.spread;
-  for (let i = 0; i < P.pAng.length; i++) {
-    const b = P.ventBasis[P.pVent[i]], r = P.pRad01[i] * sp;
-    const c = Math.cos(P.pAng[i]) * r, s = Math.sin(P.pAng[i]) * r;
-    let dx = b.n.x + b.t1.x * c + b.t2.x * s,
-        dy = b.n.y + b.t1.y * c + b.t2.y * s,
-        dz = b.n.z + b.t1.z * c + b.t2.z * s;
-    const L = Math.hypot(dx, dy, dz) || 1;
-    a[i * 3] = dx / L; a[i * 3 + 1] = dy / L; a[i * 3 + 2] = dz / L;
-  }
-  P.dirAttr.needsUpdate = true;
-}
-function applyVaporParams() {
-  const P = enceladusPlume; if (!P) return;
-  P.uniforms.uOpacity.value    = vaporParams.opacity;
-  P.uniforms.uSizeMul.value    = vaporParams.size;
-  P.uniforms.uPlumeLength.value = P.R * vaporParams.length;
-  P.uniforms.uBrightness.value = vaporParams.brightness;
-  P.flowRate = vaporParams.flow;
-  if (P._glow !== !!vaporParams.glow) {
-    P.points.material.blending = vaporParams.glow ? THREE.AdditiveBlending : THREE.NormalBlending;
-    P.points.material.needsUpdate = true;
-    P._glow = !!vaporParams.glow;
-  }
-  if (P._spread !== vaporParams.spread) { rebuildVaporDirs(); P._spread = vaporParams.spread; }
-}
-(function buildVaporEditor() {
-  if (!enceladusPlume) return;
-  const fields = [
-    { key: 'opacity',    label: 'Opacity',    min: 0,     max: 1,    step: 0.01 },
-    { key: 'size',       label: 'Size',       min: 0.2,   max: 4,    step: 0.01 },
-    { key: 'length',     label: 'Length',     min: 0.5,   max: 8,    step: 0.05 },
-    { key: 'spread',     label: 'Fan spread', min: 0.05,  max: 1.2,  step: 0.01 },
-    { key: 'brightness', label: 'Brightness', min: 0.1,   max: 1.6,  step: 0.01 },
-    { key: 'flow',       label: 'Blow speed', min: 0.002, max: 0.12, step: 0.002 },
-  ];
-  const panel = document.createElement('div');
-  panel.id = 'vaporEditor';
-  panel.style.cssText =
-    'position:fixed;left:12px;bottom:12px;z-index:99999;width:264px;padding:12px 14px;' +
-    'background:rgba(10,14,22,0.92);border:1px solid rgba(255,255,255,0.18);border-radius:10px;' +
-    'color:#e8eef6;font:12px/1.4 system-ui,sans-serif;backdrop-filter:blur(4px);box-shadow:0 6px 24px rgba(0,0,0,0.5)';
-  let html = '<div style="font-weight:600;margin-bottom:8px">💨 Enceladus vapor</div>';
-  fields.forEach(f => {
-    html += `<label style="display:block;margin:6px 0 1px">${f.label}: <span id="vp_${f.key}_v"></span></label>` +
-      `<input id="vp_${f.key}" type="range" min="${f.min}" max="${f.max}" step="${f.step}" style="width:100%">`;
-  });
-  html += '<label style="display:flex;align-items:center;gap:6px;margin:8px 0"><input id="vp_glow" type="checkbox"> Glow (additive)</label>' +
-    '<div style="display:flex;gap:8px;margin-top:6px">' +
-    '<button id="vp_save"  style="flex:1;padding:6px;border-radius:6px;border:0;background:#22c55e;color:#06210f;font-weight:600;cursor:pointer">Save</button>' +
-    '<button id="vp_reset" style="padding:6px 10px;border-radius:6px;border:1px solid rgba(255,255,255,0.25);background:transparent;color:#e8eef6;cursor:pointer">Reset</button>' +
-    '</div><div id="vp_out" style="margin-top:8px;font-size:11px;color:#9fb3c8;word-break:break-all"></div>';
-  panel.innerHTML = html;
-  ['pointerdown', 'wheel', 'click'].forEach(ev => panel.addEventListener(ev, e => e.stopPropagation()));
-  document.body.appendChild(panel);
-
-  const syncUI = () => {
-    fields.forEach(f => {
-      panel.querySelector('#vp_' + f.key).value = vaporParams[f.key];
-      panel.querySelector('#vp_' + f.key + '_v').textContent = (+vaporParams[f.key]).toFixed(3);
-    });
-    panel.querySelector('#vp_glow').checked = !!vaporParams.glow;
-  };
-  fields.forEach(f => {
-    panel.querySelector('#vp_' + f.key).addEventListener('input', e => {
-      vaporParams[f.key] = parseFloat(e.target.value);
-      panel.querySelector('#vp_' + f.key + '_v').textContent = vaporParams[f.key].toFixed(3);
-      applyVaporParams();
-    });
-  });
-  panel.querySelector('#vp_glow').addEventListener('change', e => { vaporParams.glow = e.target.checked; applyVaporParams(); });
-  panel.querySelector('#vp_save').addEventListener('click', () => {
-    localStorage.setItem('enceladusVapor', JSON.stringify(vaporParams));
-    panel.querySelector('#vp_out').textContent = 'Saved ✓ ' + JSON.stringify(vaporParams);
-  });
-  panel.querySelector('#vp_reset').addEventListener('click', () => {
-    Object.assign(vaporParams, VAPOR_DEFAULTS); applyVaporParams(); syncUI();
-    panel.querySelector('#vp_out').textContent = 'Reset to defaults';
-  });
-  syncUI(); applyVaporParams();
-})();
-// ============================================================================
-// END TEMP Enceladus vapor editor
-// ============================================================================
 
