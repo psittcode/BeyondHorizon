@@ -186,13 +186,13 @@ dist:15.24,size:0.0002266,color:0xff3300,speed:0.00001765,e:0.0934,i:1.85,Om:49.
 // equatorial plane and are tidally locked, keeping their long axis pointed at Mars.
 // dist = semi-major axis / 14.96M km; size = mean radius / 14.96M km; speed = 0.01212/period(days).
 moons:[
-  {name:"Phobos", size:0.00000074, dist:0.0006268, speed:0.038005, color:0x8a7f74, incl:1.08, // texture:"Phobos.png" — add when supplied
+  {name:"Phobos", size:0.00000074, dist:0.0006268, speed:0.038005, color:0x6d655e, incl:1.08, texture:"Phobos.png",
    shape:{axes:[1.212,1.005,0.821], lumpiness:0.05, lumpSeed:7,
           craters:[{dir:[-1,0.18,0.28], angRadius:0.62, depth:0.30, rim:0.045},   // Stickney (~9 km, Mars-facing end)
                    {dir:[0.55,-0.55,0.30], angRadius:0.22, depth:0.10},
                    {dir:[0.20,0.70,-0.45], angRadius:0.17, depth:0.07}]},
    info:`<b>Phobos</b><br><br>The larger and inner of Mars's two moons (~27 × 22 × 18 km), orbiting just 6,000 km above the surface — closer than any other moon to its planet. It laps Mars three times a day and is spiralling inward by ~2 m per century, doomed to break apart or crash in ~50 million years. Its leading hemisphere is dominated by Stickney, a 9-km crater nearly half the moon's width. Phobos is dark and low-density, likely a captured asteroid or rubble pile.<br>`},
-  {name:"Deimos", size:0.00000042, dist:0.0015684, speed:0.009600, color:0x968b7e, incl:1.79, // texture:"Deimos.png" — add when supplied
+  {name:"Deimos", size:0.00000042, dist:0.0015684, speed:0.009600, color:0x796f64, incl:1.79, texture:"Deimos.png",
    shape:{axes:[1.189,0.967,0.872], lumpiness:0.032, lumpSeed:13,
           craters:[{dir:[0.80,0.20,0.45], angRadius:0.30, depth:0.085, rim:0.02},  // Swift / Voltaire (subdued, regolith-buried)
                    {dir:[-0.45,0.40,-0.60], angRadius:0.26, depth:0.07}]},
