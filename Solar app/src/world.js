@@ -2497,12 +2497,14 @@ let enceladusPlume = null;
   venusMesh.add(shell);
 })();
 
-// ☄️ Asteroid belt + Kuiper belt — faint particle bands in the ecliptic (XZ). True-scale
-// asteroids are far sub-pixel, so each is drawn as a fixed-size point (sizeAttenuation off)
-// → the swarm reads as a dotted band at any zoom. Distributed in an annulus with a soft
-// vertical thickness (triangular falloff) for the real orbital-inclination spread. These are
-// a steady backdrop — per-particle Keplerian orbiting is intentionally not modelled.
-function makeBelt(count, rInner, rOuter, vHalfFrac, color, sizePx, opacity) {
+// ☄️ Asteroid belt + Kuiper belt — sparse, faint particle bands in the ecliptic (XZ). In
+// reality the belt is mostly empty space (asteroids are ~1M km apart) and invisible from afar,
+// so we use the SAME logic as the background stars (see starfield): each point shrinks with
+// distance (gl_PointSize = sizeScale/d) AND fades out beyond a fade range. So far out the belt
+// vanishes instead of piling into a bright band, and only resolves into sparse dots when you
+// fly in close. Distributed in an annulus with a triangular vertical falloff for the real
+// inclination spread. Steady backdrop — per-particle Keplerian orbiting is not modelled.
+function makeBelt(count, rInner, rOuter, vHalfFrac, color, opacity, sizeScale, sizeMax, fadeNear, fadeFar) {
   const pos = new Float32Array(count * 3);
   for (let i = 0; i < count; i++) {
     const r = rInner + Math.random() * (rOuter - rInner);
@@ -2513,16 +2515,50 @@ function makeBelt(count, rInner, rOuter, vHalfFrac, color, sizePx, opacity) {
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
   geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, 0, 0), rOuter * 1.2);
-  const pts = new THREE.Points(geo, new THREE.PointsMaterial({
-    color, size: sizePx, sizeAttenuation: false, transparent: true, opacity, depthWrite: false
+  const pts = new THREE.Points(geo, new THREE.ShaderMaterial({
+    uniforms: {
+      uColor:     { value: new THREE.Color(color) },
+      uOpacity:   { value: opacity },
+      uSizeScale: { value: sizeScale },
+      uSizeMax:   { value: sizeMax },
+      uNear:      { value: fadeNear },
+      uFar:       { value: fadeFar }
+    },
+    transparent: true, depthWrite: false,
+    vertexShader: `
+      uniform float uSizeScale, uSizeMax, uNear, uFar;
+      varying float vFade;
+      #include <common>
+      #include <logdepthbuf_pars_vertex>
+      void main() {
+        vec4 mv = modelViewMatrix * vec4(position, 1.0);
+        float d = length(mv.xyz);                  // distance from camera
+        vFade = 1.0 - smoothstep(uNear, uFar, d);  // fade out as you pull away → belt vanishes from afar
+        gl_PointSize = min(uSizeMax, uSizeScale / d);
+        gl_Position = projectionMatrix * mv;
+        #include <logdepthbuf_vertex>
+      }
+    `,
+    fragmentShader: `
+      uniform vec3 uColor; uniform float uOpacity;
+      varying float vFade;
+      #include <logdepthbuf_pars_fragment>
+      void main() {
+        #include <logdepthbuf_fragment>
+        if (vFade <= 0.001) discard;
+        gl_FragColor = vec4(uColor, uOpacity * vFade);
+      }
+    `
   }));
   pts.frustumCulled = false;
   scene.add(pts);
   return pts;
 }
 // 1 AU = 10 units. Asteroid belt ≈ 2.1–3.3 AU (Ceres sits at 27.7); Kuiper belt ≈ 30–50 AU.
-const asteroidBelt = makeBelt(9000, 21, 33, 0.06, 0x9a8a76, 1.5, 0.75);
-const kuiperBelt   = makeBelt(7000, 300, 500, 0.09, 0x9aa7b0, 1.3, 0.6);
+// Fewer, fainter points than a dense field; fade ranges are tuned per belt's scale so each
+// only shows when the camera is reasonably close to it.
+const asteroidBelt = makeBelt(4000, 21, 33, 0.06, 0x9a8a76, 0.5,  34,  2.2,  22,  85);
+const kuiperBelt   = makeBelt(4500, 300, 500, 0.09, 0x9aa7b0, 0.4, 360, 2.0, 260, 1000);
 
 // 👇 ADD IT HERE (outside the loop)
 meshes.forEach(m => {
