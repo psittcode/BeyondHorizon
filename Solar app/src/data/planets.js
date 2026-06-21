@@ -336,7 +336,13 @@ ellipsoid:[1.035,0.934,1.035], // oblate — equator bulges, poles flatten (flat
 // inclination to that plane carry an `incl` (Mimas 1.57°, Tethys 1.09°, Iapetus 15.47°).
 moons:[
   {name:"Mimas", size:0.00001325,dist:0.012402,speed:0.012865,color:0xcfcfcf,incl:1.574,texture:"Mimas.png",
-   info:`<b>Mimas</b><br><br>The innermost and smallest of Saturn's major moons (~396 km across), orbiting in just 0.94 days. It is dominated by the 130-km impact crater Herschel, whose central peak gives Mimas its famous "Death Star" profile. Despite its frozen, heavily cratered surface, gravity data hint at a subsurface ocean.<br>`},
+   // Mimas is markedly NON-spherical: spin-flattened and slightly Saturn-elongated, measured
+   // at 416.6 × 393.4 × 381.2 km (Cassini), and scarred by the huge ~139-km Herschel crater.
+   // axes are the measured diameters' ratios (long axis tidally points at Saturn = local +x);
+   // the Herschel dent is placed at local dir (-0.30,0.26,-0.92) to land on the texture's crater.
+   shape:{axes:[1.050,0.991,0.961], lumpiness:0.022, lumpSeed:5,
+          craters:[{dir:[-0.30,0.26,-0.92], angRadius:0.42, depth:0.085, rim:0.03}]},  // Herschel
+   info:`<b>Mimas</b><br><br>The innermost and smallest of Saturn's major moons (~396 km across, and distinctly egg-shaped at 417 × 393 × 381 km), orbiting in just 0.94 days. It is dominated by the 139-km impact crater Herschel, whose central peak gives Mimas its famous "Death Star" profile. Despite its frozen, heavily cratered surface, gravity data hint at a subsurface ocean.<br>`},
   {name:"Enceladus", size:0.00001685,dist:0.015906,speed:0.008846,color:0xffffff,texture:"Enceladus.png",
    info:`<b>Enceladus</b><br><br>A brilliant ice world (~504 km across) and the most reflective body in the Solar System (~99% albedo). Geysers at its south pole jet water vapour and ice from a global subsurface ocean into space — feeding Saturn's faint E ring — making Enceladus a leading candidate in the search for life.<br>`},
   {name:"Tethys", size:0.00003550,dist:0.019694,speed:0.006419,color:0xdedede,incl:1.091,texture:"Tethys.png",

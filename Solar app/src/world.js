@@ -2041,6 +2041,13 @@ if (saturn && saturn.userData.moons) {
                           mn.texture ? textureLoader.load(mn.texture) : null,
                           Math.random() * Math.PI * 2);
     mo.mesh.userData.name = mn.name;
+    // Some Saturn moons are markedly non-spherical (e.g. Mimas, flattened by its spin and
+    // scarred by the giant Herschel crater). When a moon carries a `shape`, swap the sphere
+    // for its real observed triaxial geometry (+ craters); the texture keeps its sphere UVs.
+    if (mn.shape) {
+      mo.mesh.geometry.dispose();
+      mo.mesh.geometry = makeMoonShapeGeometry(mn.size, mn.shape);
+    }
     scene.remove(mo.group);        // createMoon parented it to the scene — move it into the ring plane
 
     // Inner six moons sit in the ring plane (parent = saturnMoonGroup). A moon with a real
