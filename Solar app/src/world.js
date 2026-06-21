@@ -2441,14 +2441,14 @@ let enceladusPlume = null;
   const venusMesh = meshes.find(m => m.userData.name === "Venus");
   if (!venusMesh) return;
   const R = venusMesh.userData.size;
-  const geo = new THREE.SphereGeometry(R * 1.12, 64, 48);   // a bit broader than Titan's rim
+  const geo = new THREE.SphereGeometry(R * 1.09, 64, 48);   // same thin rim as Titan
   const mat = new THREE.ShaderMaterial({
     transparent: true, depthWrite: false, side: THREE.BackSide, blending: THREE.AdditiveBlending,
     uniforms: {
-      uColor:    { value: new THREE.Color('#e8e0bf') },   // pale cream-yellow cloud haze
-      uCoef:     { value: 0.62 },
-      uPower:    { value: 7.0 },                           // softer, broader than Titan's tight rim
-      uStrength: { value: 1.25 }
+      uColor:    { value: new THREE.Color('#d8954a') },   // warm orange-tan, matching Venus's cloud colour
+      uCoef:     { value: 0.56 },                          // same rim numbers as Titan (subtler)
+      uPower:    { value: 14.0 },
+      uStrength: { value: 1.67 }
     },
     vertexShader: `
       varying vec3 vNormal;
