@@ -2317,9 +2317,15 @@ let enceladusPlume = null;
         // dot < 0; uCoef − dot is largest right at the planet's edge and shrinks outward →
         // a rim that hugs the limb and fades into space.
         float rim = pow(max(0.0, uCoef - dot(vNormal, vView)), uPower);
-        // Only the sunlit limb glows: the Sun sits at the world origin, so the direction to it
-        // is -normalize(worldPos); mask the rim off where the limb faces away from the Sun.
-        float sunMask = smoothstep(0.0, 0.35, dot(normalize(vWorldNormal), normalize(-vWorldPos)));
+        // Sun mask — only the sunlit limb glows. We render the FAR side of the shell (BackSide),
+        // whose normal points away from the camera; reflect it across the screen plane to the
+        // NEAR-hemisphere normal at this same screen position, then test against the Sun (which
+        // sits at the world origin). This makes the glow follow the lit side as seen by the
+        // viewer: a full ring when looking at the day side, none on the night side.
+        vec3 N = normalize(vWorldNormal);
+        vec3 V = normalize(cameraPosition - vWorldPos);
+        vec3 nearN = normalize(N - 2.0 * dot(N, V) * V);
+        float sunMask = smoothstep(0.0, 0.40, dot(nearN, normalize(-vWorldPos)));
         gl_FragColor = vec4(uColor, rim * uStrength * sunMask);
       }
     `
