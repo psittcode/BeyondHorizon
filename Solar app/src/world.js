@@ -932,6 +932,7 @@ const glowMesh = (function() {
 
 
 const meshes = [];
+let saturnRingShadow = null;   // ring-shadow uniforms, populated when Saturn's material is built
 
 data.forEach(p=>{
   
@@ -949,6 +950,56 @@ data.forEach(p=>{
       map: saturnTexture,
       color: 0xb0b0b0
     });
+    // 🪐 Ring shadow on the planet. The rings are a solid sheet, so on Saturn's lit side
+    // they cast a real, TEXTURED shadow: for each surface fragment we trace the ray toward
+    // the Sun, and if it pierces the ring plane within the ring's radial span we darken the
+    // fragment by the ring's OPACITY at that radius — sampled from the very same alpha strip
+    // the rings are drawn with. So the shadow carries the real banding (the Cassini Division
+    // shows up as a bright gap in the shadow), not a flat grey blob. Wired via onBeforeCompile
+    // so we keep MeshStandardMaterial's lighting; uniforms are refreshed each frame in animate.
+    saturnRingShadow = {
+      uRingMap:        { value: ringTexture },
+      uSaturnCenter:   { value: new THREE.Vector3() },
+      uRingNormal:     { value: new THREE.Vector3() },   // set after saturnTiltGroup exists
+      uSaturnRadius:   { value: 1 },
+      uShadowStrength: { value: 0.82 }
+    };
+    material.onBeforeCompile = (shader) => {
+      Object.assign(shader.uniforms, saturnRingShadow);
+      shader.vertexShader = shader.vertexShader
+        .replace('#include <common>', '#include <common>\nvarying vec3 vRingShadowWorld;')
+        .replace('#include <project_vertex>',
+                 '#include <project_vertex>\n  vRingShadowWorld = (modelMatrix * vec4(transformed, 1.0)).xyz;');
+      shader.fragmentShader = shader.fragmentShader
+        .replace('#include <common>',
+          '#include <common>\n' +
+          'varying vec3 vRingShadowWorld;\n' +
+          'uniform sampler2D uRingMap;\n' +
+          'uniform vec3 uSaturnCenter;\n' +
+          'uniform vec3 uRingNormal;\n' +
+          'uniform float uSaturnRadius;\n' +
+          'uniform float uShadowStrength;')
+        .replace('#include <map_fragment>',
+          '#include <map_fragment>\n' +
+          '{\n' +
+          '  vec3 toSun = normalize(-vRingShadowWorld);          // Sun sits at the world origin\n' +
+          '  vec3 p = vRingShadowWorld - uSaturnCenter;          // fragment, Saturn-centred\n' +
+          '  vec3 n = normalize(uRingNormal);\n' +
+          '  float denom = dot(toSun, n);\n' +
+          '  if (abs(denom) > 1e-5) {\n' +
+          '    float a = -dot(p, n) / denom;                     // distance to the ring plane along the Sun ray\n' +
+          '    if (a > 0.0) {                                    // ring lies between this fragment and the Sun\n' +
+          '      vec3 q = p + a * toSun;                         // pierce point, in the ring plane\n' +
+          '      float rr = length(q) / uSaturnRadius;           // radius in Saturn-radii\n' +
+          '      float t = rr - 1.5;                             // ring spans 1.5R (t=0) → 2.5R (t=1)\n' +
+          '      if (t >= 0.0 && t <= 1.0) {\n' +
+          '        float occ = texture2D(uRingMap, vec2(t, 0.5)).a;   // ring opacity at that radius\n' +
+          '        diffuseColor.rgb *= (1.0 - occ * uShadowStrength);\n' +
+          '      }\n' +
+          '    }\n' +
+          '  }\n' +
+          '}');
+    };
   } else if (p.name === "Uranus") {
     material = new THREE.MeshStandardMaterial({
       map: uranusTexture
@@ -1698,6 +1749,8 @@ const ringUniforms = {
   ringNormal:    { value: new THREE.Vector3(Math.sin(26.7 * Math.PI / 180),
                                             -Math.cos(26.7 * Math.PI / 180), 0) }
 };
+// The planet's ring-shadow shader shares the ring plane's normal (same fixed 26.7° tilt).
+if (saturnRingShadow) saturnRingShadow.uRingNormal.value.copy(ringUniforms.ringNormal.value);
 
 // Ring span keeps the old 1.5×–2.5× body-radius proportions (matches the texture),
 // now relative to Saturn's true radius. saturnTiltGroup is scaled to Saturn's
@@ -2169,6 +2222,8 @@ function applyMinDots() {
   const saturnS = saturn.scale.x; // set by the meshes loop above
   saturnTiltGroup.scale.setScalar(saturnS);
   ringUniforms.saturnRadius.value = saturn.userData.size * saturnS;
+  // The body's ring-shadow uses the same rendered radius, so its ring-radii mapping matches.
+  if (saturnRingShadow) saturnRingShadow.uSaturnRadius.value = saturn.userData.size * saturnS;
   // Neptune's rings track the body's apparent size the same way.
   neptuneTiltGroup.scale.setScalar(neptuneMesh.scale.x);
   neptuneRingUniforms.neptuneRadius.value = neptuneMesh.userData.size * neptuneMesh.scale.x;
@@ -4350,6 +4405,7 @@ function animate(){
 
       saturnTiltGroup.position.copy(m.position);
       ringUniforms.saturnPos.value.copy(m.position);
+      if (saturnRingShadow) saturnRingShadow.uSaturnCenter.value.copy(m.position);
     }
     if (m.userData.name === "Uranus") {
       // Spin about the fixed ring-plane axis (see _uranusSpinTilt) so the rotation axis
