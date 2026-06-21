@@ -934,14 +934,6 @@ const glowMesh = (function() {
 const meshes = [];
 let saturnRingShadow = null;   // ring-shadow uniforms, populated when Saturn's material is built
 
-// ===== TEMP: Saturn ring-shadow live editor — tunable params (remove when finalized) =====
-// strength = darkness; center/width = the band's radial position & size (in Saturn radii);
-// tiltZ/tiltX = the ring-plane normal's orientation (the shadow's angle/which hemisphere).
-const SHADOW_DEFAULTS = { strength: 0.95, center: 2.0, width: 1.0, tiltZ: 26.7, tiltX: 0.0 };
-let shadowParams = Object.assign({}, SHADOW_DEFAULTS);
-try { const _s = JSON.parse(localStorage.getItem('saturnShadowParams') || 'null'); if (_s) Object.assign(shadowParams, _s); } catch (e) {}
-// ===== END TEMP =====
-
 data.forEach(p=>{
   
   let material;
@@ -965,14 +957,17 @@ data.forEach(p=>{
     // the rings are drawn with. So the shadow carries the real banding (the Cassini Division
     // shows up as a bright gap in the shadow), not a flat grey blob. Wired via onBeforeCompile
     // so we keep MeshStandardMaterial's lighting; uniforms are refreshed each frame in animate.
+    // Values below were dialed in with the live editor: a 25° ring-plane tilt, a band from
+    // 0.98R to 1.94R (centre 1.46R, width 0.96R), darkening direct light by 0.80.
     saturnRingShadow = {
       uRingMap:        { value: ringTexture },
       uSaturnCenter:   { value: new THREE.Vector3() },
-      uRingNormal:     { value: new THREE.Vector3() },   // set by applyShadowParams()
+      uRingNormal:     { value: new THREE.Vector3(Math.sin(25 * Math.PI / 180),
+                                                  -Math.cos(25 * Math.PI / 180), 0) },
       uSaturnRadius:   { value: 1 },
-      uShadowStrength: { value: shadowParams.strength },  // dense-ring shadow removes ~all direct light → night-side level
-      uShadowInner:    { value: shadowParams.center - shadowParams.width * 0.5 },  // band inner edge (Saturn radii)
-      uShadowOuter:    { value: shadowParams.center + shadowParams.width * 0.5 }   // band outer edge (Saturn radii)
+      uShadowStrength: { value: 0.80 },   // fraction of DIRECT sunlight the dense rings block
+      uShadowInner:    { value: 0.98 },   // band inner edge (Saturn radii)
+      uShadowOuter:    { value: 1.94 }    // band outer edge (Saturn radii)
     };
     material.onBeforeCompile = (shader) => {
       Object.assign(shader.uniforms, saturnRingShadow);
@@ -1774,8 +1769,6 @@ const ringUniforms = {
   ringNormal:    { value: new THREE.Vector3(Math.sin(26.7 * Math.PI / 180),
                                             -Math.cos(26.7 * Math.PI / 180), 0) }
 };
-// Push the (editable) shadow params into the shader: normal orientation, band size/position.
-applyShadowParams();
 
 // Ring span keeps the old 1.5×–2.5× body-radius proportions (matches the texture),
 // now relative to Saturn's true radius. saturnTiltGroup is scaled to Saturn's
@@ -5588,80 +5581,3 @@ Object.assign(window, {
   flyToSolarSystem, flyToMilkyWay, spaceshipBackBtn,
   returnToMainMenu, collapseGalacticLegend, expandGalacticLegend,
 });
-
-// ============================================================================
-// TEMP: Saturn ring-shadow live editor (remove when finalized)
-// Sliders feed `shadowParams`, which applyShadowParams() pushes into the
-// shader uniforms in real time. Save persists to localStorage (so the tuned
-// look survives reloads) and prints the values to relay back for baking in.
-// ============================================================================
-function computeRingNormalFromTilts(tiltZdeg, tiltXdeg) {
-  // Same base as the rings: (0,-1,0) tilted by tiltZ about Z, then tiltX about X.
-  return new THREE.Vector3(0, -1, 0)
-    .applyAxisAngle(new THREE.Vector3(0, 0, 1), tiltZdeg * Math.PI / 180)
-    .applyAxisAngle(new THREE.Vector3(1, 0, 0), tiltXdeg * Math.PI / 180)
-    .normalize();
-}
-function applyShadowParams() {
-  if (!saturnRingShadow) return;
-  const half = shadowParams.width * 0.5;
-  saturnRingShadow.uShadowStrength.value = shadowParams.strength;
-  saturnRingShadow.uShadowInner.value = shadowParams.center - half;
-  saturnRingShadow.uShadowOuter.value = shadowParams.center + half;
-  saturnRingShadow.uRingNormal.value.copy(
-    computeRingNormalFromTilts(shadowParams.tiltZ, shadowParams.tiltX));
-}
-(function buildShadowEditor() {
-  const fields = [
-    { key: 'strength', label: 'Darkness',        min: 0,    max: 1,   step: 0.01 },
-    { key: 'width',    label: 'Size (width)',    min: 0.05, max: 3.0, step: 0.01 },
-    { key: 'center',   label: 'Position (radius)',min: 1.0, max: 4.0, step: 0.01 },
-    { key: 'tiltZ',    label: 'Angle Z (°)',     min: -180, max: 180, step: 0.5 },
-    { key: 'tiltX',    label: 'Angle X (°)',     min: -180, max: 180, step: 0.5 },
-  ];
-  const panel = document.createElement('div');
-  panel.id = 'shadowEditor';
-  panel.style.cssText =
-    'position:fixed;left:12px;bottom:12px;z-index:99999;width:260px;padding:12px 14px;' +
-    'background:rgba(10,14,22,0.92);border:1px solid rgba(255,255,255,0.18);border-radius:10px;' +
-    'color:#e8eef6;font:12px/1.4 system-ui,sans-serif;backdrop-filter:blur(4px);box-shadow:0 6px 24px rgba(0,0,0,0.5)';
-  let html = '<div style="font-weight:600;margin-bottom:8px">🪐 Ring-shadow editor</div>';
-  fields.forEach(f => {
-    html += `<label style="display:block;margin:7px 0 2px">${f.label}: <span id="se_${f.key}_v"></span></label>` +
-      `<input id="se_${f.key}" type="range" min="${f.min}" max="${f.max}" step="${f.step}" style="width:100%">`;
-  });
-  html += '<div style="display:flex;gap:8px;margin-top:10px">' +
-    '<button id="se_save" style="flex:1;padding:6px;border-radius:6px;border:0;background:#3b82f6;color:#fff;cursor:pointer">Save</button>' +
-    '<button id="se_reset" style="padding:6px 10px;border-radius:6px;border:1px solid rgba(255,255,255,0.25);background:transparent;color:#e8eef6;cursor:pointer">Reset</button>' +
-    '</div><div id="se_out" style="margin-top:8px;font-size:11px;color:#9fb3c8;word-break:break-all"></div>';
-  panel.innerHTML = html;
-  // Stop drags/clicks on the panel from reaching the canvas (orbit/raycast).
-  ['pointerdown', 'wheel', 'click'].forEach(ev => panel.addEventListener(ev, e => e.stopPropagation()));
-  document.body.appendChild(panel);
-
-  const syncUI = () => fields.forEach(f => {
-    panel.querySelector('#se_' + f.key).value = shadowParams[f.key];
-    panel.querySelector('#se_' + f.key + '_v').textContent = (+shadowParams[f.key]).toFixed(2);
-  });
-  fields.forEach(f => {
-    panel.querySelector('#se_' + f.key).addEventListener('input', e => {
-      shadowParams[f.key] = parseFloat(e.target.value);
-      panel.querySelector('#se_' + f.key + '_v').textContent = shadowParams[f.key].toFixed(2);
-      applyShadowParams();
-    });
-  });
-  panel.querySelector('#se_save').addEventListener('click', () => {
-    localStorage.setItem('saturnShadowParams', JSON.stringify(shadowParams));
-    panel.querySelector('#se_out').textContent = 'Saved ✓  ' + JSON.stringify(shadowParams);
-  });
-  panel.querySelector('#se_reset').addEventListener('click', () => {
-    Object.assign(shadowParams, SHADOW_DEFAULTS);
-    applyShadowParams(); syncUI();
-    panel.querySelector('#se_out').textContent = 'Reset to defaults';
-  });
-  syncUI();
-  applyShadowParams();
-})();
-// ============================================================================
-// END TEMP ring-shadow editor
-// ============================================================================
