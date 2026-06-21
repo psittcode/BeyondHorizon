@@ -967,13 +967,17 @@ data.forEach(p=>{
     material.onBeforeCompile = (shader) => {
       Object.assign(shader.uniforms, saturnRingShadow);
       shader.vertexShader = shader.vertexShader
-        .replace('#include <common>', '#include <common>\nvarying vec3 vRingShadowWorld;')
+        .replace('#include <common>',
+                 '#include <common>\nvarying vec3 vRingShadowWorld;\nvarying vec3 vRingShadowNormal;')
+        .replace('#include <beginnormal_vertex>',
+                 '#include <beginnormal_vertex>\n  vRingShadowNormal = normalize(mat3(modelMatrix) * objectNormal);')
         .replace('#include <project_vertex>',
                  '#include <project_vertex>\n  vRingShadowWorld = (modelMatrix * vec4(transformed, 1.0)).xyz;');
       shader.fragmentShader = shader.fragmentShader
         .replace('#include <common>',
           '#include <common>\n' +
           'varying vec3 vRingShadowWorld;\n' +
+          'varying vec3 vRingShadowNormal;\n' +
           'uniform sampler2D uRingMap;\n' +
           'uniform vec3 uSaturnCenter;\n' +
           'uniform vec3 uRingNormal;\n' +
@@ -983,21 +987,26 @@ data.forEach(p=>{
           '#include <map_fragment>\n' +
           '{\n' +
           '  vec3 toSun = normalize(-vRingShadowWorld);          // Sun sits at the world origin\n' +
-          '  vec3 p = vRingShadowWorld - uSaturnCenter;          // fragment, Saturn-centred\n' +
-          '  vec3 n = normalize(uRingNormal);\n' +
-          '  float denom = dot(toSun, n);\n' +
-          '  if (abs(denom) > 1e-5) {\n' +
-          '    float a = -dot(p, n) / denom;                     // distance to the ring plane along the Sun ray\n' +
-          '    if (a > 0.0) {                                    // ring lies between this fragment and the Sun\n' +
-          '      vec3 q = p + a * toSun;                         // pierce point, in the ring plane\n' +
-          '      float rr = length(q) / uSaturnRadius;           // radius in Saturn-radii\n' +
-          '      float t = rr - 1.5;                             // ring spans 1.5R (t=0) → 2.5R (t=1)\n' +
-          '      if (t >= 0.0 && t <= 1.0) {\n' +
-          '        // Push opacity through a contrast curve: only the dense B/A rings cast a\n' +
-          '        // strong shadow, while the faint C ring and the Cassini Division read as\n' +
-          '        // clean bright breaks — a crisp, structured shadow, not a broad smudge.\n' +
-          '        float occ = smoothstep(0.12, 0.9, texture2D(uRingMap, vec2(t, 0.5)).a);\n' +
-          '        diffuseColor.rgb *= (1.0 - occ * uShadowStrength);\n' +
+          '  // Only the SUN-LIT hemisphere can be ring-shadowed — the night side gets no\n' +
+          '  // direct sunlight to block, so darkening it (it is faintly ambient-lit) would be\n' +
+          '  // wrong. Gate by the surface normal facing the Sun, with a soft terminator.\n' +
+          '  float lit = smoothstep(0.0, 0.18, dot(normalize(vRingShadowNormal), toSun));\n' +
+          '  if (lit > 0.0) {\n' +
+          '    vec3 p = vRingShadowWorld - uSaturnCenter;        // fragment, Saturn-centred\n' +
+          '    vec3 n = normalize(uRingNormal);\n' +
+          '    float denom = dot(toSun, n);\n' +
+          '    if (abs(denom) > 1e-5) {\n' +
+          '      float a = -dot(p, n) / denom;                   // distance to the ring plane along the Sun ray\n' +
+          '      if (a > 0.0) {                                  // ring lies between this fragment and the Sun\n' +
+          '        vec3 q = p + a * toSun;                       // pierce point, in the ring plane\n' +
+          '        float rr = length(q) / uSaturnRadius;         // radius in Saturn-radii\n' +
+          '        float t = rr - 1.5;                           // ring spans 1.5R (t=0) → 2.5R (t=1)\n' +
+          '        if (t >= 0.0 && t <= 1.0) {\n' +
+          '          // Contrast curve: only the dense B/A rings cast a strong shadow; the faint\n' +
+          '          // C ring and the Cassini Division read as clean bright breaks.\n' +
+          '          float occ = smoothstep(0.12, 0.9, texture2D(uRingMap, vec2(t, 0.5)).a);\n' +
+          '          diffuseColor.rgb *= (1.0 - occ * uShadowStrength * lit);\n' +
+          '        }\n' +
           '      }\n' +
           '    }\n' +
           '  }\n' +
