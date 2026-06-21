@@ -2151,6 +2151,108 @@ if (saturn && saturn.userData.moons) {
   });
 }
 
+// 💨 Enceladus's south-polar cryovolcanic plumes. Water vapour + ice jets erupt from the
+// "tiger stripe" fissures at the south pole. The vent positions below were traced on the
+// surface by hand (unit directions in Enceladus's LOCAL frame, so they stay pinned to the
+// south pole as the moon rotates and orbits). A GPU particle system emits soft jets from
+// each vent, radially outward with a cone spread. Each particle's distance along its jet is
+// `fract(phase0 + uFlow)`; uFlow advances ONLY as the simulation runs faster than 1× (the
+// Math.max(0, speed − SPEED_REALLIFE) idiom used elsewhere), so the plume is frozen at 1×
+// (LIVE) and visibly blows outward as you speed up time. Parented to the Enceladus mesh so
+// it rides the moon and shares its min-dot scale.
+const ENCELADUS_VENTS = [
+  [0.3167,-0.842,-0.4368], [0.2216,-0.9015,-0.3717], [0.1225,-0.9502,-0.2864],
+  [0.4289,-0.849,-0.3087], [0.3142,-0.9195,-0.2361], [0.1956,-0.9642,-0.1788],
+  [0.4748,-0.8636,-0.1696], [0.3546,-0.9245,-0.1396], [0.0442,-0.901,-0.4316],
+  [0.3309,-0.8802,-0.3403], [0.1462,-0.8543,-0.4988], [-0.0066,-0.9449,-0.3274]
+];
+let enceladusPlume = null;
+(function buildEnceladusPlume() {
+  const enc = saturnMoons.find(m => m.mesh.userData.name === "Enceladus");
+  if (!enc) return;
+  const encMesh = enc.mesh;
+  const R = encMesh.userData.trueRadius;
+  const PER_VENT = 130;
+  const N = ENCELADUS_VENTS.length * PER_VENT;
+  const position = new Float32Array(N * 3);   // jet base = vent point on the surface (local)
+  const aDir     = new Float32Array(N * 3);   // outward jet direction (cone around the normal)
+  const aPhase0  = new Float32Array(N);       // start offset along the jet (steady-state spread)
+  const aSize    = new Float32Array(N);       // per-particle world size
+  const up = new THREE.Vector3(), t1 = new THREE.Vector3(), t2 = new THREE.Vector3();
+  let i = 0;
+  ENCELADUS_VENTS.forEach(v => {
+    const n = new THREE.Vector3(v[0], v[1], v[2]).normalize();   // surface normal at the vent
+    up.set(0, 1, 0); if (Math.abs(n.dot(up)) > 0.9) up.set(1, 0, 0);
+    t1.crossVectors(n, up).normalize();
+    t2.crossVectors(n, t1).normalize();
+    const base = n.clone().multiplyScalar(R);
+    for (let k = 0; k < PER_VENT; k++) {
+      position[i * 3] = base.x; position[i * 3 + 1] = base.y; position[i * 3 + 2] = base.z;
+      const ang = Math.random() * Math.PI * 2;
+      const rad = Math.pow(Math.random(), 0.7) * 0.40;          // cone half-spread (broad fan)
+      const d = n.clone().addScaledVector(t1, Math.cos(ang) * rad)
+                         .addScaledVector(t2, Math.sin(ang) * rad).normalize();
+      aDir[i * 3] = d.x; aDir[i * 3 + 1] = d.y; aDir[i * 3 + 2] = d.z;
+      aPhase0[i] = Math.random();
+      aSize[i] = R * (0.20 + Math.random() * 0.20);
+      i++;
+    }
+  });
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(position, 3));
+  geo.setAttribute('aDir', new THREE.BufferAttribute(aDir, 3));
+  geo.setAttribute('aPhase0', new THREE.BufferAttribute(aPhase0, 1));
+  geo.setAttribute('aSize', new THREE.BufferAttribute(aSize, 1));
+  geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, 0, 0), R * 5);
+  const uniforms = {
+    uFlow:        { value: 0 },
+    uPlumeLength: { value: R * 3.0 },   // jets fade out within ~3 moon radii
+    uMoonScale:   { value: 1 },         // refreshed each frame (min-dot scale)
+    uSizeK:       { value: 600 },       // pixels per world-unit at unit depth
+    uOpacity:     { value: 0.16 }
+  };
+  const mat = new THREE.ShaderMaterial({
+    uniforms, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+    vertexShader: `
+      attribute vec3 aDir;
+      attribute float aPhase0;
+      attribute float aSize;
+      uniform float uFlow, uPlumeLength, uMoonScale, uSizeK;
+      varying float vAlpha;
+      #include <common>
+      #include <logdepthbuf_pars_vertex>
+      void main() {
+        float phase = fract(aPhase0 + uFlow);                 // 0 at the vent → 1 at the jet tip
+        vec3 pos = position + aDir * (phase * uPlumeLength);
+        vec4 mv = modelViewMatrix * vec4(pos, 1.0);
+        float worldR = aSize * uMoonScale * (0.45 + phase * 1.7);   // jets widen as they rise
+        gl_PointSize = clamp(worldR * uSizeK / max(1e-4, -mv.z), 1.0, 400.0);
+        vAlpha = pow(1.0 - phase, 1.3) * smoothstep(0.0, 0.06, phase);  // fade in at base, out at tip
+        gl_Position = projectionMatrix * mv;
+        #include <logdepthbuf_vertex>
+      }
+    `,
+    fragmentShader: `
+      uniform float uOpacity;
+      varying float vAlpha;
+      #include <common>
+      #include <logdepthbuf_pars_fragment>
+      void main() {
+        #include <logdepthbuf_fragment>
+        float d = length(gl_PointCoord - vec2(0.5)) * 2.0;    // 0 at centre → 1 at sprite edge
+        float a = exp(-d * d * 2.8) * vAlpha * uOpacity;      // soft gaussian puff
+        if (a < 0.002) discard;
+        gl_FragColor = vec4(vec3(0.86, 0.91, 1.0), a);
+      }
+    `
+  });
+  const pts = new THREE.Points(geo, mat);
+  pts.frustumCulled = false;
+  pts.renderOrder = 4;
+  encMesh.add(pts);
+  enceladusPlume = { points: pts, uniforms, encMesh, flow: 0 };
+})();
+
 // 👇 ADD IT HERE (outside the loop)
 meshes.forEach(m => {
   m.castShadow = true;
@@ -4551,6 +4653,19 @@ function animate(){
     });
   }
 
+  // 💨 Enceladus's plumes blow outward only as the sim runs faster than 1×: at LIVE the
+  // jets are frozen (a static plume), and they stream out as you speed up time. uFlow stays
+  // in [0,1) so the GPU `fract(phase0 + uFlow)` keeps full precision. uMoonScale/uSizeK keep
+  // the soft sprites the right on-screen size as the moon is min-dot scaled / the view changes.
+  if (enceladusPlume) {
+    const flowStep = Math.min(0.5, 0.02 * Math.max(0, speed - SPEED_REALLIFE) * deltaScale);
+    enceladusPlume.flow = (enceladusPlume.flow + flowStep) % 1.0;
+    enceladusPlume.uniforms.uFlow.value = enceladusPlume.flow;
+    enceladusPlume.uniforms.uMoonScale.value = enceladusPlume.encMesh.scale.x;
+    enceladusPlume.uniforms.uSizeK.value =
+      renderer.domElement.clientHeight / (2 * Math.tan((camera.fov * Math.PI / 180) / 2));
+  }
+
   // 🔴 Mars's moons follow Mars in world space. Each moon is a static child of its orbit
   // group (no own spin), so advancing only the group keeps it tidally locked — long axis
   // to Mars — exactly as Phobos and Deimos really are.
@@ -5582,98 +5697,3 @@ Object.assign(window, {
   returnToMainMenu, collapseGalacticLegend, expandGalacticLegend,
 });
 
-// ============================================================================
-// TEMP: Enceladus vapor-source marker (remove once vent positions are baked in)
-// Lets you click Enceladus's surface to drop dots at the south-pole "tiger
-// stripe" vents. Each dot is stored as a UNIT direction in Enceladus's LOCAL
-// frame, so it stays pinned to the surface as the moon rotates/orbits. Save
-// writes the list to localStorage and prints it to relay back for baking in.
-// Workflow: open Bodies list → fly to Enceladus → (optionally Pause) → click
-// "Start marking" → click the surface to place vents → Save.
-// ============================================================================
-(function buildEnceladusMarker() {
-  const enc = saturnMoons.find(m => m.mesh.userData.name === "Enceladus");
-  if (!enc) return;
-  const encMesh = enc.mesh;
-  const R = encMesh.userData.trueRadius;       // Enceladus' true geometry radius (units)
-  const rc = new THREE.Raycaster();
-  const m2 = new THREE.Vector2();
-  const points = [];                            // THREE.Vector3 unit dirs (local frame)
-  const dots = [];                              // visual markers (children of encMesh)
-  let marking = false, moved = false, downX = 0, downY = 0;
-
-  function addDir(dir) {
-    dir.normalize();
-    points.push(dir.clone());
-    const dot = new THREE.Mesh(
-      new THREE.SphereGeometry(R * 0.06, 10, 10),
-      new THREE.MeshBasicMaterial({ color: 0xff3366 })
-    );
-    dot.position.copy(dir).multiplyScalar(R * 1.03);   // sit just above the surface
-    dot.renderOrder = 5;
-    encMesh.add(dot);                                  // ride the moon's transform
-    dots.push(dot);
-    refresh();
-  }
-  function undo() { const d = dots.pop(); if (d) { encMesh.remove(d); points.pop(); } refresh(); }
-  function clearAll() { dots.forEach(d => encMesh.remove(d)); dots.length = 0; points.length = 0; refresh(); }
-
-  // Restore any previously saved marks
-  try {
-    const s = JSON.parse(localStorage.getItem('enceladusVents') || 'null');
-    if (Array.isArray(s)) s.forEach(p => addDir(new THREE.Vector3(p[0], p[1], p[2])));
-  } catch (e) {}
-
-  // Distinguish a click-to-mark from a drag-to-orbit.
-  renderer.domElement.addEventListener('pointerdown', e => { downX = e.clientX; downY = e.clientY; moved = false; });
-  renderer.domElement.addEventListener('pointermove', e => { if (Math.hypot(e.clientX - downX, e.clientY - downY) > 5) moved = true; });
-  renderer.domElement.addEventListener('click', e => {
-    if (!marking) return;
-    e.stopPropagation();                 // suppress the normal fly-to while marking
-    if (moved) return;                   // that was an orbit drag, not a mark
-    m2.x = (e.clientX / innerWidth) * 2 - 1;
-    m2.y = -(e.clientY / innerHeight) * 2 + 1;
-    rc.setFromCamera(m2, camera);
-    const hits = rc.intersectObject(encMesh, false);
-    if (hits.length) addDir(encMesh.worldToLocal(hits[0].point.clone()));
-  }, true);                              // capture phase → runs before the window click handler
-
-  // --- panel UI ---
-  const panel = document.createElement('div');
-  panel.id = 'encMarker';
-  panel.style.cssText =
-    'position:fixed;left:12px;bottom:12px;z-index:99999;width:264px;padding:12px 14px;' +
-    'background:rgba(10,14,22,0.92);border:1px solid rgba(255,255,255,0.18);border-radius:10px;' +
-    'color:#e8eef6;font:12px/1.45 system-ui,sans-serif;backdrop-filter:blur(4px);box-shadow:0 6px 24px rgba(0,0,0,0.5)';
-  panel.innerHTML =
-    '<div style="font-weight:600;margin-bottom:6px">💨 Enceladus vent marker</div>' +
-    '<div style="color:#9fb3c8;margin-bottom:8px">Fly to Enceladus, then mark the south-pole vents. Drag = rotate, click = drop a dot.</div>' +
-    '<button id="em_toggle" style="width:100%;padding:7px;border-radius:6px;border:0;background:#3b82f6;color:#fff;cursor:pointer">Start marking</button>' +
-    '<div style="display:flex;gap:8px;margin-top:8px">' +
-    '<button id="em_undo"  style="flex:1;padding:6px;border-radius:6px;border:1px solid rgba(255,255,255,0.25);background:transparent;color:#e8eef6;cursor:pointer">Undo</button>' +
-    '<button id="em_clear" style="flex:1;padding:6px;border-radius:6px;border:1px solid rgba(255,255,255,0.25);background:transparent;color:#e8eef6;cursor:pointer">Clear</button>' +
-    '<button id="em_save"  style="flex:1;padding:6px;border-radius:6px;border:0;background:#22c55e;color:#06210f;font-weight:600;cursor:pointer">Save</button>' +
-    '</div><div id="em_out" style="margin-top:8px;font-size:11px;color:#9fb3c8;word-break:break-all">0 vents</div>';
-  ['pointerdown', 'wheel', 'click'].forEach(ev => panel.addEventListener(ev, e => e.stopPropagation()));
-  document.body.appendChild(panel);
-
-  const out = panel.querySelector('#em_out');
-  const toggleBtn = panel.querySelector('#em_toggle');
-  function refresh() { out.textContent = points.length + ' vent' + (points.length === 1 ? '' : 's'); }
-  toggleBtn.addEventListener('click', () => {
-    marking = !marking;
-    toggleBtn.textContent = marking ? 'Stop marking' : 'Start marking';
-    toggleBtn.style.background = marking ? '#ef4444' : '#3b82f6';
-  });
-  panel.querySelector('#em_undo').addEventListener('click', undo);
-  panel.querySelector('#em_clear').addEventListener('click', clearAll);
-  panel.querySelector('#em_save').addEventListener('click', () => {
-    const arr = points.map(p => [+p.x.toFixed(4), +p.y.toFixed(4), +p.z.toFixed(4)]);
-    localStorage.setItem('enceladusVents', JSON.stringify(arr));
-    out.textContent = 'Saved ✓ ' + JSON.stringify(arr);
-  });
-  refresh();
-})();
-// ============================================================================
-// END TEMP Enceladus vent marker
-// ============================================================================
