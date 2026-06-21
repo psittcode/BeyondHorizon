@@ -138,10 +138,10 @@ const earthNightTexture = textureLoader.load("2k_earth_nightmap.jpg");
 const ringTexture = textureLoader.load("8k_saturn_ring_alpha.png");
 const milkyWayTexture = textureLoader.load("8k_stars_milky_way.jpg");
 Object.assign(ctx, { sunTexture, milkyWayTexture }); // shared by the Kepler room
-const callistoTexture = textureLoader.load("Callisto.jpg");
-const europaTexture = textureLoader.load("Europa.jpg");
-const ganymedeTexture = textureLoader.load("Ganymede.jpeg");
-const ioTexture = textureLoader.load("Io.jpeg");
+const callistoTexture = textureLoader.load("Callisto.png");
+const europaTexture = textureLoader.load("Europa.png");
+const ganymedeTexture = textureLoader.load("Ganymede.png");
+const ioTexture = textureLoader.load("Io.png");
 
 // 🌌 MILKY WAY SKYBOX
 // Threshold where the view hands off to the galaxy. Pushed near the galaxy disc's
