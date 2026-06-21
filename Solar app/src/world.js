@@ -5581,3 +5581,99 @@ Object.assign(window, {
   flyToSolarSystem, flyToMilkyWay, spaceshipBackBtn,
   returnToMainMenu, collapseGalacticLegend, expandGalacticLegend,
 });
+
+// ============================================================================
+// TEMP: Enceladus vapor-source marker (remove once vent positions are baked in)
+// Lets you click Enceladus's surface to drop dots at the south-pole "tiger
+// stripe" vents. Each dot is stored as a UNIT direction in Enceladus's LOCAL
+// frame, so it stays pinned to the surface as the moon rotates/orbits. Save
+// writes the list to localStorage and prints it to relay back for baking in.
+// Workflow: open Bodies list → fly to Enceladus → (optionally Pause) → click
+// "Start marking" → click the surface to place vents → Save.
+// ============================================================================
+(function buildEnceladusMarker() {
+  const enc = saturnMoons.find(m => m.mesh.userData.name === "Enceladus");
+  if (!enc) return;
+  const encMesh = enc.mesh;
+  const R = encMesh.userData.trueRadius;       // Enceladus' true geometry radius (units)
+  const rc = new THREE.Raycaster();
+  const m2 = new THREE.Vector2();
+  const points = [];                            // THREE.Vector3 unit dirs (local frame)
+  const dots = [];                              // visual markers (children of encMesh)
+  let marking = false, moved = false, downX = 0, downY = 0;
+
+  function addDir(dir) {
+    dir.normalize();
+    points.push(dir.clone());
+    const dot = new THREE.Mesh(
+      new THREE.SphereGeometry(R * 0.06, 10, 10),
+      new THREE.MeshBasicMaterial({ color: 0xff3366 })
+    );
+    dot.position.copy(dir).multiplyScalar(R * 1.03);   // sit just above the surface
+    dot.renderOrder = 5;
+    encMesh.add(dot);                                  // ride the moon's transform
+    dots.push(dot);
+    refresh();
+  }
+  function undo() { const d = dots.pop(); if (d) { encMesh.remove(d); points.pop(); } refresh(); }
+  function clearAll() { dots.forEach(d => encMesh.remove(d)); dots.length = 0; points.length = 0; refresh(); }
+
+  // Restore any previously saved marks
+  try {
+    const s = JSON.parse(localStorage.getItem('enceladusVents') || 'null');
+    if (Array.isArray(s)) s.forEach(p => addDir(new THREE.Vector3(p[0], p[1], p[2])));
+  } catch (e) {}
+
+  // Distinguish a click-to-mark from a drag-to-orbit.
+  renderer.domElement.addEventListener('pointerdown', e => { downX = e.clientX; downY = e.clientY; moved = false; });
+  renderer.domElement.addEventListener('pointermove', e => { if (Math.hypot(e.clientX - downX, e.clientY - downY) > 5) moved = true; });
+  renderer.domElement.addEventListener('click', e => {
+    if (!marking) return;
+    e.stopPropagation();                 // suppress the normal fly-to while marking
+    if (moved) return;                   // that was an orbit drag, not a mark
+    m2.x = (e.clientX / innerWidth) * 2 - 1;
+    m2.y = -(e.clientY / innerHeight) * 2 + 1;
+    rc.setFromCamera(m2, camera);
+    const hits = rc.intersectObject(encMesh, false);
+    if (hits.length) addDir(encMesh.worldToLocal(hits[0].point.clone()));
+  }, true);                              // capture phase → runs before the window click handler
+
+  // --- panel UI ---
+  const panel = document.createElement('div');
+  panel.id = 'encMarker';
+  panel.style.cssText =
+    'position:fixed;left:12px;bottom:12px;z-index:99999;width:264px;padding:12px 14px;' +
+    'background:rgba(10,14,22,0.92);border:1px solid rgba(255,255,255,0.18);border-radius:10px;' +
+    'color:#e8eef6;font:12px/1.45 system-ui,sans-serif;backdrop-filter:blur(4px);box-shadow:0 6px 24px rgba(0,0,0,0.5)';
+  panel.innerHTML =
+    '<div style="font-weight:600;margin-bottom:6px">💨 Enceladus vent marker</div>' +
+    '<div style="color:#9fb3c8;margin-bottom:8px">Fly to Enceladus, then mark the south-pole vents. Drag = rotate, click = drop a dot.</div>' +
+    '<button id="em_toggle" style="width:100%;padding:7px;border-radius:6px;border:0;background:#3b82f6;color:#fff;cursor:pointer">Start marking</button>' +
+    '<div style="display:flex;gap:8px;margin-top:8px">' +
+    '<button id="em_undo"  style="flex:1;padding:6px;border-radius:6px;border:1px solid rgba(255,255,255,0.25);background:transparent;color:#e8eef6;cursor:pointer">Undo</button>' +
+    '<button id="em_clear" style="flex:1;padding:6px;border-radius:6px;border:1px solid rgba(255,255,255,0.25);background:transparent;color:#e8eef6;cursor:pointer">Clear</button>' +
+    '<button id="em_save"  style="flex:1;padding:6px;border-radius:6px;border:0;background:#22c55e;color:#06210f;font-weight:600;cursor:pointer">Save</button>' +
+    '</div><div id="em_out" style="margin-top:8px;font-size:11px;color:#9fb3c8;word-break:break-all">0 vents</div>';
+  ['pointerdown', 'wheel', 'click'].forEach(ev => panel.addEventListener(ev, e => e.stopPropagation()));
+  document.body.appendChild(panel);
+
+  const out = panel.querySelector('#em_out');
+  const toggleBtn = panel.querySelector('#em_toggle');
+  function refresh() { out.textContent = points.length + ' vent' + (points.length === 1 ? '' : 's'); }
+  toggleBtn.addEventListener('click', () => {
+    marking = !marking;
+    toggleBtn.textContent = marking ? 'Stop marking' : 'Start marking';
+    toggleBtn.style.background = marking ? '#ef4444' : '#3b82f6';
+  });
+  panel.querySelector('#em_undo').addEventListener('click', undo);
+  panel.querySelector('#em_clear').addEventListener('click', clearAll);
+  panel.querySelector('#em_save').addEventListener('click', () => {
+    const arr = points.map(p => [+p.x.toFixed(4), +p.y.toFixed(4), +p.z.toFixed(4)]);
+    localStorage.setItem('enceladusVents', JSON.stringify(arr));
+    out.textContent = 'Saved ✓ ' + JSON.stringify(arr);
+  });
+  refresh();
+})();
+// ============================================================================
+// END TEMP Enceladus vent marker
+// ============================================================================
