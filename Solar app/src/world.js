@@ -2260,6 +2260,60 @@ let enceladusPlume = null;
   enceladusPlume = { points: pts, uniforms, encMesh, flow: 0, flowRate: VAPOR.flow };
 })();
 
+// 🟡 Titan's atmosphere. Titan is the only moon with a thick atmosphere — a hazy nitrogen
+// shroud with an orange photochemical smog that hides its surface and gives it a soft glowing
+// limb. We add a faint fresnel halo: a slightly larger BackSide sphere whose glow peaks at the
+// limb (grazing view angle) and fades outward, tinted muted yellow-orange. Parented to the
+// Titan mesh so it rides the orbit and shares the moon's min-dot scale.
+(function buildTitanAtmosphere() {
+  const titan = saturnMoons.find(m => m.mesh.userData.name === "Titan");
+  if (!titan) return;
+  const tMesh = titan.mesh;
+  const R = tMesh.userData.trueRadius;
+  const geo = new THREE.SphereGeometry(R * 1.16, 48, 48);   // ~16% larger than the surface
+  const mat = new THREE.ShaderMaterial({
+    transparent: true, depthWrite: false, side: THREE.BackSide, blending: THREE.AdditiveBlending,
+    uniforms: {
+      uColor:    { value: new THREE.Color(0xe7be62) },   // muted yellow-orange smog
+      uPower:    { value: 3.0 },                          // limb-falloff sharpness
+      uStrength: { value: 0.85 }                          // overall faintness
+    },
+    vertexShader: `
+      varying vec3 vNormal;
+      varying vec3 vView;
+      #include <common>
+      #include <logdepthbuf_pars_vertex>
+      void main() {
+        vNormal = normalize(normalMatrix * normal);
+        vec4 mv = modelViewMatrix * vec4(position, 1.0);
+        vView = normalize(-mv.xyz);
+        gl_Position = projectionMatrix * mv;
+        #include <logdepthbuf_vertex>
+      }
+    `,
+    fragmentShader: `
+      uniform vec3 uColor;
+      uniform float uPower;
+      uniform float uStrength;
+      varying vec3 vNormal;
+      varying vec3 vView;
+      #include <common>
+      #include <logdepthbuf_pars_fragment>
+      void main() {
+        #include <logdepthbuf_fragment>
+        // Brightest where the shell surface is edge-on to the view (the limb), fading toward
+        // the disc centre and the outer rim — a soft atmospheric halo.
+        float fres = pow(clamp(1.0 - abs(dot(vNormal, vView)), 0.0, 1.0), uPower);
+        gl_FragColor = vec4(uColor, fres * uStrength);
+      }
+    `
+  });
+  const shell = new THREE.Mesh(geo, mat);
+  shell.frustumCulled = false;
+  shell.renderOrder = 3;
+  tMesh.add(shell);
+})();
+
 // 👇 ADD IT HERE (outside the loop)
 meshes.forEach(m => {
   m.castShadow = true;
