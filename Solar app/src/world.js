@@ -2257,9 +2257,15 @@ if (saturn && saturn.userData.moons) {
     parent.add(mo.group);
     saturnMoons.push(mo);
 
+    // Sagitta-based segment count (chord gap < 0.1× the moon's radius), like Mars's and
+    // Pluto's rings. A fixed 128-gon is fine for the inner moons, but Iapetus orbits so far
+    // out (~3.56M km) that a 128-gon's chord bows inward by MORE than Iapetus's own radius —
+    // so when you zoom in, the moon (on the true circle) sits visibly off the faceted line.
+    const segs = Math.min(2048, Math.max(128,
+      Math.ceil(Math.PI * Math.sqrt(mn.dist / (2 * 0.1 * mn.size)))));
     const pts = [];
-    for (let i = 0; i <= 128; i++) {
-      const a = (i / 128) * Math.PI * 2;
+    for (let i = 0; i <= segs; i++) {
+      const a = (i / segs) * Math.PI * 2;
       pts.push(new THREE.Vector3(Math.cos(a) * mn.dist, 0, Math.sin(a) * mn.dist));
     }
     const line = new THREE.Line(
