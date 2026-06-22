@@ -97,10 +97,16 @@ function fpsMeterTick(now, dtMs) {
 //     when zoomed in, dragging the (following) camera and shaking its ring + neighbours.
 // Capping the resulting STEP to a constant (the old approach) decoupled it from real time,
 // which is what produced the visible stutter/jitter — so we cap the RATE, then scale.
-let _moonStepWorldCap = Infinity;
+// Largest per-frame orbital step (radians, at the simulation's reference frame rate). This
+// is a fixed, zoom-INDEPENDENT anti-aliasing limit: at extreme time-warp a moon could try to
+// jump most of the way round its orbit in one frame, which would strobe or visually reverse,
+// so the step is clamped here. It is NOT tied to camera distance — a moon orbits at the same
+// rate whether you view it from afar or up close.
+const MAX_MOON_ORBIT_STEP = 0.05;
 function moonOrbitStep(rate, orbitRadius, deltaScale) {
-  const cap = Math.min(0.05, _moonStepWorldCap / Math.max(orbitRadius, 1e-12));
-  const r = Math.abs(rate) > cap ? Math.sign(rate) * cap : rate;
+  // orbitRadius is no longer used (the cap is fixed/zoom-independent); kept for call-site
+  // compatibility and readability at the call sites.
+  const r = Math.abs(rate) > MAX_MOON_ORBIT_STEP ? Math.sign(rate) * MAX_MOON_ORBIT_STEP : rate;
   return r * deltaScale;
 }
 
@@ -1793,6 +1799,53 @@ if (haumeaMesh && haumeaMesh.userData.moons) {
   });
 }
 
+// ✨ Eris's moon — Dysnomia. Unlike Haumea's moons, Dysnomia IS tidally locked to Eris:
+// it is a static child of its orbit group (no own spin), so the group's orbital rotation
+// alone keeps one face toward Eris — exactly like the major moons. Generic cratered shape
+// (no resolved imaging) with the Pluto-moon asteroid texture; rides a tilt container
+// parked on Eris each frame.
+const erisMesh = meshes.find(m => m.userData.name === "Eris");
+const erisMoonGroup = new THREE.Object3D();   // Eris's equatorial/orbit plane (not min-dot scaled)
+erisMoonGroup.rotation.x = 44 * (Math.PI / 180);
+erisMoonGroup.rotation.z = 22 * (Math.PI / 180);
+scene.add(erisMoonGroup);
+const erisMoons = [];
+const erisMoonOrbitLines = [];
+if (erisMesh && erisMesh.userData.moons) {
+  erisMesh.userData.moons.forEach(mn => {
+    const mo = createMoon(mn.size, mn.dist, mn.speed, mn.color, mn.info,
+                          mn.texture ? textureLoader.load(mn.texture) : null,
+                          1.2);
+    mo.mesh.userData.name = mn.name;
+    if (mn.shape) {
+      mo.mesh.geometry.dispose();
+      mo.mesh.geometry = makeMoonShapeGeometry(mn.size, mn.shape);
+    }
+    // No `spin` and no per-frame mesh rotation → tidally locked (the orbit group's
+    // rotation keeps the moon's −X face, and its long axis, toward Eris).
+    scene.remove(mo.group);
+    erisMoonGroup.add(mo.group);
+    erisMoons.push(mo);
+
+    const segs = Math.min(2048, Math.max(128,
+      Math.ceil(Math.PI * Math.sqrt(mn.dist / (2 * 0.1 * mn.size)))));
+    const pts = [];
+    for (let i = 0; i <= segs; i++) {
+      const a = (i / segs) * Math.PI * 2;
+      pts.push(new THREE.Vector3(Math.cos(a) * mn.dist, 0, Math.sin(a) * mn.dist));
+    }
+    const line = new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints(pts),
+      new THREE.LineBasicMaterial({ color: ORBIT_COLORS.Eris, transparent: true, opacity: 0.3 })
+    );
+    line.userData.ownerMesh = erisMesh;
+    line.userData.moonMesh = mo.mesh;
+    erisMoonGroup.add(line);
+    orbitLines.push(line);
+    erisMoonOrbitLines.push(line);
+  });
+}
+
 // 🔵 Neptune's moon — Triton (retrograde). Same scene-parented pattern as the Pluto
 // moons: a sphere via createMoon + an orbit ring repositioned onto Neptune each frame.
 // Untextured for now (a flat colour); a real texture can be dropped in later via the
@@ -2738,6 +2791,7 @@ function applyMinDots() {
   saturnMoons.forEach(sm => minDotScale(sm.mesh, sm.mesh.userData.trueRadius));
   marsMoons.forEach(mm => minDotScale(mm.mesh, mm.mesh.userData.trueRadius));
   haumeaMoons.forEach(hm => minDotScale(hm.mesh, hm.mesh.userData.trueRadius));
+  erisMoons.forEach(em => minDotScale(em.mesh, em.mesh.userData.trueRadius));
   // Saturn's rings: match the body's apparent size and keep the shadow term correct.
   const saturnS = saturn.scale.x; // set by the meshes loop above
   saturnTiltGroup.scale.setScalar(saturnS);
@@ -3221,6 +3275,15 @@ window.addEventListener("click", e => {
     const hHits = raycaster.intersectObjects(haumeaMoons.map(hm => hm.mesh), false);
     haumeaMesh.visible = haumeaWasVisible;
     if (hHits.length > 0) { flyToObject(hHits[0].object); return; }
+  }
+
+  // Check Eris's moon (hide Eris so it can't block Dysnomia)
+  if (erisMoons.length && erisMesh) {
+    const erisWasVisible = erisMesh.visible;
+    erisMesh.visible = false;
+    const eHits = raycaster.intersectObjects(erisMoons.map(em => em.mesh), false);
+    erisMesh.visible = erisWasVisible;
+    if (eHits.length > 0) { flyToObject(eHits[0].object); return; }
   }
 
   // Check Mars's moons (hide Mars so it can't block close-orbiting Phobos/Deimos)
@@ -4988,15 +5051,6 @@ function animate(){
     }
   });
 
-  // Max world-space distance a moon may travel per frame before its orbital step is
-  // capped: ~8px on screen at the current zoom (distance from camera to whatever it's
-  // looking at). Keeps moon motion gentle when zoomed in (no shake) yet full-rate when
-  // zoomed out. See moonOrbitStep().
-  {
-    const _ctDist = camera.position.distanceTo(controls.target);
-    _moonStepWorldCap = (8 * 2 * _ctDist * Math.tan(camera.fov * Math.PI / 360)) / window.innerHeight;
-  }
-
   // 🌕 Moon follows Earth position in world space
   if (typeof moonGroup !== "undefined" && moonGroup) {
     const earthWorldPos = new THREE.Vector3();
@@ -5089,6 +5143,16 @@ function animate(){
     haumeaMoons.forEach(m => {
       m.group.rotation.y += moonOrbitStep(m.speed * speed, m.distance, deltaScale);
       if (m.spin) m.mesh.rotation.y += m.spin * speed * deltaScale;
+    });
+  }
+
+  // ✨ Eris's moon Dysnomia follows Eris; tidally locked (orbit only, no own spin).
+  if (erisMoons.length && erisMesh) {
+    const erisWorldPos = new THREE.Vector3();
+    erisMesh.getWorldPosition(erisWorldPos);
+    erisMoonGroup.position.copy(erisWorldPos);
+    erisMoons.forEach(m => {
+      m.group.rotation.y += moonOrbitStep(m.speed * speed, m.distance, deltaScale);
     });
   }
 
@@ -5476,6 +5540,7 @@ const bodyList = [
   { label: "　 ◦ Namaka", obj: (haumeaMoons.find(p => p.mesh.userData.name === "Namaka") || {}).mesh },
   { label: " • Makemake", obj: meshes.find(m => m.userData.name === "Makemake") },
   { label: " • Eris", obj: meshes.find(m => m.userData.name === "Eris") },
+  { label: "　 ◦ Dysnomia", obj: (erisMoons.find(p => p.mesh.userData.name === "Dysnomia") || {}).mesh },
 ];
 
 function showList() {

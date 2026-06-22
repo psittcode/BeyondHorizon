@@ -668,6 +668,17 @@ Makemake orbits on a path inclined ~29° to the ecliptic, similar in tilt to Hau
 name:"Eris",
 dist:678.60,size:0.0000777,color:0xd8d8d0,speed:0.00000005948,e:0.4407,i:44.04,Om:35.95,w:151.64,period:558.0,
 kind:"dwarf",texture:"4k_eris_fictional.jpg",tilt:78,spinY:0.011,
+// 🌙 Dysnomia — Eris's only known moon. Real size/orbit; generic cratered shape (no
+// resolved imaging exists) with the Pluto-moon asteroid texture. Unlike Haumea's moons,
+// Dysnomia IS tidally locked to Eris (no `spin` → it keeps one face toward Eris,
+// rotating once per orbit, like the major moons). speed = 0.012123/period_days.
+moons:[
+  {name:"Dysnomia", size:0.0000234, dist:0.002492, speed:0.00076796, color:0xb8b3ab,
+   texture:"asteroid.png",
+   shape:{axes:[1,0.90,0.84], lumpiness:0.09, lumpSeed:557,
+          craters:[{dir:[0.2,-0.55,0.6],angRadius:0.5,depth:0.13,rim:0.02}]},
+   info:`<b>Dysnomia</b><br><br>Eris's only known moon (~700 km across), discovered in 2005 — the same year as Eris itself. It is named after the daughter of the goddess Eris.<br><br>• Orbit: ~15.79 days at ~37,300 km, near-circular<br>• Tidally locked to Eris — it keeps one face turned toward the dwarf planet, rotating once per orbit.<br>`},
+],
 info:`<b>Eris</b><br><br>
 
 <b>General Overview</b><br>
