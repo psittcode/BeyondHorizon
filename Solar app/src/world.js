@@ -1112,71 +1112,21 @@ let terraformedMarsMaterial = null;
 
 // Cloud layer — sized to Earth's true surface radius (it's a child of earth, so it
 // inherits earth's min-dot scale and stays the same shell thickness at any zoom).
-// The geometry sits exactly at the surface; cloudMesh.scale lifts it to its
-// altitude, so the "atmosphere" editing panel can adjust altitude (local scale)
-// and opacity (material.opacity) live.
+// The geometry sits at the surface; cloudMesh.scale lifts it to a fixed 0.5%
+// altitude, with 50% opacity (tuned values, no longer user-adjustable).
 const cloudTexture = textureLoader.load("2k_earth_clouds.jpg");
-// Default altitude: 3.636% above the surface (the original 0.57/0.55 shell).
-const CLOUD_DEFAULT_ALTITUDE = (0.57 / 0.55) - 1;   // ≈ 0.03636
-const CLOUD_DEFAULT_OPACITY = 0.4;
 const cloudMesh = new THREE.Mesh(
   new THREE.SphereGeometry(earth.userData.size, 32, 32),
   new THREE.MeshBasicMaterial({
     map: cloudTexture,
     transparent: true,
-    opacity: CLOUD_DEFAULT_OPACITY,
+    opacity: 0.5,
     blending: THREE.AdditiveBlending,
     depthWrite: false
   })
 );
-cloudMesh.scale.setScalar(1 + CLOUD_DEFAULT_ALTITUDE);
+cloudMesh.scale.setScalar(1.005);   // 0.5% above the surface
 earth.add(cloudMesh);
-
-// --- Earth atmosphere / cloud-layer editing panel wiring ---
-// Two controls: opacity (material.opacity) and altitude (how far the cloud shell
-// floats above the surface, as a % of Earth's radius, applied via local scale).
-(function wireCloudPanel() {
-  const opacitySlider = document.getElementById("cloudOpacity");
-  const altitudeSlider = document.getElementById("cloudAltitude");
-  const opacityLabel = document.getElementById("cloudOpacityLabel");
-  const altitudeLabel = document.getElementById("cloudAltitudeLabel");
-  const resetBtn = document.getElementById("cloudReset");
-  const toggleBtn = document.getElementById("toggleCloudPanel");
-  const panel = document.getElementById("cloudPanel");
-  if (!opacitySlider || !altitudeSlider) return;
-
-  function applyOpacity(v) {
-    cloudMesh.material.opacity = v;
-    if (opacityLabel) opacityLabel.textContent = Math.round(v * 100) + "%";
-  }
-  function applyAltitude(pct) {
-    // pct is a percentage of Earth's radius above the surface.
-    cloudMesh.scale.setScalar(1 + pct / 100);
-    if (altitudeLabel) altitudeLabel.textContent = pct.toFixed(1) + "%";
-  }
-
-  opacitySlider.addEventListener("input", e => applyOpacity(parseFloat(e.target.value)));
-  altitudeSlider.addEventListener("input", e => applyAltitude(parseFloat(e.target.value)));
-
-  if (resetBtn) resetBtn.addEventListener("click", () => {
-    opacitySlider.value = CLOUD_DEFAULT_OPACITY;
-    altitudeSlider.value = (CLOUD_DEFAULT_ALTITUDE * 100).toFixed(1);
-    applyOpacity(CLOUD_DEFAULT_OPACITY);
-    applyAltitude(CLOUD_DEFAULT_ALTITUDE * 100);
-  });
-
-  if (toggleBtn && panel) toggleBtn.addEventListener("click", () => {
-    const showing = panel.style.display !== "none";
-    panel.style.display = showing ? "none" : "block";
-    toggleBtn.textContent = showing ? "Earth Atmosphere" : "Hide Atmosphere";
-  });
-
-  // Initialise sliders + labels to the current defaults.
-  opacitySlider.value = CLOUD_DEFAULT_OPACITY;
-  altitudeSlider.value = (CLOUD_DEFAULT_ALTITUDE * 100).toFixed(1);
-  applyOpacity(CLOUD_DEFAULT_OPACITY);
-  applyAltitude(CLOUD_DEFAULT_ALTITUDE * 100);
-})();
 
 // Moon orbit group
 const moonGroup = new THREE.Object3D();
