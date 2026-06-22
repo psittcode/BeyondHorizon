@@ -1128,6 +1128,17 @@ const cloudMesh = new THREE.Mesh(
 cloudMesh.scale.setScalar(1.005);   // 0.5% above the surface
 earth.add(cloudMesh);
 
+// Earth atmosphere (cloud layer) on/off — driven by a button in Earth's info panel.
+function syncEarthAtmoBtn() {
+  const btn = document.getElementById("earthAtmoToggleBtn");
+  if (btn) btn.textContent = cloudMesh.visible ? "Hide Atmosphere" : "Show Atmosphere";
+}
+function toggleEarthAtmosphere() {
+  cloudMesh.visible = !cloudMesh.visible;
+  syncEarthAtmoBtn();
+}
+window.toggleEarthAtmosphere = toggleEarthAtmosphere;
+
 // Moon orbit group
 const moonGroup = new THREE.Object3D();
 moonGroup.rotation.x = 5.1 * (Math.PI / 180);
@@ -2980,6 +2991,7 @@ function flyToObject(obj) {
     refreshMercuryPanel();
   } else {
     document.getElementById("panelContent").innerHTML = infoObj.userData.info;
+    if (infoObj.userData.name === "Earth") syncEarthAtmoBtn();
   }
   document.getElementById("backToList").style.display = "inline-block";
 

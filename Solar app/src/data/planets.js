@@ -174,7 +174,17 @@ Earth is currently the only known planet with confirmed life. Life ranges from m
 Earth’s orbit is slightly elliptical, but remains stable due to gravitational interaction with the Sun and Moon. The axial tilt of 23.5° causes seasonal variation.<br><br>
 
 <b>Natural Satellite</b><br>
-Earth has one natural satellite, the Moon, which stabilizes axial tilt and influences tides through gravitational interaction.<br>`
+Earth has one natural satellite, the Moon, which stabilizes axial tilt and influences tides through gravitational interaction.<br><br>
+
+<button id="earthAtmoToggleBtn" onclick="toggleEarthAtmosphere()" style="
+  background: rgba(120,180,255,0.18);
+  color: white;
+  border: 1px solid rgba(120,180,255,0.5);
+  padding: 6px 12px;
+  cursor: pointer;
+  border-radius: 4px;
+  font-size: 13px;
+">Hide Atmosphere</button>`
 },
 {
 name:"Mars",
