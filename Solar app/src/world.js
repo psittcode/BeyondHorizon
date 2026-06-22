@@ -1353,6 +1353,7 @@ const moonOrbitLine = new THREE.Line(
   new THREE.LineBasicMaterial({ color: ORBIT_COLORS.Earth, transparent: true, opacity: 0.3 })
 );
 moonOrbitLine.userData.ownerMesh = earth;   // hide the Moon's ring when zoomed in close to Earth
+moonOrbitLine.userData.moonMesh = moon;     // ...or when zoomed in close to the Moon itself
 moonGroup.add(moonOrbitLine);
 orbitLines.push(moonOrbitLine);
 
@@ -1603,7 +1604,13 @@ const jupiterMoonGroup = new THREE.Object3D();
 jupiterMoonGroup.rotation.z = 3.1 * (Math.PI / 180);
 scene.add(jupiterMoonGroup);
 jupiterMoons.forEach(m => { scene.remove(m.group); m.group.position.set(0, 0, 0); jupiterMoonGroup.add(m.group); });
-jupiterMoonOrbitLines.forEach(line => { scene.remove(line); line.position.set(0, 0, 0); jupiterMoonGroup.add(line); });
+jupiterMoonOrbitLines.forEach((line, i) => {
+  scene.remove(line); line.position.set(0, 0, 0); jupiterMoonGroup.add(line);
+  // The ring loop's distances are in Galilean order (Io, Europa, Ganymede, Callisto),
+  // matching jupiterMoons — tag each ring with its moon so flying straight to a moon
+  // hides its ring (not just zooming into Jupiter).
+  if (jupiterMoons[i]) line.userData.moonMesh = jupiterMoons[i].mesh;
+});
 
 // 🔴 Mars's moons — Phobos and Deimos. They orbit in Mars's equatorial plane, so
 // marsMoonGroup carries the same fixed 25.2° tilt as Mars's spin axis; each moon also
@@ -1659,6 +1666,7 @@ if (marsMesh && marsMesh.userData.moons) {
       new THREE.LineBasicMaterial({ color: ORBIT_COLORS.Mars, transparent: true, opacity: 0.3 })
     );
     line.userData.ownerMesh = marsMesh;
+    line.userData.moonMesh = mo.mesh;  // also hide when zoomed in close to the moon itself
     parent.add(line);                  // orbit ring rides the same (possibly inclined) plane as the moon
     orbitLines.push(line);
     marsMoonOrbitLines.push(line);
@@ -1717,6 +1725,7 @@ if (plutoMesh && plutoMesh.userData.moons) {
       new THREE.LineBasicMaterial({ color: ORBIT_COLORS.Pluto, transparent: true, opacity: 0.3 })
     );
     line.userData.ownerMesh = plutoMesh;
+    line.userData.moonMesh = mo.mesh;   // also hide when zoomed in close to the moon itself
     plutoTiltGroup.add(line);
     orbitLines.push(line);
     plutoMoonOrbitLines.push(line);
@@ -1765,6 +1774,7 @@ if (neptuneMesh && neptuneMesh.userData.moons) {
       new THREE.LineBasicMaterial({ color: ORBIT_COLORS.Neptune, transparent: true, opacity: 0.3 })
     );
     line.userData.ownerMesh = neptuneMesh;
+    line.userData.moonMesh = mo.mesh;   // also hide when zoomed in close to the moon itself
     tilt.add(line);                // ring rides the same tilt; its world position follows the container
     orbitLines.push(line);
   });
@@ -2199,6 +2209,7 @@ if (uranusMesh && uranusMesh.userData.moons) {
       new THREE.LineBasicMaterial({ color: ORBIT_COLORS.Uranus, transparent: true, opacity: 0.3 })
     );
     line.userData.ownerMesh = uranusMesh;
+    line.userData.moonMesh = mo.mesh;   // also hide when zoomed in close to the moon itself
     parent.add(line);              // orbit ring rides the same (possibly inclined) plane as the moon
     orbitLines.push(line);
     uranusMoonOrbitLines.push(line);
@@ -2256,6 +2267,7 @@ if (saturn && saturn.userData.moons) {
       new THREE.LineBasicMaterial({ color: ORBIT_COLORS.Saturn, transparent: true, opacity: 0.3 })
     );
     line.userData.ownerMesh = saturn;
+    line.userData.moonMesh = mo.mesh;   // also hide when zoomed in close to the moon itself (e.g. far-orbiting Iapetus)
     parent.add(line);              // orbit ring rides the same (possibly inclined) plane as the moon
     orbitLines.push(line);
     saturnMoonOrbitLines.push(line);
@@ -2681,6 +2693,14 @@ function applyMinDots() {
 // the global orbitsVisible toggle; callers run it only in the heliocentric view.
 const ORBIT_HIDE_ABOVE_PX = 22;     // hide a ring when its body's on-screen radius exceeds this
 const _orbPos = new THREE.Vector3();
+// On-screen radius (in px) of a body's true disc at the current camera distance.
+function bodyApparentPx(mesh, tanHalf) {
+  mesh.getWorldPosition(_orbPos);
+  const d = camera.position.distanceTo(_orbPos);
+  const worldPerPx = (2 * d * tanHalf) / window.innerHeight;
+  return (mesh.userData.size || mesh.userData.trueRadius || 0) / worldPerPx;
+}
+
 function updateOrbitRingProximity() {
   const tanHalf = Math.tan((camera.fov * Math.PI / 180) / 2);
   for (const line of orbitLines) {
@@ -2688,10 +2708,15 @@ function updateOrbitRingProximity() {
     if (!owner) continue;
     // Mercury's ring stays hidden while its precession trail is showing.
     if (line === mercuryOrbitLine && mercuryTrailMode) { line.visible = false; continue; }
-    owner.getWorldPosition(_orbPos);
-    const d = camera.position.distanceTo(_orbPos);
-    const worldPerPx = (2 * d * tanHalf) / window.innerHeight;
-    const apparentPx = (owner.userData.size || owner.userData.trueRadius || 0) / worldPerPx;
+    // A ring hides once the body you'd be zooming toward fills enough of the screen.
+    // For a moon ring that's EITHER the parent planet (zoom into the planet) OR the moon
+    // itself — without the latter, flying straight to a far moon (e.g. Iapetus, which
+    // orbits Saturn at ~3.56M km) leaves the planet too small to ever trip the threshold,
+    // so the ring would never disappear.
+    let apparentPx = bodyApparentPx(owner, tanHalf);
+    if (line.userData.moonMesh) {
+      apparentPx = Math.max(apparentPx, bodyApparentPx(line.userData.moonMesh, tanHalf));
+    }
     line.visible = orbitsVisible && apparentPx < ORBIT_HIDE_ABOVE_PX;
   }
 }
