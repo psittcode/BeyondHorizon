@@ -4803,8 +4803,12 @@ function animate(){
       + ' elapsed · ' + (mercuryPerihelion * 180 / Math.PI).toFixed(1) + '° drift';
   }
 
-  // Sun rotation
-  sun.rotation.y += 0.135 * speed * deltaScale;
+  // Sun rotation — true sidereal rate. The Sun rotates differentially (≈25 d at the
+  // equator, slower toward the poles); this uses the ~25.38-day Carrington equatorial
+  // sidereal period. Calibrated like the planets: value = 0.012123 / period_days =
+  // 0.012123 / 25.38 ≈ 0.0004776. (The old 0.135 spun it ~283× too fast — about one full
+  // turn every ~2 hours of simulated time.)
+  sun.rotation.y += 0.0004776 * speed * deltaScale;
   sun.rotation.z = 7.25 * (Math.PI / 180);
 
   meshes.forEach(m=>{
