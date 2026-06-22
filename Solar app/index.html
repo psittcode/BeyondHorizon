@@ -160,6 +160,16 @@ Speed<br>
   font-size: 13px;
 ">Show Bodies</button>
 <br><br>
+<button id="toggleCloudPanel" style="
+  background: rgba(255,255,255,0.15);
+  color: white;
+  border: 1px solid rgba(255,255,255,0.4);
+  padding: 6px 12px;
+  cursor: pointer;
+  border-radius: 4px;
+  font-size: 13px;
+">Earth Atmosphere</button>
+<br><br>
 <div id="simTimeBlock">
 <div id="simTimeDisplay">
 <div style="font-size:11px; opacity:0.6; margin-bottom:2px; text-transform:uppercase; letter-spacing:0.05em;">Simulation Time</div>
@@ -238,6 +248,47 @@ Speed<br>
   width: 100%;
   margin-top: 4px;
 ">The Andromeda Galaxy</button>
+</div>
+
+<!-- Earth atmosphere / cloud-layer editing panel -->
+<div id="cloudPanel" style="
+  display: none;
+  position: absolute;
+  left: 20px;
+  bottom: 24px;
+  background: rgba(10,20,35,0.88);
+  color: #dceeff;
+  font-family: sans-serif;
+  font-size: 13px;
+  padding: 14px 18px;
+  border-radius: 8px;
+  border: 1px solid rgba(120,180,255,0.4);
+  width: 220px;
+">
+  <div style="font-size:14px; font-weight:bold; color:#bcdcff; margin-bottom:10px;">&#9729; Earth Atmosphere</div>
+
+  <div style="display:flex; justify-content:space-between; margin-bottom:2px;">
+    <span>Cloud opacity</span>
+    <span id="cloudOpacityLabel" style="opacity:0.8;"></span>
+  </div>
+  <input id="cloudOpacity" type="range" min="0" max="1" step="0.01" value="0.4" style="width:100%;">
+
+  <div style="display:flex; justify-content:space-between; margin:10px 0 2px;">
+    <span>Altitude (above surface)</span>
+    <span id="cloudAltitudeLabel" style="opacity:0.8;"></span>
+  </div>
+  <input id="cloudAltitude" type="range" min="0" max="12" step="0.1" value="3.6" style="width:100%;">
+
+  <button id="cloudReset" style="
+    margin-top:12px;
+    background: rgba(255,255,255,0.15);
+    color: white;
+    border: 1px solid rgba(255,255,255,0.4);
+    padding: 4px 10px;
+    cursor: pointer;
+    border-radius: 4px;
+    font-size: 12px;
+  ">Reset</button>
 </div>
 
 <!-- Spaceship Earth legend panel -->
