@@ -598,6 +598,28 @@ Pluto's orbit is steeply inclined (~17°) and eccentric enough that it sometimes
 name:"Haumea",
 dist:431.30,size:0.0000388,color:0xe8e8ee,speed:0.0000001168,e:0.1955,i:28.21,Om:121.90,w:239.0,period:284.12,
 kind:"dwarf",texture:"4k_haumea_fictional.jpg",ellipsoid:[1,0.442,0.734],tilt:126,spinY:0.075,
+// 🌙 Haumea's two moons — both icy shards from the ancient collision that formed the
+// Haumea family. NEITHER is tidally locked. Sizes/orbits are real; shapes are generic
+// (no resolved imaging exists — NASA's Eyes shows them as generic models too), tuned to
+// those renders, and given the same asteroid texture as Pluto's small moons.
+// Calibration (matches every other body): orbital speed = 0.012123/period_days,
+// self-spin value = 0.012123/rotation_period_days.
+moons:[
+  // Hiʻiaka — outer, LARGER moon (~320 km). Orbits ~49.5 d at ~49,880 km. Real measured
+  // rotation ~9.8 h (Hastings et al. 2016) → spins ~5× per orbit, NOT synchronous.
+  {name:"Hi'iaka", size:0.0000107, dist:0.003334, speed:0.00024510, color:0xd8d2c8,
+   texture:"asteroid.png", spin:0.029689,
+   shape:{axes:[1,0.80,0.74], lumpiness:0.10, lumpSeed:917,
+          craters:[{dir:[0.35,0.65,0.5],angRadius:0.55,depth:0.12,rim:0.02}]},
+   info:`<b>Hiʻiaka</b><br><br>The outer and larger of Haumea's two moons (~320 km across), discovered in 2005. Its surface is almost pure crystalline water ice.<br><br>• Orbit: ~49.5 days at ~49,900 km<br>• Rotation: ~9.8 hours — far faster than it orbits, so it is <b>not</b> tidally locked (a relic of the giant collision that created the Haumea family).<br>`},
+  // Namaka — inner, SMALLER moon (~170 km). Eccentric, inclined ~13° to Hiʻiaka's orbit.
+  // Its rotation period is not yet measured; it is not known to be tidally locked, so it
+  // is given a plausible non-synchronous spin (~10 h, estimated).
+  {name:"Namaka", size:0.0000057, dist:0.001715, speed:0.00066325, color:0xcfc8bd,
+   texture:"asteroid.png", spin:0.029095, incl:13.4, node:70,
+   shape:{axes:[1,0.62,0.56], lumpiness:0.11, lumpSeed:431},
+   info:`<b>Namaka</b><br><br>The smaller, inner moon of Haumea (~170 km across), discovered in 2005.<br><br>• Orbit: ~18.3 days at ~25,700 km, on an eccentric path tilted ~13° to Hiʻiaka's<br>• Rotation: not yet measured (shown spinning freely — it is not known to be tidally locked)<br>`},
+],
 info:`<b>Haumea</b><br><br>
 
 <b>General Overview</b><br>

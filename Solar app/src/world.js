@@ -1733,6 +1733,66 @@ if (plutoMesh && plutoMesh.userData.moons) {
 }
 const plutoCharon = plutoMoons.find(p => p.mesh.userData.name === "Charon") || null;
 
+// ✨ Haumea's moons — Hiʻiaka (outer, larger) and Namaka (inner, smaller). Both are icy
+// collision shards; NEITHER is tidally locked, so each gets its own free spin on top of
+// its orbital motion (Hiʻiaka's real ~9.8-h rotation is ~5× per orbit). They ride a
+// shared tilt container parked on Haumea each frame (Haumea's equatorial plane); Namaka
+// carries an extra inclination. Same lumpy-shape builder the Mars moons use (generic
+// proportions — no resolved imaging exists) with the Pluto-moon asteroid texture.
+const haumeaMesh = meshes.find(m => m.userData.name === "Haumea");
+const haumeaMoonGroup = new THREE.Object3D();   // Haumea's equatorial plane (not min-dot scaled)
+haumeaMoonGroup.rotation.x = 52 * (Math.PI / 180);
+haumeaMoonGroup.rotation.z = 18 * (Math.PI / 180);
+scene.add(haumeaMoonGroup);
+const haumeaMoons = [];
+const haumeaMoonOrbitLines = [];
+if (haumeaMesh && haumeaMesh.userData.moons) {
+  haumeaMesh.userData.moons.forEach((mn, idx) => {
+    const mo = createMoon(mn.size, mn.dist, mn.speed, mn.color, mn.info,
+                          mn.texture ? textureLoader.load(mn.texture) : null,
+                          idx * 2.1);   // distinct start phases
+    mo.mesh.userData.name = mn.name;
+    if (mn.shape) {
+      mo.mesh.geometry.dispose();
+      mo.mesh.geometry = makeMoonShapeGeometry(mn.size, mn.shape);
+    }
+    // Free (non-synchronous) self-rotation — these moons are NOT tidally locked.
+    mo.spin = mn.spin || 0;
+    mo.mesh.rotation.set(0.6 * (idx + 1), 1.3 * (idx + 1), 0.4 * (idx + 1));
+
+    scene.remove(mo.group);   // reparent into Haumea's (possibly inclined) plane
+    let parent = haumeaMoonGroup;
+    if (mn.incl) {
+      const tilt = new THREE.Object3D();
+      tilt.rotation.y = (mn.node || 0) * (Math.PI / 180);   // node: tilt direction (deg, optional)
+      tilt.rotation.z = mn.incl * (Math.PI / 180);          // inclination to Hiʻiaka's plane (deg)
+      haumeaMoonGroup.add(tilt);
+      parent = tilt;
+    }
+    parent.add(mo.group);
+    haumeaMoons.push(mo);
+
+    // Orbit ring — sagitta-based segment count so the moon sits exactly on the line
+    // (chord gap < 0.1× the moon's radius), like Pluto's/Iapetus's rings.
+    const segs = Math.min(2048, Math.max(128,
+      Math.ceil(Math.PI * Math.sqrt(mn.dist / (2 * 0.1 * mn.size)))));
+    const pts = [];
+    for (let i = 0; i <= segs; i++) {
+      const a = (i / segs) * Math.PI * 2;
+      pts.push(new THREE.Vector3(Math.cos(a) * mn.dist, 0, Math.sin(a) * mn.dist));
+    }
+    const line = new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints(pts),
+      new THREE.LineBasicMaterial({ color: ORBIT_COLORS.Haumea, transparent: true, opacity: 0.3 })
+    );
+    line.userData.ownerMesh = haumeaMesh;
+    line.userData.moonMesh = mo.mesh;
+    parent.add(line);   // ring rides the same (possibly inclined) plane as the moon
+    orbitLines.push(line);
+    haumeaMoonOrbitLines.push(line);
+  });
+}
+
 // 🔵 Neptune's moon — Triton (retrograde). Same scene-parented pattern as the Pluto
 // moons: a sphere via createMoon + an orbit ring repositioned onto Neptune each frame.
 // Untextured for now (a flat colour); a real texture can be dropped in later via the
@@ -2677,6 +2737,7 @@ function applyMinDots() {
   uranusMoons.forEach(um => minDotScale(um.mesh, um.mesh.userData.trueRadius));
   saturnMoons.forEach(sm => minDotScale(sm.mesh, sm.mesh.userData.trueRadius));
   marsMoons.forEach(mm => minDotScale(mm.mesh, mm.mesh.userData.trueRadius));
+  haumeaMoons.forEach(hm => minDotScale(hm.mesh, hm.mesh.userData.trueRadius));
   // Saturn's rings: match the body's apparent size and keep the shadow term correct.
   const saturnS = saturn.scale.x; // set by the meshes loop above
   saturnTiltGroup.scale.setScalar(saturnS);
@@ -3151,6 +3212,15 @@ window.addEventListener("click", e => {
     const sHits = raycaster.intersectObjects(saturnMoons.map(sm => sm.mesh), false);
     saturn.visible = saturnWasVisible;
     if (sHits.length > 0) { flyToObject(sHits[0].object); return; }
+  }
+
+  // Check Haumea's moons (hide Haumea so it can't block them)
+  if (haumeaMoons.length && haumeaMesh) {
+    const haumeaWasVisible = haumeaMesh.visible;
+    haumeaMesh.visible = false;
+    const hHits = raycaster.intersectObjects(haumeaMoons.map(hm => hm.mesh), false);
+    haumeaMesh.visible = haumeaWasVisible;
+    if (hHits.length > 0) { flyToObject(hHits[0].object); return; }
   }
 
   // Check Mars's moons (hide Mars so it can't block close-orbiting Phobos/Deimos)
@@ -5010,6 +5080,18 @@ function animate(){
     });
   }
 
+  // ✨ Haumea's moons follow Haumea; the whole tilted plane rides its position. Each moon
+  // also spins on its own axis (NOT tidally locked — Hiʻiaka rotates ~5× per orbit).
+  if (haumeaMoons.length && haumeaMesh) {
+    const haumeaWorldPos = new THREE.Vector3();
+    haumeaMesh.getWorldPosition(haumeaWorldPos);
+    haumeaMoonGroup.position.copy(haumeaWorldPos);
+    haumeaMoons.forEach(m => {
+      m.group.rotation.y += moonOrbitStep(m.speed * speed, m.distance, deltaScale);
+      if (m.spin) m.mesh.rotation.y += m.spin * speed * deltaScale;
+    });
+  }
+
   // 💨 Enceladus's plumes blow outward only as the sim runs faster than 1×: at LIVE the
   // jets are frozen (a static plume), and they stream out as you speed up time. uFlow stays
   // in [0,1) so the GPU `fract(phase0 + uFlow)` keeps full precision. uMoonScale/uSizeK keep
@@ -5390,6 +5472,8 @@ const bodyList = [
   { label: "　 ◦ Kerberos", obj: (plutoMoons.find(p => p.mesh.userData.name === "Kerberos") || {}).mesh },
   { label: "　 ◦ Hydra", obj: (plutoMoons.find(p => p.mesh.userData.name === "Hydra") || {}).mesh },
   { label: " • Haumea", obj: meshes.find(m => m.userData.name === "Haumea") },
+  { label: "　 ◦ Hiʻiaka", obj: (haumeaMoons.find(p => p.mesh.userData.name === "Hi'iaka") || {}).mesh },
+  { label: "　 ◦ Namaka", obj: (haumeaMoons.find(p => p.mesh.userData.name === "Namaka") || {}).mesh },
   { label: " • Makemake", obj: meshes.find(m => m.userData.name === "Makemake") },
   { label: " • Eris", obj: meshes.find(m => m.userData.name === "Eris") },
 ];
