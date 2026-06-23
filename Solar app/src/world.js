@@ -1120,14 +1120,15 @@ let terraformedMarsMaterial = null;
 // Cloud layer — sized to Earth's true surface radius (it's a child of earth, so it
 // inherits earth's min-dot scale and stays the same shell thickness at any zoom).
 // The geometry sits at the surface; cloudMesh.scale lifts it to a fixed 0.5%
-// altitude, with 80% opacity (tuned values, no longer user-adjustable).
+// altitude. Opacity is 1.2 — above 1.0 is valid here because the layer uses
+// additive blending, so it brightens the clouds (tuned, not user-adjustable).
 const cloudTexture = textureLoader.load("2k_earth_clouds.jpg");
 const cloudMesh = new THREE.Mesh(
   new THREE.SphereGeometry(earth.userData.size, 32, 32),
   new THREE.MeshBasicMaterial({
     map: cloudTexture,
     transparent: true,
-    opacity: 0.8,
+    opacity: 1.2,
     blending: THREE.AdditiveBlending,
     depthWrite: false
   })
