@@ -240,6 +240,50 @@ Speed<br>
 ">The Andromeda Galaxy</button>
 </div>
 
+<!-- Enceladus plume editor (reposition the vents + dot count; vapour look is fixed) -->
+<div id="encEditorPanel" style="
+  display: none;
+  position: absolute;
+  right: 20px;
+  top: 90px;
+  background: rgba(10,18,30,0.9);
+  color: #dceaff;
+  font-family: sans-serif;
+  font-size: 13px;
+  padding: 14px 18px;
+  border-radius: 8px;
+  border: 1px solid rgba(130,190,255,0.45);
+  width: 240px;
+  z-index: 50;
+">
+  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+    <div style="font-size:14px; font-weight:bold; color:#bcdcff;">&#128168; Enceladus Plumes</div>
+    <button id="encEditorClose" style="background:rgba(255,255,255,0.12); color:white; border:1px solid rgba(255,255,255,0.3); padding:1px 8px; cursor:pointer; border-radius:4px; font-size:13px;">&times;</button>
+  </div>
+  <div style="font-size:11px; opacity:0.65; margin-bottom:10px; line-height:1.4;">Position &amp; dot count only — the vapour look is unchanged.</div>
+
+  <div style="display:flex; justify-content:space-between; margin-bottom:2px;">
+    <span>Latitude</span><span id="encLatVal" style="opacity:0.8;"></span></div>
+  <input id="encLat" type="range" min="-90" max="90" step="1" style="width:100%;">
+
+  <div style="display:flex; justify-content:space-between; margin:10px 0 2px;">
+    <span>Longitude</span><span id="encLonVal" style="opacity:0.8;"></span></div>
+  <input id="encLon" type="range" min="-180" max="180" step="1" style="width:100%;">
+
+  <div style="display:flex; justify-content:space-between; margin:10px 0 2px;">
+    <span>Spread</span><span id="encSpreadVal" style="opacity:0.8;"></span></div>
+  <input id="encSpread" type="range" min="0.2" max="3" step="0.05" style="width:100%;">
+
+  <div style="display:flex; justify-content:space-between; margin:10px 0 2px;">
+    <span>Vapour dots</span><span id="encDotsVal" style="opacity:0.8;"></span></div>
+  <input id="encDots" type="range" min="10" max="600" step="10" style="width:100%;">
+
+  <div style="display:flex; gap:8px; margin-top:12px;">
+    <button id="encEditorReset" style="flex:1; background:rgba(255,255,255,0.15); color:white; border:1px solid rgba(255,255,255,0.4); padding:4px 8px; cursor:pointer; border-radius:4px; font-size:12px;">Reset</button>
+    <button id="encEditorCopy" style="flex:2; background:rgba(255,255,255,0.15); color:white; border:1px solid rgba(255,255,255,0.4); padding:4px 8px; cursor:pointer; border-radius:4px; font-size:12px;">Copy values</button>
+  </div>
+</div>
+
 <!-- Spaceship Earth legend panel -->
 <div id="spaceshipLegend" style="
   display: none;

@@ -2402,30 +2402,81 @@ if (saturn && saturn.userData.moons) {
 // Math.max(0, speed − SPEED_REALLIFE) idiom used elsewhere), so the plume is frozen at 1×
 // (LIVE) and visibly blows outward as you speed up time. Parented to the Enceladus mesh so
 // it rides the moon and shares its min-dot scale.
-const ENCELADUS_VENTS = [
+// The 12 base vents trace the south-polar "tiger stripe" fissures (unit directions in
+// Enceladus's LOCAL frame). The live "Edit Plumes" menu (see wireEnceladusEditor) only
+// repositions this cluster and changes the dot count — it never touches the VAPOR look.
+const BASE_ENCELADUS_VENTS = [
   [0.3167,-0.842,-0.4368], [0.2216,-0.9015,-0.3717], [0.1225,-0.9502,-0.2864],
   [0.4289,-0.849,-0.3087], [0.3142,-0.9195,-0.2361], [0.1956,-0.9642,-0.1788],
   [0.4748,-0.8636,-0.1696], [0.3546,-0.9245,-0.1396], [0.0442,-0.901,-0.4316],
   [0.3309,-0.8802,-0.3403], [0.1462,-0.8543,-0.4988], [-0.0066,-0.9449,-0.3274]
 ];
 // Vapour look settings, tuned with the live editor then baked in: a faint, wispy,
-// fairly short plume (very low opacity, normal/non-glowing blending).
+// fairly short plume (very low opacity, normal/non-glowing blending). NOT edited here.
 const VAPOR = { opacity: 0.03, size: 0.87, length: 1.15, spread: 0.31, flow: 0.12, brightness: 0.51, glow: false };
+
+// Centroid of the base vent cluster (≈ the south pole) — the pivot the editor rotates about.
+const _encBaseCentroid = (() => {
+  const c = new THREE.Vector3();
+  BASE_ENCELADUS_VENTS.forEach(v => c.add(new THREE.Vector3(v[0], v[1], v[2])));
+  return c.normalize();
+})();
+// Live-editable PLACEMENT state (positions + dot count only). Defaults reproduce the
+// original baked-in plume exactly.
+const ENC_PLUME_DEFAULTS = {
+  lat:    Math.asin(Math.max(-1, Math.min(1, _encBaseCentroid.y))) * 180 / Math.PI,
+  lon:    Math.atan2(_encBaseCentroid.z, _encBaseCentroid.x) * 180 / Math.PI,
+  spread: 1.0,    // 1 = original cluster tightness
+  perVent: 130    // amount of vapour dots emitted per vent
+};
+const ENC_PLUME = { ...ENC_PLUME_DEFAULTS };
+
+// Rotate the base vent cluster to a new (lat,lon) on the sphere and scale how tightly it
+// clusters around its centre — returns fresh unit vent directions. Pure placement: the per-
+// vent cone, particle look, etc. are untouched (those come from VAPOR at build time).
+function computeEnceladusVents(lat, lon, spread) {
+  const la = lat * Math.PI / 180, lo = lon * Math.PI / 180;
+  const target = new THREE.Vector3(Math.cos(la) * Math.cos(lo), Math.sin(la), Math.cos(la) * Math.sin(lo)).normalize();
+  const Q = new THREE.Quaternion().setFromUnitVectors(_encBaseCentroid, target);
+  return BASE_ENCELADUS_VENTS.map(v0 => {
+    const v = new THREE.Vector3(v0[0], v0[1], v0[2]).normalize();
+    const dot = Math.max(-1, Math.min(1, _encBaseCentroid.dot(v)));
+    const ang = Math.acos(dot) * spread;                       // scaled angular distance from centre
+    let s;
+    if (ang < 1e-6) s = _encBaseCentroid.clone();
+    else {
+      const axis = new THREE.Vector3().crossVectors(_encBaseCentroid, v).normalize();
+      s = _encBaseCentroid.clone().applyAxisAngle(axis, ang);
+    }
+    s.applyQuaternion(Q);                                       // move the whole cluster to (lat,lon)
+    return [s.x, s.y, s.z];
+  });
+}
+
 let enceladusPlume = null;
-(function buildEnceladusPlume() {
+// Build (or rebuild) the plume from the current ENC_PLUME placement. Disposes the previous
+// one first so the editor can call this live. VAPOR (the look) is read unchanged every time.
+function rebuildEnceladusPlume() {
   const enc = saturnMoons.find(m => m.mesh.userData.name === "Enceladus");
   if (!enc) return;
   const encMesh = enc.mesh;
   const R = encMesh.userData.trueRadius;
-  const PER_VENT = 130;
-  const N = ENCELADUS_VENTS.length * PER_VENT;
+  if (enceladusPlume) {
+    encMesh.remove(enceladusPlume.points);
+    enceladusPlume.points.geometry.dispose();
+    enceladusPlume.points.material.dispose();
+    enceladusPlume = null;
+  }
+  const vents = computeEnceladusVents(ENC_PLUME.lat, ENC_PLUME.lon, ENC_PLUME.spread);
+  const PER_VENT = Math.max(1, Math.round(ENC_PLUME.perVent));
+  const N = vents.length * PER_VENT;
   const position = new Float32Array(N * 3);   // jet base = vent point on the surface (local)
   const aDir     = new Float32Array(N * 3);   // outward jet direction (cone around the normal)
   const aPhase0  = new Float32Array(N);       // start offset along the jet (steady-state spread)
   const aSize    = new Float32Array(N);       // per-particle world size
   const up = new THREE.Vector3();
   let i = 0;
-  ENCELADUS_VENTS.forEach(v => {
+  vents.forEach(v => {
     const n = new THREE.Vector3(v[0], v[1], v[2]).normalize();   // surface normal at the vent
     up.set(0, 1, 0); if (Math.abs(n.dot(up)) > 0.9) up.set(1, 0, 0);
     const t1 = new THREE.Vector3().crossVectors(n, up).normalize();
@@ -2500,6 +2551,67 @@ let enceladusPlume = null;
   pts.renderOrder = 4;
   encMesh.add(pts);
   enceladusPlume = { points: pts, uniforms, encMesh, flow: 0, flowRate: VAPOR.flow };
+}
+rebuildEnceladusPlume();
+
+// ── Live "Edit Plumes" menu — repositions the plume and sets the dot count only ──────────
+// Opened by the button in Enceladus's info panel (window.toggleEnceladusEditor). It never
+// touches the VAPOR look settings, only ENC_PLUME (lat/lon/spread/perVent), then rebuilds.
+window.toggleEnceladusEditor = () => {
+  const panel = document.getElementById('encEditorPanel');
+  if (!panel) return;
+  panel.style.display = (panel.style.display === 'none' || !panel.style.display) ? 'block' : 'none';
+};
+(function wireEnceladusEditor() {
+  const panel = document.getElementById('encEditorPanel');
+  if (!panel) return;
+  const els = {
+    lat: document.getElementById('encLat'), lon: document.getElementById('encLon'),
+    spread: document.getElementById('encSpread'), perVent: document.getElementById('encDots')
+  };
+  const labels = {
+    lat: document.getElementById('encLatVal'), lon: document.getElementById('encLonVal'),
+    spread: document.getElementById('encSpreadVal'), perVent: document.getElementById('encDotsVal')
+  };
+  if (!els.lat) return;
+  function syncLabels() {
+    labels.lat.textContent     = ENC_PLUME.lat.toFixed(0) + '°';
+    labels.lon.textContent     = ENC_PLUME.lon.toFixed(0) + '°';
+    labels.spread.textContent  = ENC_PLUME.spread.toFixed(2) + '×';
+    labels.perVent.textContent = Math.round(ENC_PLUME.perVent) + ' / vent';
+  }
+  function pushToSliders() {
+    els.lat.value = ENC_PLUME.lat; els.lon.value = ENC_PLUME.lon;
+    els.spread.value = ENC_PLUME.spread; els.perVent.value = ENC_PLUME.perVent;
+    syncLabels();
+  }
+  function apply() {
+    ENC_PLUME.lat     = parseFloat(els.lat.value);
+    ENC_PLUME.lon     = parseFloat(els.lon.value);
+    ENC_PLUME.spread  = parseFloat(els.spread.value);
+    ENC_PLUME.perVent = parseInt(els.perVent.value, 10);
+    syncLabels();
+    rebuildEnceladusPlume();
+  }
+  Object.values(els).forEach(s => s.addEventListener('input', apply));
+  const resetBtn = document.getElementById('encEditorReset');
+  if (resetBtn) resetBtn.addEventListener('click', () => { Object.assign(ENC_PLUME, ENC_PLUME_DEFAULTS); pushToSliders(); rebuildEnceladusPlume(); });
+  const closeBtn = document.getElementById('encEditorClose');
+  if (closeBtn) closeBtn.addEventListener('click', () => { panel.style.display = 'none'; });
+  const copyBtn = document.getElementById('encEditorCopy');
+  if (copyBtn) copyBtn.addEventListener('click', () => {
+    // Print the current placement + the resolved vent directions, ready to bake in.
+    const vents = computeEnceladusVents(ENC_PLUME.lat, ENC_PLUME.lon, ENC_PLUME.spread)
+      .map(v => '  [' + v.map(n => n.toFixed(4)).join(',') + ']').join(',\n');
+    const out = `// ENC_PLUME: lat=${ENC_PLUME.lat.toFixed(1)} lon=${ENC_PLUME.lon.toFixed(1)} `
+              + `spread=${ENC_PLUME.spread.toFixed(2)} perVent=${Math.round(ENC_PLUME.perVent)}\n`
+              + `const BASE_ENCELADUS_VENTS = [\n${vents}\n];`;
+    console.log(out);
+    if (navigator.clipboard) navigator.clipboard.writeText(out).catch(() => {});
+    copyBtn.textContent = 'Copied to console ✓';
+    setTimeout(() => { copyBtn.textContent = 'Copy values'; }, 1500);
+  });
+  pushToSliders();
 })();
 
 // 🟡 Titan's atmosphere. Titan is the only moon with a thick atmosphere — a nitrogen haze
