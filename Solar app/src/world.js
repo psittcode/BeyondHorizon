@@ -3118,8 +3118,15 @@ function expFly(startPos, endPos, focal) {
   };
 }
 
-function flyToObject(obj) {
+function flyToObject(obj, fromList = false) {
   if (!obj) return;
+
+  // Ignore a canvas re-click on the body we're already focused on (e.g. an accidental
+  // click while holding the mouse down to drag/orbit it) — re-flying would needlessly
+  // zoom back out to the framing distance. Only the bodies panel (fromList=true) forces
+  // a re-frame; to re-fly from the canvas, first leave the body (press Escape, or click
+  // a different body) so it's no longer the locked one.
+  if (!fromList && obj === lockedObject) return;
 
   // Walk up to find an object with info
   let infoObj = obj;
@@ -3155,7 +3162,7 @@ function flyToObject(obj) {
   if (targetPos.lengthSq() < 0.001 && infoObj.userData.name !== "Sun") {
     requestAnimationFrame(() => {
       if (myGeneration !== flyGeneration) return; // superseded
-      flyToObject(obj);
+      flyToObject(obj, fromList);
     });
     return;
   }
@@ -5571,7 +5578,7 @@ function showList() {
   document.querySelectorAll(".bodyItem").forEach((el, i) => {
     el.addEventListener("click", () => {
       const item = bodyList[i];
-      flyToObject(item.obj);
+      flyToObject(item.obj, true);   // from the bodies panel: always (re-)frame the body
     });
   });
 }
