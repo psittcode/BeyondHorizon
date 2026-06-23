@@ -171,24 +171,25 @@ const room = {
     this.b.userData = { name: "Kepler-22b", size: KEPLER_B_RADIUS, info: KEPLER_22B_INFO };
     this.bPivot.add(this.b);
 
-    // Cloud layer — a slightly larger sphere (~3.6% over the surface, matching
-    // Earth's 0.57/0.55 shell) parented to the planet so it inherits the orbit,
-    // then spun independently in update(). Unlike Earth's additive clouds, this
-    // uses NORMAL blending on an unlit MeshBasicMaterial: the clouds render as a
-    // constant semi-opaque white overlay that stays visible on the bright,
-    // star-facing day side (additive blending washed out there) and is unaffected
-    // by the scene's lighting.
+    // Cloud layer — sized to the planet's surface radius and lifted to a fixed 0.5%
+    // altitude via local scale, at 50% opacity (matching Earth's baked cloud setting).
+    // Parented to the planet so it inherits the orbit, then spun independently in
+    // update(). Unlike Earth's additive clouds, this uses NORMAL blending on an unlit
+    // MeshBasicMaterial: the clouds render as a constant semi-opaque white overlay that
+    // stays visible on the bright, star-facing day side (additive blending washed out
+    // there) and is unaffected by the scene's lighting.
     const cloudTex = loadTexture("clouds.png");
     this.bClouds = new THREE.Mesh(
-      new THREE.SphereGeometry(KEPLER_B_RADIUS * (0.57 / 0.55), 64, 64),
+      new THREE.SphereGeometry(KEPLER_B_RADIUS, 64, 64),
       new THREE.MeshBasicMaterial({
         map: cloudTex,
         transparent: true,
-        opacity: 0.75,
+        opacity: 0.5,
         blending: THREE.NormalBlending,
         depthWrite: false
       })
     );
+    this.bClouds.scale.setScalar(1.005);   // 0.5% above the surface
     this.b.add(this.bClouds);
     // Orbit line — a 1px-wide THREE.Line circle (constant on-screen width at any
     // zoom), exactly like the Solar view, instead of a flat RingGeometry whose
