@@ -1168,17 +1168,27 @@ const cloudMesh = new THREE.Mesh(
 cloudMesh.scale.setScalar(1.005);   // 0.5% above the surface
 earth.add(cloudMesh);
 
-// Earth atmosphere (cloud layer) on/off — driven by a button in Earth's info panel.
+// Earth atmosphere (cloud layer) and glow ring on/off — each driven by its own button in
+// Earth's info panel, controlled independently (clouds vs. the white fresnel limb glow).
 function syncEarthAtmoBtn() {
   const btn = document.getElementById("earthAtmoToggleBtn");
   if (btn) btn.textContent = cloudMesh.visible ? "Hide Atmosphere" : "Show Atmosphere";
 }
 function toggleEarthAtmosphere() {
   cloudMesh.visible = !cloudMesh.visible;
-  if (earthAtmoShell) earthAtmoShell.visible = cloudMesh.visible;
   syncEarthAtmoBtn();
 }
 window.toggleEarthAtmosphere = toggleEarthAtmosphere;
+
+function syncEarthGlowBtn() {
+  const btn = document.getElementById("earthGlowToggleBtn");
+  if (btn) btn.textContent = (earthAtmoShell && earthAtmoShell.visible) ? "Hide Glow" : "Show Glow";
+}
+function toggleEarthGlow() {
+  if (earthAtmoShell) earthAtmoShell.visible = !earthAtmoShell.visible;
+  syncEarthGlowBtn();
+}
+window.toggleEarthGlow = toggleEarthGlow;
 
 // Moon orbit group
 const moonGroup = new THREE.Object3D();
@@ -3273,7 +3283,7 @@ function flyToObject(obj, fromList = false) {
     refreshMercuryPanel();
   } else {
     document.getElementById("panelContent").innerHTML = infoObj.userData.info;
-    if (infoObj.userData.name === "Earth") syncEarthAtmoBtn();
+    if (infoObj.userData.name === "Earth") { syncEarthAtmoBtn(); syncEarthGlowBtn(); }
     if (infoObj.userData.name === "Venus") syncVenusAtmoBtn();
   }
   document.getElementById("backToList").style.display = "inline-block";

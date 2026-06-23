@@ -194,7 +194,17 @@ Earth has one natural satellite, the Moon, which stabilizes axial tilt and influ
   cursor: pointer;
   border-radius: 4px;
   font-size: 13px;
-">Hide Atmosphere</button>`
+">Hide Atmosphere</button>
+<br><br>
+<button id="earthGlowToggleBtn" onclick="toggleEarthGlow()" style="
+  background: rgba(120,180,255,0.18);
+  color: white;
+  border: 1px solid rgba(120,180,255,0.5);
+  padding: 6px 12px;
+  cursor: pointer;
+  border-radius: 4px;
+  font-size: 13px;
+">Hide Glow</button>`
 },
 {
 name:"Mars",
