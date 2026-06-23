@@ -172,21 +172,50 @@ const room = {
     this.bPivot.add(this.b);
 
     // Cloud layer — sized to the planet's surface radius and lifted to a fixed 0.5%
-    // altitude via local scale, at 80% opacity (matching Earth's baked cloud setting).
-    // Parented to the planet so it inherits the orbit, then spun independently in
-    // update(). Unlike Earth's additive clouds, this uses NORMAL blending on an unlit
-    // MeshBasicMaterial: the clouds render as a constant semi-opaque white overlay that
-    // stays visible on the bright, star-facing day side (additive blending washed out
-    // there) and is unaffected by the scene's lighting.
+    // altitude via local scale. Parented to the planet so it inherits the orbit, then
+    // spun independently in update(). Same sun-lit shader as Earth's clouds (NORMAL
+    // alpha blending, not additive): dense cloud reads as a solid white mass on the
+    // star-facing day side, dims toward a 0.1 floor across a soft terminator, and stays
+    // faintly visible (not cut off) on the night side. clouds.png carries coverage in
+    // its ALPHA channel (Earth's grayscale map used .r). sunDirection (planet→star) is
+    // updated each frame in update(). No white glow ring (unlike Earth).
     const cloudTex = loadTexture("clouds.png");
     this.bClouds = new THREE.Mesh(
       new THREE.SphereGeometry(KEPLER_B_RADIUS, 64, 64),
-      new THREE.MeshBasicMaterial({
-        map: cloudTex,
+      new THREE.ShaderMaterial({
         transparent: true,
-        opacity: 1.2,
-        blending: THREE.NormalBlending,
-        depthWrite: false
+        depthWrite: false,
+        uniforms: {
+          cloudTexture: { value: cloudTex },
+          sunDirection: { value: new THREE.Vector3(1, 0, 0) }
+        },
+        vertexShader: `
+          varying vec2 vUv;
+          varying vec3 vNormal;
+          #include <common>
+          #include <logdepthbuf_pars_vertex>
+          void main() {
+            vUv = uv;
+            vNormal = normalize((modelMatrix * vec4(normal, 0.0)).xyz);
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+            #include <logdepthbuf_vertex>
+          }
+        `,
+        fragmentShader: `
+          uniform sampler2D cloudTexture;
+          uniform vec3 sunDirection;
+          varying vec2 vUv;
+          varying vec3 vNormal;
+          #include <logdepthbuf_pars_fragment>
+          void main() {
+            #include <logdepthbuf_fragment>
+            float cloud = texture2D(cloudTexture, vUv).a;    // coverage (clouds.png: alpha channel)
+            float intensity = dot(normalize(vNormal), sunDirection);
+            float lit = smoothstep(-0.2, 0.3, intensity);    // wide, soft day↔night transition
+            float brightness = mix(0.1, 1.0, lit);           // dim on the night side, white in daylight
+            gl_FragColor = vec4(vec3(brightness), cloud);    // clouds stay everywhere, just darker at night
+          }
+        `
       })
     );
     this.bClouds.scale.setScalar(1.005);   // 0.5% above the surface
@@ -400,7 +429,12 @@ const room = {
     this.bPivot.rotation.y += KEPLER_B_SPEED * ctx.speed * kScale;
     this.b.rotation.y      += 0.01 * ctx.speed * kScale;
     // Clouds drift slightly faster than the surface — Earth's cloud logic.
-    if (this.bClouds) this.bClouds.rotation.y += 0.0101 * ctx.speed * kScale;
+    if (this.bClouds) {
+      this.bClouds.rotation.y += 0.0101 * ctx.speed * kScale;
+      // Light the clouds by the star (at the origin): direction is planet → star.
+      const pPos = this.b.getWorldPosition(new THREE.Vector3());
+      this.bClouds.material.uniforms.sunDirection.value.copy(pPos.negate().normalize());
+    }
 
     if (this.introActive) {
       // ease-OUT zoom-in, continuing the galaxy dive (slow)
