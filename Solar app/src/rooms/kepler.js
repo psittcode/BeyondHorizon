@@ -246,8 +246,12 @@ const room = {
   },
 
   // Fly the scene camera to a clicked body and lock onto it.
-  flyToObject(obj) {
+  flyToObject(obj, fromList = false) {
     if (!obj || !obj.userData) return;
+    // Ignore a canvas re-click on the body we're already focused on (e.g. an accidental
+    // click while dragging to orbit it) — re-flying would zoom back out to the framing
+    // distance. The bodies panel passes fromList=true to force a (re-)frame.
+    if (!fromList && obj === this.lockedObject) return;
     document.getElementById('panel').style.display = 'block';
     document.getElementById('panelContent').innerHTML = obj.userData.info || '';
     document.getElementById('backToList').style.display = 'inline-block';
@@ -295,7 +299,7 @@ const room = {
     document.getElementById("panelContent").innerHTML = html;
     const self = this;
     document.querySelectorAll(".bodyItem").forEach((el, i) => {
-      el.addEventListener("click", () => { self.flyToObject(items[i].obj); });
+      el.addEventListener("click", () => { self.flyToObject(items[i].obj, true); });
     });
   },
 
