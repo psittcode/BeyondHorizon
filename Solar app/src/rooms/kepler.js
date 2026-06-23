@@ -210,7 +210,7 @@ const room = {
           #include <logdepthbuf_pars_fragment>
           void main() {
             #include <logdepthbuf_fragment>
-            float cloud = clamp(texture2D(cloudTexture, vUv).a * 1.6, 0.0, 1.0); // accent coverage so clouds read over the bright surface
+            float cloud = clamp(texture2D(cloudTexture, vUv).a * 1.15, 0.0, 1.0); // light accent so coverage reads over the bright surface, close to Earth/Mars
             float intensity = dot(normalize(vNormal), sunDirection);
             float lit = smoothstep(-0.2, 0.3, intensity);    // wide, soft day↔night transition
             float brightness = mix(0.25, 1.0, lit);          // raised night floor so dark-side clouds stay visible
