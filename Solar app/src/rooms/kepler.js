@@ -209,10 +209,10 @@ const room = {
           #include <logdepthbuf_pars_fragment>
           void main() {
             #include <logdepthbuf_fragment>
-            float cloud = texture2D(cloudTexture, vUv).a;    // coverage (clouds.png: alpha channel)
+            float cloud = clamp(texture2D(cloudTexture, vUv).a * 1.6, 0.0, 1.0); // accent coverage so clouds read over the bright surface
             float intensity = dot(normalize(vNormal), sunDirection);
             float lit = smoothstep(-0.2, 0.3, intensity);    // wide, soft day↔night transition
-            float brightness = mix(0.1, 1.0, lit);           // dim on the night side, white in daylight
+            float brightness = mix(0.3, 1.0, lit);           // raised night floor so dark-side clouds stay visible
             gl_FragColor = vec4(vec3(brightness), cloud);    // clouds stay everywhere, just darker at night
           }
         `
