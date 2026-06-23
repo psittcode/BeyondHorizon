@@ -3204,17 +3204,51 @@ function transformMars() {
     terraformedMarsMaterial
   ));
 
-  // Cloud layer — RGBA alpha channel drives per-pixel cloud opacity
-  const cloudMat = new THREE.MeshStandardMaterial({
-    map: cloudTex,
+  // Cloud layer — same sun-lit shader as Earth's clouds (NORMAL alpha blending): dense
+  // cloud reads as a solid white mass on the day side, dims toward a 0.1 floor across a
+  // soft terminator, and stays faintly visible on the night side. clouds.png carries
+  // coverage in its ALPHA channel (Earth's grayscale map used .r). sunDirection is
+  // updated each frame alongside the terraformed-surface shader. No white glow ring.
+  const cloudMat = new THREE.ShaderMaterial({
     transparent: true,
-    depthWrite: false
+    depthWrite: false,
+    uniforms: {
+      cloudTexture: { value: cloudTex },
+      sunDirection: { value: new THREE.Vector3(1, 0, 0) }
+    },
+    vertexShader: `
+      varying vec2 vUv;
+      varying vec3 vNormal;
+      #include <common>
+      #include <logdepthbuf_pars_vertex>
+      void main() {
+        vUv = uv;
+        vNormal = normalize((modelMatrix * vec4(normal, 0.0)).xyz);
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        #include <logdepthbuf_vertex>
+      }
+    `,
+    fragmentShader: `
+      uniform sampler2D cloudTexture;
+      uniform vec3 sunDirection;
+      varying vec2 vUv;
+      varying vec3 vNormal;
+      #include <logdepthbuf_pars_fragment>
+      void main() {
+        #include <logdepthbuf_fragment>
+        float cloud = texture2D(cloudTexture, vUv).a;    // coverage (clouds.png: alpha channel)
+        float intensity = dot(normalize(vNormal), sunDirection);
+        float lit = smoothstep(-0.2, 0.3, intensity);    // wide, soft day↔night transition
+        float brightness = mix(0.1, 1.0, lit);           // dim on the night side, white in daylight
+        gl_FragColor = vec4(vec3(brightness), cloud);    // clouds stay everywhere, just darker at night
+      }
+    `
   });
   marsCloudMesh = new THREE.Mesh(
     new THREE.SphereGeometry(marsRadius, 64, 64),
     cloudMat
   );
-  marsCloudMesh.scale.setScalar(1.02);
+  marsCloudMesh.scale.setScalar(1.005);   // 0.5% above the surface — matches Earth
   terraformedMarsModel.add(marsCloudMesh);
 
   scene.add(terraformedMarsModel);
@@ -5582,10 +5616,13 @@ function animate(){
     if (cloudMesh.material.uniforms) cloudMesh.material.uniforms.sunDirection.value.copy(dir);
   }
 
-  // ☀️ Update Terraformed Mars shader sun direction
+  // ☀️ Update Terraformed Mars shader sun direction (surface + clouds)
   if (terraformedMarsMaterial) {
-    terraformedMarsMaterial.uniforms.sunDirection.value
-      .copy(marsMesh.position.clone().negate().normalize());
+    const marsDir = marsMesh.position.clone().negate().normalize();
+    terraformedMarsMaterial.uniforms.sunDirection.value.copy(marsDir);
+    if (marsCloudMesh && marsCloudMesh.material.uniforms) {
+      marsCloudMesh.material.uniforms.sunDirection.value.copy(marsDir);
+    }
   }
 
   // Use the lensing composer (gravitational-warp + photon-ring + halo +
