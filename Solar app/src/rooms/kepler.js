@@ -172,7 +172,7 @@ const room = {
     this.bPivot.add(this.b);
 
     // Cloud layer — sized to the planet's surface radius and lifted to a fixed 0.5%
-    // altitude via local scale, at 50% opacity (matching Earth's baked cloud setting).
+    // altitude via local scale, at 80% opacity (matching Earth's baked cloud setting).
     // Parented to the planet so it inherits the orbit, then spun independently in
     // update(). Unlike Earth's additive clouds, this uses NORMAL blending on an unlit
     // MeshBasicMaterial: the clouds render as a constant semi-opaque white overlay that
@@ -184,7 +184,7 @@ const room = {
       new THREE.MeshBasicMaterial({
         map: cloudTex,
         transparent: true,
-        opacity: 0.5,
+        opacity: 0.8,
         blending: THREE.NormalBlending,
         depthWrite: false
       })
