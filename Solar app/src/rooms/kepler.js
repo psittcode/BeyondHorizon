@@ -116,11 +116,12 @@ const room = {
       stars.frustumCulled = false;
       scene.add(stars);
     }
-    // Match the Solar System's lighting (ambient 0.15 + point 1.5) so the
-    // star-facing side of Kepler-22b isn't blown out — the same brightness the
-    // Sun gives Earth and its neighbours, rather than the previous over-bright 2.5.
+    // Lighting: ambient 0.15 fill + a point light from the star. The point light is
+    // dialled down to 1.1 (below the Solar System's 1.5) so the star-facing day side
+    // of Kepler-22b isn't blown out and the white clouds read with good contrast
+    // against the bright teal surface.
     scene.add(new THREE.AmbientLight(0xffffff, 0.15));
-    const kLight = new THREE.PointLight(0xfff5e0, 1.5, 0, 1.2);
+    const kLight = new THREE.PointLight(0xfff5e0, 1.1, 0, 1.2);
     kLight.position.set(0, 0, 0);
     scene.add(kLight);
 
