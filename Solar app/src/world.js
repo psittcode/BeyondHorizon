@@ -2671,15 +2671,18 @@ function toggleVenusAtmosphere() {
 window.toggleVenusAtmosphere = toggleVenusAtmosphere;
 
 // 🌍 Earth's atmosphere glow. Same sun-masked fresnel rim shell as Venus/Titan, but white
-// (Earth's air scatters to a bright limb) and a much thinner rim — Earth's atmosphere is a
-// shallow shell, not the deep cloud deck of Venus. Hidden/shown by the same Earth atmosphere
-// button as the cloud layer (see toggleEarthAtmosphere).
+// (Earth's air scatters to a bright limb). The shell uses the SAME R*1.09 radius as Venus:
+// the rim shader is actually brightest toward the shell's interior, and it only reads as a
+// clean edge because the opaque planet occludes that interior. A tighter shell (e.g. R*1.04)
+// sits too close to the surface for the log-depth buffer to resolve, so the planet stops
+// occluding it and the whole body glows. Hidden/shown by the same Earth atmosphere button as
+// the cloud layer (see toggleEarthAtmosphere).
 let earthAtmoShell = null;
 (function buildEarthAtmosphere() {
   const earthMesh = meshes.find(m => m.userData.name === "Earth");
   if (!earthMesh) return;
   const R = earthMesh.userData.size;
-  const geo = new THREE.SphereGeometry(R * 1.04, 64, 48);   // thin rim — Earth's air is shallow
+  const geo = new THREE.SphereGeometry(R * 1.09, 64, 48);   // same rim gap as Venus (avoids body glow)
   const mat = new THREE.ShaderMaterial({
     transparent: true, depthWrite: false, side: THREE.BackSide, blending: THREE.AdditiveBlending,
     uniforms: {
