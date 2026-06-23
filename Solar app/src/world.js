@@ -1119,18 +1119,49 @@ let terraformedMarsMaterial = null;
 
 // Cloud layer — sized to Earth's true surface radius (it's a child of earth, so it
 // inherits earth's min-dot scale and stays the same shell thickness at any zoom).
-// The geometry sits at the surface; cloudMesh.scale lifts it to a fixed 0.5%
-// altitude. Opacity is 1.2 — above 1.0 is valid here because the layer uses
-// additive blending, so it brightens the clouds (tuned, not user-adjustable).
+// The geometry sits at the surface; cloudMesh.scale lifts it to a fixed 0.5% altitude.
+//
+// The clouds are a sun-lit shader with NORMAL alpha blending (not additive): on the day
+// side dense cloud reads as a solid white mass, thin cloud as soft white, clear sky shows
+// the surface; across the terminator the clouds darken and fade so the night side is clear
+// (matching NASA's Eyes). The grayscale cloud texture's value drives both colour and alpha.
+// sunDirection is the world Earth→Sun vector, updated each frame next to the Earth shader.
 const cloudTexture = textureLoader.load("2k_earth_clouds.jpg");
 const cloudMesh = new THREE.Mesh(
   new THREE.SphereGeometry(earth.userData.size, 32, 32),
-  new THREE.MeshBasicMaterial({
-    map: cloudTexture,
+  new THREE.ShaderMaterial({
     transparent: true,
-    opacity: 2.0,
-    blending: THREE.AdditiveBlending,
-    depthWrite: false
+    depthWrite: false,
+    uniforms: {
+      cloudTexture: { value: cloudTexture },
+      sunDirection: { value: new THREE.Vector3(1, 0, 0) }
+    },
+    vertexShader: `
+      varying vec2 vUv;
+      varying vec3 vNormal;
+      #include <common>
+      #include <logdepthbuf_pars_vertex>
+      void main() {
+        vUv = uv;
+        vNormal = normalize((modelMatrix * vec4(normal, 0.0)).xyz);
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        #include <logdepthbuf_vertex>
+      }
+    `,
+    fragmentShader: `
+      uniform sampler2D cloudTexture;
+      uniform vec3 sunDirection;
+      varying vec2 vUv;
+      varying vec3 vNormal;
+      #include <logdepthbuf_pars_fragment>
+      void main() {
+        #include <logdepthbuf_fragment>
+        float cloud = texture2D(cloudTexture, vUv).r;        // grayscale cloud amount
+        float intensity = dot(normalize(vNormal), sunDirection);
+        float lit = smoothstep(-0.05, 0.25, intensity);      // day side only; fades at terminator
+        gl_FragColor = vec4(vec3(lit), cloud * lit);         // solid white in daylight, clear at night
+      }
+    `
   })
 );
 cloudMesh.scale.setScalar(1.005);   // 0.5% above the surface
@@ -5537,6 +5568,7 @@ function animate(){
     const earthPos = earthMesh.position.clone();
     const dir = earthPos.clone().negate().normalize(); // direction from Earth to Sun (Sun is at 0,0,0)
     earthMesh.material.uniforms.sunDirection.value.copy(dir);
+    if (cloudMesh.material.uniforms) cloudMesh.material.uniforms.sunDirection.value.copy(dir);
   }
 
   // ☀️ Update Terraformed Mars shader sun direction
