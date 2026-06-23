@@ -1128,7 +1128,7 @@ const cloudMesh = new THREE.Mesh(
   new THREE.MeshBasicMaterial({
     map: cloudTexture,
     transparent: true,
-    opacity: 1.2,
+    opacity: 2.0,
     blending: THREE.AdditiveBlending,
     depthWrite: false
   })
@@ -1143,6 +1143,7 @@ function syncEarthAtmoBtn() {
 }
 function toggleEarthAtmosphere() {
   cloudMesh.visible = !cloudMesh.visible;
+  if (earthAtmoShell) earthAtmoShell.visible = cloudMesh.visible;
   syncEarthAtmoBtn();
 }
 window.toggleEarthAtmosphere = toggleEarthAtmosphere;
@@ -2668,6 +2669,72 @@ function toggleVenusAtmosphere() {
   syncVenusAtmoBtn();
 }
 window.toggleVenusAtmosphere = toggleVenusAtmosphere;
+
+// 🌍 Earth's atmosphere glow. Same sun-masked fresnel rim shell as Venus/Titan, but white
+// (Earth's air scatters to a bright limb) and a much thinner rim — Earth's atmosphere is a
+// shallow shell, not the deep cloud deck of Venus. Hidden/shown by the same Earth atmosphere
+// button as the cloud layer (see toggleEarthAtmosphere).
+let earthAtmoShell = null;
+(function buildEarthAtmosphere() {
+  const earthMesh = meshes.find(m => m.userData.name === "Earth");
+  if (!earthMesh) return;
+  const R = earthMesh.userData.size;
+  const geo = new THREE.SphereGeometry(R * 1.04, 64, 48);   // thin rim — Earth's air is shallow
+  const mat = new THREE.ShaderMaterial({
+    transparent: true, depthWrite: false, side: THREE.BackSide, blending: THREE.AdditiveBlending,
+    uniforms: {
+      uColor:    { value: new THREE.Color('#ffffff') },   // white limb glow
+      uCoef:     { value: 0.56 },                          // same rim numbers as Venus/Titan
+      uPower:    { value: 14.0 },
+      uStrength: { value: 1.67 }
+    },
+    vertexShader: `
+      varying vec3 vNormal;
+      varying vec3 vView;
+      varying vec3 vWorldNormal;
+      varying vec3 vWorldPos;
+      #include <common>
+      #include <logdepthbuf_pars_vertex>
+      void main() {
+        vNormal = normalize(normalMatrix * normal);
+        vWorldNormal = normalize(mat3(modelMatrix) * normal);
+        vWorldPos = (modelMatrix * vec4(position, 1.0)).xyz;
+        vec4 mv = modelViewMatrix * vec4(position, 1.0);
+        vView = normalize(-mv.xyz);
+        gl_Position = projectionMatrix * mv;
+        #include <logdepthbuf_vertex>
+      }
+    `,
+    fragmentShader: `
+      uniform vec3 uColor;
+      uniform float uCoef;
+      uniform float uPower;
+      uniform float uStrength;
+      varying vec3 vNormal;
+      varying vec3 vView;
+      varying vec3 vWorldNormal;
+      varying vec3 vWorldPos;
+      #include <common>
+      #include <logdepthbuf_pars_fragment>
+      void main() {
+        #include <logdepthbuf_fragment>
+        float rim = pow(max(0.0, uCoef - dot(vNormal, vView)), uPower);
+        // Reflect the BackSide (far) normal to the near hemisphere, then mask by the Sun (at
+        // the world origin) so only the sunlit limb glows — see the Titan atmosphere for why.
+        vec3 N = normalize(vWorldNormal);
+        vec3 V = normalize(cameraPosition - vWorldPos);
+        vec3 nearN = normalize(N - 2.0 * dot(N, V) * V);
+        float sunMask = smoothstep(0.0, 0.40, dot(nearN, normalize(-vWorldPos)));
+        gl_FragColor = vec4(uColor, rim * uStrength * sunMask);
+      }
+    `
+  });
+  const shell = new THREE.Mesh(geo, mat);
+  shell.frustumCulled = false;
+  shell.renderOrder = 3;
+  earthMesh.add(shell);
+  earthAtmoShell = shell;
+})();
 
 // ☄️ Asteroid belt + Kuiper belt — sparse, faint particle bands in the ecliptic (XZ). In
 // reality the belt is mostly empty space (asteroids are ~1M km apart) and invisible from afar,
