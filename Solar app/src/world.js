@@ -1159,7 +1159,7 @@ const cloudMesh = new THREE.Mesh(
         float cloud = texture2D(cloudTexture, vUv).r;        // grayscale cloud amount
         float intensity = dot(normalize(vNormal), sunDirection);
         float lit = smoothstep(-0.2, 0.3, intensity);        // wide, soft day↔night transition
-        float brightness = mix(0.1, 1.0, lit);               // dim on the night side, white in daylight
+        float brightness = mix(0.25, 1.0, lit);              // raised night floor so dark-side clouds stay visible
         gl_FragColor = vec4(vec3(brightness), cloud);        // clouds stay everywhere, just darker at night
       }
     `
