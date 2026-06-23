@@ -130,7 +130,17 @@ However, it lacks a strong global magnetic field, likely due to slow rotation an
 • NASA Magellan mission: Detailed radar mapping of surface<br>
 • Recent missions: Atmospheric studies and radar observations<br><br>
 
-Venus remains a major target for understanding planetary climate evolution and runaway greenhouse processes.<br>`
+Venus remains a major target for understanding planetary climate evolution and runaway greenhouse processes.<br><br>
+
+<button id="venusAtmoToggleBtn" onclick="toggleVenusAtmosphere()" style="
+  background: rgba(216,149,74,0.18);
+  color: white;
+  border: 1px solid rgba(216,149,74,0.55);
+  padding: 6px 12px;
+  cursor: pointer;
+  border-radius: 4px;
+  font-size: 13px;
+">Hide Atmosphere</button>`
 },
 {
 name:"Earth",

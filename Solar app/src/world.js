@@ -136,7 +136,8 @@ const uranusTexture = textureLoader.load("2k_uranus.jpg");
 const neptuneTexture = textureLoader.load("2k_neptune.jpg");
 const marsTexture = textureLoader.load("2k_mars.jpg");
 const mercuryTexture = textureLoader.load("2k_mercury.jpg");
-const venusTexture = textureLoader.load("2k_venus_surface.jpg");
+const venusTexture = textureLoader.load("4k_venus_atmosphere.jpg");        // default: cloud-deck view
+const venusSurfaceTexture = textureLoader.load("8k_venus_surface.jpg");    // shown when atmosphere is hidden
 const moonTexture = textureLoader.load("2k_earth_moon.jpg");
 const sunTexture = textureLoader.load("2k_sun.jpg");
 const earthTexture = textureLoader.load("2k_earth_daymap.jpg");
@@ -2585,6 +2586,7 @@ let enceladusPlume = null;
 // cloud deck — from space it's a featureless pale-yellow ball with a bright hazy limb. Same
 // fresnel rim shell as Titan, but pale cream-yellow and a touch broader/softer (Venus's
 // atmosphere is much deeper and brighter), sun-masked to the lit limb only.
+let venusAtmoShell = null;
 (function buildVenusAtmosphere() {
   const venusMesh = meshes.find(m => m.userData.name === "Venus");
   if (!venusMesh) return;
@@ -2643,7 +2645,28 @@ let enceladusPlume = null;
   shell.frustumCulled = false;
   shell.renderOrder = 3;
   venusMesh.add(shell);
+  venusAtmoShell = shell;
 })();
+
+// Venus atmosphere on/off — driven by a button in Venus's info panel. Hiding the atmosphere
+// swaps the cloud-deck map for the 8k radar surface map AND hides the hazy fresnel rim shell;
+// showing it restores both.
+let venusAtmoVisible = true;
+function syncVenusAtmoBtn() {
+  const btn = document.getElementById("venusAtmoToggleBtn");
+  if (btn) btn.textContent = venusAtmoVisible ? "Hide Atmosphere" : "Show Atmosphere";
+}
+function toggleVenusAtmosphere() {
+  venusAtmoVisible = !venusAtmoVisible;
+  const venusMesh = meshes.find(m => m.userData.name === "Venus");
+  if (venusMesh) {
+    venusMesh.material.map = venusAtmoVisible ? venusTexture : venusSurfaceTexture;
+    venusMesh.material.needsUpdate = true;
+  }
+  if (venusAtmoShell) venusAtmoShell.visible = venusAtmoVisible;
+  syncVenusAtmoBtn();
+}
+window.toggleVenusAtmosphere = toggleVenusAtmosphere;
 
 // ☄️ Asteroid belt + Kuiper belt — sparse, faint particle bands in the ecliptic (XZ). In
 // reality the belt is mostly empty space (asteroids are ~1M km apart) and invisible from afar,
@@ -3148,6 +3171,7 @@ function flyToObject(obj, fromList = false) {
   } else {
     document.getElementById("panelContent").innerHTML = infoObj.userData.info;
     if (infoObj.userData.name === "Earth") syncEarthAtmoBtn();
+    if (infoObj.userData.name === "Venus") syncVenusAtmoBtn();
   }
   document.getElementById("backToList").style.display = "inline-block";
 
