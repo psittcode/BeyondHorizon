@@ -1,9 +1,9 @@
 // Real measured shape of Deimos — NASA PDS Small Body Node, Thomas et al.
 // "Small Body Optical Shape Models Bundle V1.0" (urn:nasa:pds:ast-sat.thomas.shape-models),
-// file m2deimos.tab. A radius (km) sampled on a 5deg lat/lon grid: latitude -90..+90
-// (nLat rows, south->north), longitude 0..355 (nLon cols). Row-major (lat outer, lon inner).
-// Built into geometry by makeDeimosGeometry() in world.js so Deimos uses the spacecraft-
-// measured figure instead of a procedural potato. Long-axis radius ~8.15 km (~16 km across).
+// file m2deimos.tab. Radius (km) on a 5deg lat/lon grid: latitude -90..+90 (nLat rows,
+// south->north), longitude 0..355 (nLon cols). Row-major (lat outer, lon inner). Built into
+// geometry by makeGriddedMoonGeometry() in world.js so Deimos uses the spacecraft-measured
+// figure instead of a procedural potato. Long-axis radius ~8.15 km (~16 km across).
 export const deimosShape = {
   nLat: 37, nLon: 72, latStep: 5, lonStep: 5,
   radii: [
