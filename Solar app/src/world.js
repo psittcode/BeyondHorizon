@@ -2,6 +2,7 @@ import { ctx } from './core/engine.js';
 import { viewManager } from './viewManager.js';
 import { loadGLB } from './core/assets.js';
 import { data } from './data/planets.js';
+import { deimosShape } from './data/deimosShape.js';
 import { MILKY_WAY_INFO, marsTransformedInfo, SUN_INFO, MOON_INFO } from './data/info.js';
 import { scaleRatioN, formatRatio, realPerCm, AU_KM, LY_KM } from './core/scale.js';
 
@@ -1566,6 +1567,77 @@ function makeMoonShapeGeometry(meanRadius, opts) {
   return geo;
 }
 
+// Build Deimos from its REAL measured figure instead of a procedural potato. deimosShape
+// is the NASA PDS Thomas global shape model: radius (km) on a 5° lat/lon grid. We wrap a
+// welded-pole UV sphere onto that radius field, recentre it on the volume centroid (the
+// model's grid is referenced to its centre of figure, slightly off the long axis), and
+// normalise so the mean radius maps to `meanRadius` app units — keeping the true triaxial
+// proportions and every real lump/concavity. The long axis ends up along local +x so the
+// tidal-lock orientation matches the other Mars moons (long axis points at Mars).
+function makeDeimosGeometry(meanRadius) {
+  const { nLat, nLon, latStep, lonStep, radii } = deimosShape;
+  const D2R = Math.PI / 180;
+  // Spherical → cartesian for grid node (i = lat row, j = lon col), radius in km (model units).
+  // Map latitude to the +y spin axis; longitude sweeps the x–z plane.
+  const node = (i, j) => {
+    const lat = (-90 + i * latStep) * D2R;
+    const lon = (j * lonStep) * D2R;
+    const r = radii[i * nLon + j];
+    const cl = Math.cos(lat);
+    return [r * cl * Math.cos(lon), r * Math.sin(lat), r * cl * Math.sin(lon)];
+  };
+  const verts = [];
+  // South pole (i=0 row is constant radius) → one welded vertex; same for north pole.
+  const south = node(0, 0); verts.push(south[0], south[1], south[2]);
+  const ringStart = [];                          // index of first vertex of each interior ring
+  for (let i = 1; i < nLat - 1; i++) {
+    ringStart.push(verts.length / 3);
+    for (let j = 0; j < nLon; j++) { const p = node(i, j); verts.push(p[0], p[1], p[2]); }
+  }
+  const north = node(nLat - 1, 0); const northIdx = verts.length / 3; verts.push(north[0], north[1], north[2]);
+
+  const idx = [];
+  // South cap fan: pole (0) to the first interior ring.
+  const r0 = ringStart[0];
+  for (let j = 0; j < nLon; j++) idx.push(0, r0 + j, r0 + (j + 1) % nLon);
+  // Body quads between consecutive interior rings.
+  for (let k = 0; k < ringStart.length - 1; k++) {
+    const a = ringStart[k], b = ringStart[k + 1];
+    for (let j = 0; j < nLon; j++) {
+      const j1 = (j + 1) % nLon;
+      idx.push(a + j, b + j, a + j1);
+      idx.push(a + j1, b + j, b + j1);
+    }
+  }
+  // North cap fan: last interior ring to the pole.
+  const rN = ringStart[ringStart.length - 1];
+  for (let j = 0; j < nLon; j++) idx.push(northIdx, rN + (j + 1) % nLon, rN + j);
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
+  geo.setIndex(idx);
+
+  // Recentre on the true VOLUME centroid (signed tetrahedra), then scale so the volume-
+  // equivalent mean radius == meanRadius — same normalisation the procedural moons use.
+  const p = geo.attributes.position;
+  const va = new THREE.Vector3(), vb = new THREE.Vector3(), vc = new THREE.Vector3(), crs = new THREE.Vector3();
+  let vol = 0, cx = 0, cy = 0, cz = 0;
+  for (let t = 0; t < idx.length; t += 3) {
+    va.fromBufferAttribute(p, idx[t]); vb.fromBufferAttribute(p, idx[t + 1]); vc.fromBufferAttribute(p, idx[t + 2]);
+    crs.crossVectors(vb, vc); const v = va.dot(crs);
+    vol += v; cx += (va.x + vb.x + vc.x) * v; cy += (va.y + vb.y + vc.y) * v; cz += (va.z + vb.z + vc.z) * v;
+  }
+  vol /= 6; cx /= 24 * vol; cy /= 24 * vol; cz /= 24 * vol;
+  const meanR = Math.cbrt(3 * Math.abs(vol) / (4 * Math.PI));   // radius of the volume-equal sphere (km)
+  const s = meanRadius / meanR;
+  for (let i = 0; i < p.count; i++) {
+    p.setXYZ(i, (p.getX(i) - cx) * s, (p.getY(i) - cy) * s, (p.getZ(i) - cz) * s);
+  }
+  p.needsUpdate = true;
+  geo.computeVertexNormals();
+  return geo;
+}
+
 // helper function to create a moon
 function createMoon(size, distance, speed, color, infoText, texture, startAngle) {
   const group = new THREE.Object3D();
@@ -1682,12 +1754,16 @@ if (marsMesh && marsMesh.userData.moons) {
                           mn.texture ? textureLoader.load(mn.texture) : null,
                           Math.random() * Math.PI * 2);
     mo.mesh.userData.name = mn.name;
-    // Swap the default sphere for the real observed shape (triaxial + craters).
-    if (mn.shape) {
+    // Swap the default sphere for the real observed shape. Deimos uses its actual NASA
+    // PDS measured figure (makeDeimosGeometry); Phobos uses the triaxial+craters model.
+    // Either way the long axis ends up along local +x — radially outward → toward Mars on
+    // the near side — so leaving the mesh un-rotated keeps it tidally locked, like the real moons.
+    if (mn.name === "Deimos") {
+      mo.mesh.geometry.dispose();
+      mo.mesh.geometry = makeDeimosGeometry(mn.size);
+    } else if (mn.shape) {
       mo.mesh.geometry.dispose();
       mo.mesh.geometry = makeMoonShapeGeometry(mn.size, mn.shape);
-      // The long axis (local +x) already points radially outward → toward Mars on the near
-      // side, so leaving the mesh un-rotated keeps it tidally locked, like the real moons.
     }
     scene.remove(mo.group);            // createMoon parented it to the scene — move into the equatorial plane
 
