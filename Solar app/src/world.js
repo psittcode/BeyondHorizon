@@ -6192,12 +6192,15 @@ window.addEventListener("resize", ()=>{
   }
 
   // Lay the trail as an arc of `radius` centred on (cx,cy,cz): head sits on the body at
-  // `angle`, sweeping back MINI_TRAIL_SPAN and fading to nothing at the tail.
-  function updateMiniTrail(t, cx, cy, cz, radius, angle) {
+  // `angle`, sweeping back MINI_TRAIL_SPAN and fading to nothing at the tail. `dir` is the
+  // sign of the body's angular velocity so the tail always trails BEHIND the motion — a
+  // retrograde body (e.g. Triton, dir = -1) trails the opposite way, not ahead of itself.
+  function updateMiniTrail(t, cx, cy, cz, radius, angle, dir) {
     const { pos, col, color } = t;
+    const back = MINI_TRAIL_SPAN * (dir < 0 ? -1 : 1);
     for (let s = 0; s <= MINI_TRAIL_SEG; s++) {
       const f = s / MINI_TRAIL_SEG;                          // 0 at tail → 1 at head (the body)
-      const a = angle - MINI_TRAIL_SPAN * (1 - f);
+      const a = angle - back * (1 - f);
       pos[s * 3] = cx + Math.cos(a) * radius;
       pos[s * 3 + 1] = cy;
       pos[s * 3 + 2] = cz + Math.sin(a) * radius;
@@ -6370,7 +6373,7 @@ window.addEventListener("resize", ()=>{
       p.mesh.rotation.y += dt * 0.5;
 
       // Rebuild the fading comet-tail trailing behind the planet (centred on the Sun).
-      updateMiniTrail(p.trail, 0, 0, 0, p.dist, p.angle);
+      updateMiniTrail(p.trail, 0, 0, 0, p.dist, p.angle, p.speed);
     }
 
     if (saturnMesh && saturnRingMesh) {
@@ -6396,7 +6399,7 @@ window.addEventListener("resize", ()=>{
       m.mesh.position.set(px + mx, py + Math.sin(m.angle) * m.tilt, pz + mz);
       m.mesh.rotation.y += dt * 0.4;
       // Comet-tail trail orbiting the parent planet's CURRENT position.
-      updateMiniTrail(m.trail, px, py, pz, m.dist, m.angle);
+      updateMiniTrail(m.trail, px, py, pz, m.dist, m.angle, m.speed);
     }
 
     // Very slow camera drift for cinematic feel
