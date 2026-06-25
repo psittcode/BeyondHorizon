@@ -223,9 +223,10 @@ moons:[
                    {dir:[0.20,0.70,-0.45], angRadius:0.17, depth:0.07}]},
    info:`<b>Phobos</b><br><br>The larger and inner of Mars's two moons (~27 × 22 × 18 km), orbiting just 6,000 km above the surface — closer than any other moon to its planet. It laps Mars three times a day and is spiralling inward by ~2 m per century, doomed to break apart or crash in ~50 million years. Its leading hemisphere is dominated by Stickney, a 9-km crater nearly half the moon's width. Phobos is dark and low-density, likely a captured asteroid or rubble pile.<br>`},
   {name:"Deimos", size:0.00000042, dist:0.0015684, speed:0.009600, color:0x796f64, incl:1.79, texture:"Deimos.png",
-   shape:{axes:[1.189,0.967,0.872], lumpiness:0.032, lumpSeed:13,
-          craters:[{dir:[0.80,0.20,0.45], angRadius:0.30, depth:0.085, rim:0.02},  // Swift / Voltaire (subdued, regolith-buried)
-                   {dir:[-0.45,0.40,-0.60], angRadius:0.26, depth:0.07}]},
+   shape:{axes:[1.20,0.98,0.90], lumpiness:0.030, lumpSeed:13,
+          craters:[{dir:[0.62,0.55,0.30], angRadius:0.30, depth:0.055, rim:0.012},   // Swift (~3 km, subdued)
+                   {dir:[0.40,0.28,0.62], angRadius:0.27, depth:0.050, rim:0.012},   // Voltaire (~3 km, subdued)
+                   {dir:[-0.82,-0.22,-0.30], angRadius:1.05, depth:0.13}]},          // broad flattened facet (trailing concavity that gives Deimos its wedge profile)
    info:`<b>Deimos</b><br><br>The smaller, outer moon of Mars (~15 × 12 × 11 km), orbiting every ~30 hours. A thick blanket of regolith has buried most of its craters, giving it a notably smoother, lumpier look than Phobos — only the craters Swift and Voltaire stand out. Like Phobos it is a dark, C-type-asteroid-like body, possibly captured from the outer asteroid belt.<br>`}
 ],
 info:`<b>Mars</b><br><br>
