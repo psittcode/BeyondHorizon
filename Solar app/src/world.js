@@ -6173,6 +6173,41 @@ window.addEventListener("resize", ()=>{
   const MINI_TRAIL_HEAD = 0.78;              // peak brightness at the body (additive)
   const MINI_TRAIL_FADE = 2.3;               // fade exponent — higher = tail vanishes faster, sharper comet head
 
+  // Build one comet-tail trail line (vertex-coloured, additive so the faded tail vanishes
+  // cleanly over the transparent menu canvas). Returns a handle updated each frame by
+  // updateMiniTrail. Used for both planets (centred on the Sun) and moons (centred on the
+  // parent planet's current position).
+  function makeMiniTrail(colorHex) {
+    const geo = new THREE.BufferGeometry();
+    const pos = new Float32Array((MINI_TRAIL_SEG + 1) * 3);
+    const col = new Float32Array((MINI_TRAIL_SEG + 1) * 3);
+    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    const line = new THREE.Line(geo, new THREE.LineBasicMaterial({
+      vertexColors: true, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false
+    }));
+    line.frustumCulled = false;       // tiny moon arcs can fall outside the frustum test cheaply
+    miniScene.add(line);
+    return { geo, pos, col, color: new THREE.Color(colorHex) };
+  }
+
+  // Lay the trail as an arc of `radius` centred on (cx,cy,cz): head sits on the body at
+  // `angle`, sweeping back MINI_TRAIL_SPAN and fading to nothing at the tail.
+  function updateMiniTrail(t, cx, cy, cz, radius, angle) {
+    const { pos, col, color } = t;
+    for (let s = 0; s <= MINI_TRAIL_SEG; s++) {
+      const f = s / MINI_TRAIL_SEG;                          // 0 at tail → 1 at head (the body)
+      const a = angle - MINI_TRAIL_SPAN * (1 - f);
+      pos[s * 3] = cx + Math.cos(a) * radius;
+      pos[s * 3 + 1] = cy;
+      pos[s * 3 + 2] = cz + Math.sin(a) * radius;
+      const inten = Math.pow(f, MINI_TRAIL_FADE) * MINI_TRAIL_HEAD;
+      col[s * 3] = color.r * inten; col[s * 3 + 1] = color.g * inten; col[s * 3 + 2] = color.b * inten;
+    }
+    t.geo.attributes.position.needsUpdate = true;
+    t.geo.attributes.color.needsUpdate = true;
+  }
+
   // Custom Earth day/night shader: blends daymap with nightmap (city lights)
   // across the terminator using the dot product between surface normal and
   // the sun direction. sunDir is updated each frame as Earth orbits.
@@ -6241,25 +6276,10 @@ window.addEventListener("resize", ()=>{
     const startAngle = (i / miniPlanetDefs.length) * Math.PI * 2 + Math.random() * 0.5;
     miniScene.add(mesh);
 
-    // Comet-tail orbit trail instead of a static full ring: a fading arc that trails BEHIND
-    // the body along its path — brightest at the planet, falling to nothing ~324° back, so it
-    // reads as a C and never closes into a circle. Tinted with the body's real-model orbit
-    // colour (ORBIT_COLORS). Rebuilt each frame in animateMini from the current angle.
-    // Additive blending so the faded tail vanishes cleanly over the transparent menu canvas
-    // (a plain dark line would otherwise punch a hole in the starfield behind it).
-    const trailGeo = new THREE.BufferGeometry();
-    const trailPos = new Float32Array((MINI_TRAIL_SEG + 1) * 3);
-    const trailCol = new Float32Array((MINI_TRAIL_SEG + 1) * 3);
-    trailGeo.setAttribute('position', new THREE.BufferAttribute(trailPos, 3));
-    trailGeo.setAttribute('color', new THREE.BufferAttribute(trailCol, 3));
-    const trail = new THREE.Line(trailGeo, new THREE.LineBasicMaterial({
-      vertexColors: true, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false
-    }));
-    trail.frustumCulled = false;
-    miniScene.add(trail);
-
-    miniPlanets.push({ mesh, name: p.name, dist: p.dist, speed, angle: startAngle,
-      trailGeo, trailPos, trailCol, trailColor: new THREE.Color(ORBIT_COLORS[p.name] || 0x6da8ff) });
+    // Comet-tail orbit trail instead of a static full ring: a fading C-shaped arc trailing
+    // behind the planet, tinted with its real-model orbit colour (ORBIT_COLORS). See makeMiniTrail.
+    const trail = makeMiniTrail(ORBIT_COLORS[p.name] || 0x6da8ff);
+    miniPlanets.push({ mesh, name: p.name, dist: p.dist, speed, angle: startAngle, trail });
 
     if (p.name === 'Saturn') {
       saturnMesh = mesh;
@@ -6301,14 +6321,15 @@ window.addEventListener("resize", ()=>{
   // Mars/Pluto moons would be sub-pixel specks and just add clutter. Titan (Saturn) and
   // Triton (Neptune) round out the two outer giants; Triton orbits retrograde (negative
   // period) like the real moon.
+  // `color` tints each moon's comet-tail trail to roughly its real appearance.
   const moonDefs = [
-    { name: 'Moon',     parent: 'Earth',   tex: moonTexture,     size: 0.18, dist: 1.30, period: 2.7 },
-    { name: 'Io',       parent: 'Jupiter', tex: ioTexture,       size: 0.16, dist: 1.95, period: 1.5 },
-    { name: 'Europa',   parent: 'Jupiter', tex: europaTexture,   size: 0.14, dist: 2.45, period: 2.1 },
-    { name: 'Ganymede', parent: 'Jupiter', tex: ganymedeTexture, size: 0.19, dist: 3.10, period: 3.0 },
-    { name: 'Callisto', parent: 'Jupiter', tex: callistoTexture, size: 0.16, dist: 3.85, period: 4.6 },
-    { name: 'Titan',    parent: 'Saturn',  tex: titanTexture,    size: 0.17, dist: 2.95, period: 3.9 },
-    { name: 'Triton',   parent: 'Neptune', tex: tritonTexture,   size: 0.15, dist: 1.55, period: -2.6 }
+    { name: 'Moon',     parent: 'Earth',   tex: moonTexture,     size: 0.18, dist: 1.30, period: 2.7, color: 0xc9c9c9 },
+    { name: 'Io',       parent: 'Jupiter', tex: ioTexture,       size: 0.16, dist: 1.95, period: 1.5, color: 0xf4e07a },
+    { name: 'Europa',   parent: 'Jupiter', tex: europaTexture,   size: 0.14, dist: 2.45, period: 2.1, color: 0xd8c9b0 },
+    { name: 'Ganymede', parent: 'Jupiter', tex: ganymedeTexture, size: 0.19, dist: 3.10, period: 3.0, color: 0x9a8d79 },
+    { name: 'Callisto', parent: 'Jupiter', tex: callistoTexture, size: 0.16, dist: 3.85, period: 4.6, color: 0x7e7163 },
+    { name: 'Titan',    parent: 'Saturn',  tex: titanTexture,    size: 0.17, dist: 2.95, period: 3.9, color: 0xe6a63c },
+    { name: 'Triton',   parent: 'Neptune', tex: tritonTexture,   size: 0.15, dist: 1.55, period: -2.6, color: 0xcbd2e0 }
   ];
   const planetByName = {};
   for (const p of miniPlanets) planetByName[p.name] = p.mesh;
@@ -6325,7 +6346,8 @@ window.addEventListener("resize", ()=>{
       dist: m.dist,
       speed: (2 * Math.PI) / m.period,
       angle: Math.random() * Math.PI * 2,
-      tilt: (Math.random() - 0.5) * 0.25
+      tilt: (Math.random() - 0.5) * 0.25,
+      trail: makeMiniTrail(m.color || 0xc9c9c9)   // comet-tail trail, centred on the parent each frame
     };
   });
 
@@ -6347,18 +6369,8 @@ window.addEventListener("resize", ()=>{
       p.mesh.position.set(x, Math.sin(p.angle) * planeTilt * p.dist * 0.05, z);
       p.mesh.rotation.y += dt * 0.5;
 
-      // Rebuild the fading comet-tail trailing behind the body: head sits on the planet,
-      // the arc sweeps backward over MINI_TRAIL_SPAN and fades to nothing at the tail.
-      const col = p.trailColor, pos = p.trailPos, cl = p.trailCol;
-      for (let s = 0; s <= MINI_TRAIL_SEG; s++) {
-        const f = s / MINI_TRAIL_SEG;                        // 0 at tail → 1 at head (the body)
-        const a = p.angle - MINI_TRAIL_SPAN * (1 - f);
-        pos[s * 3] = Math.cos(a) * p.dist; pos[s * 3 + 1] = 0; pos[s * 3 + 2] = Math.sin(a) * p.dist;
-        const inten = Math.pow(f, MINI_TRAIL_FADE) * MINI_TRAIL_HEAD;  // concentrate brightness near the head
-        cl[s * 3] = col.r * inten; cl[s * 3 + 1] = col.g * inten; cl[s * 3 + 2] = col.b * inten;
-      }
-      p.trailGeo.attributes.position.needsUpdate = true;
-      p.trailGeo.attributes.color.needsUpdate = true;
+      // Rebuild the fading comet-tail trailing behind the planet (centred on the Sun).
+      updateMiniTrail(p.trail, 0, 0, 0, p.dist, p.angle);
     }
 
     if (saturnMesh && saturnRingMesh) {
@@ -6383,6 +6395,8 @@ window.addEventListener("resize", ()=>{
       const mz = Math.sin(m.angle) * m.dist;
       m.mesh.position.set(px + mx, py + Math.sin(m.angle) * m.tilt, pz + mz);
       m.mesh.rotation.y += dt * 0.4;
+      // Comet-tail trail orbiting the parent planet's CURRENT position.
+      updateMiniTrail(m.trail, px, py, pz, m.dist, m.angle);
     }
 
     // Very slow camera drift for cinematic feel
