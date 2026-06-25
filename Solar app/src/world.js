@@ -4,6 +4,8 @@ import { loadGLB } from './core/assets.js';
 import { data } from './data/planets.js';
 import { deimosShape } from './data/deimosShape.js';
 import { phobosShape } from './data/phobosShape.js';
+import { nixShape } from './data/nixShape.js';
+import { hydraShape } from './data/hydraShape.js';
 import { MILKY_WAY_INFO, marsTransformedInfo, SUN_INFO, MOON_INFO } from './data/info.js';
 import { scaleRatioN, formatRatio, realPerCm, AU_KM, LY_KM } from './core/scale.js';
 
@@ -1626,8 +1628,9 @@ function makeGriddedMoonGeometry(shape, meanRadius) {
   return geo;
 }
 
-// Mars-moon name → its real PDS gridded shape model (Phobos & Deimos both have one).
-const REAL_MOON_SHAPES = { Phobos: phobosShape, Deimos: deimosShape };
+// Moon name → its real measured gridded shape model. Phobos & Deimos are NASA PDS Thomas
+// models; Nix & Hydra are the New Horizons SPC models (resampled to the same grid format).
+const REAL_MOON_SHAPES = { Phobos: phobosShape, Deimos: deimosShape, Nix: nixShape, Hydra: hydraShape };
 
 // helper function to create a moon
 function createMoon(size, distance, speed, color, infoText, texture, startAngle) {
@@ -1814,11 +1817,16 @@ if (plutoMesh && plutoMesh.userData.moons) {
                           mn.texture ? textureLoader.load(mn.texture) : null,
                           0);  // real phase is seeded from MOON_EPHEMERIS in resetSimulation()
     mo.mesh.userData.name = mn.name;
-    // The tiny moons are irregular, bumpy asteroids — swap the sphere for a
-    // procedural lumpy shape (Charon stays round). Give it a slow tumble.
+    // The tiny moons are irregular, bumpy asteroids — swap the sphere for their shape
+    // (Charon stays round). Nix & Hydra were resolved by New Horizons, so they use their
+    // REAL measured figure (makeGriddedMoonGeometry); Styx & Kerberos, never resolved, keep
+    // the procedural lumpy stand-in. All four still tumble chaotically (not tidally locked).
     if (mn.irregular) {
+      const realShape = REAL_MOON_SHAPES[mn.name];
       mo.mesh.geometry.dispose();
-      mo.mesh.geometry = makeAsteroidGeometry(mn.size, 1013 * (idx + 1) + 7);
+      mo.mesh.geometry = realShape
+        ? makeGriddedMoonGeometry(realShape, mn.size)
+        : makeAsteroidGeometry(mn.size, 1013 * (idx + 1) + 7);
       mo.irregular = true;
       mo.spin = mn.spin || 0.004;   // real self-rotation rate (rad/frame at 1×); see planets.js
       mo.mesh.rotation.set(Math.random() * 6.28, Math.random() * 6.28, Math.random() * 6.28);
