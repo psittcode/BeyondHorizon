@@ -153,6 +153,8 @@ const callistoTexture = textureLoader.load("Callisto.png");
 const europaTexture = textureLoader.load("Europa.png");
 const ganymedeTexture = textureLoader.load("Ganymede.png");
 const ioTexture = textureLoader.load("Io.png");
+const titanTexture = textureLoader.load("Titan.png");
+const tritonTexture = textureLoader.load("Triton1.png");
 
 // 🌌 MILKY WAY SKYBOX
 // Threshold where the view hands off to the galaxy. Pushed near the galaxy disc's
@@ -6097,14 +6099,15 @@ window.addEventListener("resize", ()=>{
   // No skybox here — the mini scene renders only the solar system on a
   // transparent canvas, floating over the single full-screen #menuSky behind it.
 
-  // Sun (always self-lit)
+  // Sun (always self-lit). Sized down a touch (2.4 → 2.0) so the orbits have more
+  // breathing room and the scene reads as cinematic rather than toy-sized.
   const miniSun = new THREE.Mesh(
-    new THREE.SphereGeometry(2.4, 48, 48),
+    new THREE.SphereGeometry(2.0, 48, 48),
     new THREE.MeshBasicMaterial({ map: sunTexture, color: 0xffeecc })
   );
   miniScene.add(miniSun);
-  // Sphere radii (scene units) for sizing the selection ring; Sun is 2.4
-  const bodyRadius = { Sun: 2.4 };
+  // Sphere radii (scene units) for sizing the selection ring; Sun is 2.0
+  const bodyRadius = { Sun: 2.0 };
 
   // Sun glow sprite (soft halo)
   const glowCanvas = document.createElement('canvas');
@@ -6120,7 +6123,7 @@ window.addEventListener("resize", ()=>{
   const miniGlow = new THREE.Sprite(new THREE.SpriteMaterial({
     map: glowTex, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending
   }));
-  miniGlow.scale.set(11, 11, 1);
+  miniGlow.scale.set(9.2, 9.2, 1);
   miniScene.add(miniGlow);
 
   // Sun-side lighting: softer point light + warmer ambient floor so the night
@@ -6145,15 +6148,17 @@ window.addEventListener("resize", ()=>{
   }
 
   // Planets — all 8, compressed but monotonic distances, real period ratios
+  // Sizes trimmed ~15% from their old values so the planets sit lighter on their orbits
+  // (less toy-like, more negative space) while keeping the real relative-size ordering.
   const miniPlanetDefs = [
-    { name:'Mercury', dist: 4.0,  size: 0.42, tex: mercuryTexture, color: 0xbbbbbb, years: 0.2408 },
-    { name:'Venus',   dist: 5.6,  size: 0.62, tex: venusTexture,   color: 0xffcc88, years: 0.6152 },
-    { name:'Earth',   dist: 7.4,  size: 0.70, tex: earthTexture,   color: 0xffffff, years: 1.0000 },
-    { name:'Mars',    dist: 9.4,  size: 0.52, tex: marsTexture,    color: 0xff8866, years: 1.8810 },
-    { name:'Jupiter', dist: 14.0, size: 1.55, tex: jupiterTexture, color: 0xffddaa, years: 11.862 },
-    { name:'Saturn',  dist: 18.5, size: 1.30, tex: saturnTexture,  color: 0xffeebb, years: 29.457 },
-    { name:'Uranus',  dist: 22.5, size: 0.92, tex: uranusTexture,  color: 0xaaddff, years: 84.011 },
-    { name:'Neptune', dist: 26.5, size: 0.90, tex: neptuneTexture, color: 0x6688ff, years: 164.79 }
+    { name:'Mercury', dist: 4.0,  size: 0.36, tex: mercuryTexture, color: 0xbbbbbb, years: 0.2408 },
+    { name:'Venus',   dist: 5.6,  size: 0.53, tex: venusTexture,   color: 0xffcc88, years: 0.6152 },
+    { name:'Earth',   dist: 7.4,  size: 0.60, tex: earthTexture,   color: 0xffffff, years: 1.0000 },
+    { name:'Mars',    dist: 9.4,  size: 0.44, tex: marsTexture,    color: 0xff8866, years: 1.8810 },
+    { name:'Jupiter', dist: 14.0, size: 1.32, tex: jupiterTexture, color: 0xffddaa, years: 11.862 },
+    { name:'Saturn',  dist: 18.5, size: 1.10, tex: saturnTexture,  color: 0xffeebb, years: 29.457 },
+    { name:'Uranus',  dist: 22.5, size: 0.78, tex: uranusTexture,  color: 0xaaddff, years: 84.011 },
+    { name:'Neptune', dist: 26.5, size: 0.76, tex: neptuneTexture, color: 0x6688ff, years: 164.79 }
   ];
 
   const miniPlanets = [];
@@ -6276,12 +6281,18 @@ window.addEventListener("resize", ()=>{
   // periods vs the Sun, so applying the same 1/sqrt(period) scheme would
   // smear Io into a blur. Instead, pin reasonable on-screen periods that
   // preserve relative ordering.
+  // Only moons large enough to actually read at this scale earn a spot — the tiny
+  // Mars/Pluto moons would be sub-pixel specks and just add clutter. Titan (Saturn) and
+  // Triton (Neptune) round out the two outer giants; Triton orbits retrograde (negative
+  // period) like the real moon.
   const moonDefs = [
     { name: 'Moon',     parent: 'Earth',   tex: moonTexture,     size: 0.18, dist: 1.30, period: 2.7 },
     { name: 'Io',       parent: 'Jupiter', tex: ioTexture,       size: 0.16, dist: 1.95, period: 1.5 },
     { name: 'Europa',   parent: 'Jupiter', tex: europaTexture,   size: 0.14, dist: 2.45, period: 2.1 },
     { name: 'Ganymede', parent: 'Jupiter', tex: ganymedeTexture, size: 0.19, dist: 3.10, period: 3.0 },
-    { name: 'Callisto', parent: 'Jupiter', tex: callistoTexture, size: 0.16, dist: 3.85, period: 4.6 }
+    { name: 'Callisto', parent: 'Jupiter', tex: callistoTexture, size: 0.16, dist: 3.85, period: 4.6 },
+    { name: 'Titan',    parent: 'Saturn',  tex: titanTexture,    size: 0.17, dist: 2.95, period: 3.9 },
+    { name: 'Triton',   parent: 'Neptune', tex: tritonTexture,   size: 0.15, dist: 1.55, period: -2.6 }
   ];
   const planetByName = {};
   for (const p of miniPlanets) planetByName[p.name] = p.mesh;
