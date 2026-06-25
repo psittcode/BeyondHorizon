@@ -6167,6 +6167,12 @@ window.addEventListener("resize", ()=>{
   let earthMesh = null;
   let earthShaderMat = null;
 
+  // Comet-tail orbit trails (NASA-Eyes style): each body trails a fading arc behind it.
+  const MINI_TRAIL_SEG = 80;                 // points per trail arc
+  const MINI_TRAIL_SPAN = Math.PI * 1.5;     // arc length behind the body (~270° → leaves a clear empty gap, never a full ring)
+  const MINI_TRAIL_HEAD = 0.78;              // peak brightness at the body (additive)
+  const MINI_TRAIL_FADE = 2.3;               // fade exponent — higher = tail vanishes faster, sharper comet head
+
   // Custom Earth day/night shader: blends daymap with nightmap (city lights)
   // across the terminator using the dot product between surface normal and
   // the sun direction. sunDir is updated each frame as Earth orbits.
@@ -6233,17 +6239,27 @@ window.addEventListener("resize", ()=>{
     bodyRadius[p.name] = p.size;
     const speed = EARTH_BASE_SPEED / Math.sqrt(p.years);
     const startAngle = (i / miniPlanetDefs.length) * Math.PI * 2 + Math.random() * 0.5;
-    miniPlanets.push({ mesh, name: p.name, dist: p.dist, speed, angle: startAngle });
     miniScene.add(mesh);
 
-    // Faint orbit ring
-    const orbitGeo = new THREE.RingGeometry(p.dist - 0.02, p.dist + 0.02, 128);
-    const orbitMat = new THREE.MeshBasicMaterial({
-      color: 0x6da8ff, transparent: true, opacity: 0.13, side: THREE.DoubleSide
-    });
-    const orbit = new THREE.Mesh(orbitGeo, orbitMat);
-    orbit.rotation.x = -Math.PI / 2;
-    miniScene.add(orbit);
+    // Comet-tail orbit trail instead of a static full ring: a fading arc that trails BEHIND
+    // the body along its path — brightest at the planet, falling to nothing ~324° back, so it
+    // reads as a C and never closes into a circle. Tinted with the body's real-model orbit
+    // colour (ORBIT_COLORS). Rebuilt each frame in animateMini from the current angle.
+    // Additive blending so the faded tail vanishes cleanly over the transparent menu canvas
+    // (a plain dark line would otherwise punch a hole in the starfield behind it).
+    const trailGeo = new THREE.BufferGeometry();
+    const trailPos = new Float32Array((MINI_TRAIL_SEG + 1) * 3);
+    const trailCol = new Float32Array((MINI_TRAIL_SEG + 1) * 3);
+    trailGeo.setAttribute('position', new THREE.BufferAttribute(trailPos, 3));
+    trailGeo.setAttribute('color', new THREE.BufferAttribute(trailCol, 3));
+    const trail = new THREE.Line(trailGeo, new THREE.LineBasicMaterial({
+      vertexColors: true, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false
+    }));
+    trail.frustumCulled = false;
+    miniScene.add(trail);
+
+    miniPlanets.push({ mesh, name: p.name, dist: p.dist, speed, angle: startAngle,
+      trailGeo, trailPos, trailCol, trailColor: new THREE.Color(ORBIT_COLORS[p.name] || 0x6da8ff) });
 
     if (p.name === 'Saturn') {
       saturnMesh = mesh;
@@ -6330,6 +6346,19 @@ window.addEventListener("resize", ()=>{
       const z = Math.sin(p.angle) * p.dist;
       p.mesh.position.set(x, Math.sin(p.angle) * planeTilt * p.dist * 0.05, z);
       p.mesh.rotation.y += dt * 0.5;
+
+      // Rebuild the fading comet-tail trailing behind the body: head sits on the planet,
+      // the arc sweeps backward over MINI_TRAIL_SPAN and fades to nothing at the tail.
+      const col = p.trailColor, pos = p.trailPos, cl = p.trailCol;
+      for (let s = 0; s <= MINI_TRAIL_SEG; s++) {
+        const f = s / MINI_TRAIL_SEG;                        // 0 at tail → 1 at head (the body)
+        const a = p.angle - MINI_TRAIL_SPAN * (1 - f);
+        pos[s * 3] = Math.cos(a) * p.dist; pos[s * 3 + 1] = 0; pos[s * 3 + 2] = Math.sin(a) * p.dist;
+        const inten = Math.pow(f, MINI_TRAIL_FADE) * MINI_TRAIL_HEAD;  // concentrate brightness near the head
+        cl[s * 3] = col.r * inten; cl[s * 3 + 1] = col.g * inten; cl[s * 3 + 2] = col.b * inten;
+      }
+      p.trailGeo.attributes.position.needsUpdate = true;
+      p.trailGeo.attributes.color.needsUpdate = true;
     }
 
     if (saturnMesh && saturnRingMesh) {
