@@ -588,9 +588,8 @@ const room = {
   _spins: [],           // { obj, rate } — rotation.y advanced every frame
   _plume: null,
   _bhMats: [],          // Sgr A* accretion-disc materials (uTime advanced per frame)
-  _bhIndex: -1,         // index of the Sgr A* stop in bodies
-  _bhWorldPos: null, _bhEHWorld: 0, _bhSphere: null,
-  _composer: null, _lensUniforms: null, _composerW: 0, _composerH: 0,
+  _bhWorldPos: null, _bhEHWorld: 0,
+  _rt: null, _lensMat: null, _lensScene: null, _lensCam: null, _rtW: 0, _rtH: 0,
   _lastT: 0, _fly: null, _active: false,
   _raycaster: null, _downXY: null,
 
@@ -706,28 +705,44 @@ const room = {
       scene.add(group);
     }
 
-    // Gravitational-lensing composer for the Sagittarius A* stop — the sim's
-    // exact screen-space pass (shadow void, photon ring, warm halo, background
-    // warp), fed the BH's projected screen position/radius each frame. Only
-    // used while Sgr A* is the selected stop; every other stop renders direct,
-    // so the lens can never paint its void over a foreground planet elsewhere.
-    this._bhIndex = this.bodies.findIndex(x => x.mega === 'sgr-a');
-    this._composer = new THREE.EffectComposer(ctx.renderer);
-    this._composer.addPass(new THREE.RenderPass(scene, this.camera));
-    this._lensUniforms = {
-      tDiffuse:  { value: null },
-      uCenter:   { value: new THREE.Vector2(0.5, 0.5) },
-      uStrength: { value: 1.80 },
-      uInnerR:   { value: 0.03 },
-      uOuterR:   { value: 0.12 },
-      uShadowR:  { value: 0.06 },
-      uAspect:   { value: innerWidth / innerHeight },
-    };
-    this._composer.addPass(new THREE.ShaderPass(new THREE.ShaderMaterial({
-      uniforms: this._lensUniforms,
-      vertexShader: 'varying vec2 vUv; void main(){ vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }',
-      fragmentShader: BH_LENS_FRAG,
-    })));
+    // Gravitational-lensing pipeline for Sagittarius A* — the sim's exact
+    // screen-space shader (shadow void, photon ring, warm halo, background
+    // warp), fed the BH's projected screen position/radius each frame, and
+    // running from EVERY viewpoint so the lensed look never pops out when you
+    // step away. The one thing the sim's shader can't know is occlusion, so
+    // the scene is rendered into a target with a DEPTH texture and the shader
+    // is given a per-pixel guard: any pixel whose scene depth is closer than
+    // the BH keeps its original colour — a foreground planet passes cleanly
+    // in front of the void instead of having it stamped on top.
+    const LENS_FRAG_DEPTH = BH_LENS_FRAG
+      .replace('uniform sampler2D tDiffuse;',
+               'uniform sampler2D tDiffuse;\nuniform sampler2D tDepth;\nuniform float uBHDepth;')
+      .replace('void main(){',
+               'void main(){\n' +
+               '  if (texture2D(tDepth, vUv).x < uBHDepth) { gl_FragColor = texture2D(tDiffuse, vUv); return; }');
+    const depthTex = new THREE.DepthTexture(innerWidth, innerHeight);
+    depthTex.type = THREE.UnsignedIntType;
+    this._rt = new THREE.WebGLRenderTarget(innerWidth, innerHeight);
+    this._rt.depthTexture = depthTex;
+    this._lensMat = new THREE.ShaderMaterial({
+      uniforms: {
+        tDiffuse:  { value: null },
+        tDepth:    { value: null },
+        uBHDepth:  { value: 1.0 },
+        uCenter:   { value: new THREE.Vector2(0.5, 0.5) },
+        uStrength: { value: 1.80 },
+        uInnerR:   { value: 0.03 },
+        uOuterR:   { value: 0.12 },
+        uShadowR:  { value: 0.06 },
+        uAspect:   { value: innerWidth / innerHeight },
+      },
+      vertexShader: 'varying vec2 vUv; void main(){ vUv=uv; gl_Position=vec4(position.xy,0.0,1.0); }',
+      fragmentShader: LENS_FRAG_DEPTH,
+      depthTest: false, depthWrite: false,
+    });
+    this._lensScene = new THREE.Scene();
+    this._lensScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), this._lensMat));
+    this._lensCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
 
     // Ring shadow uniforms need world transforms — resolve them, then bake the
     // (static) planet position + ring-plane normal into each tinted ring.
@@ -872,20 +887,16 @@ const room = {
       inner.add(gSprite);
 
       // The event-horizon shadow, photon ring, warm halo and background warp
-      // come from the sim's screen-space gravitational-lensing pass (see the
-      // composer in update()), exactly like the galaxy view — the sim has no
-      // horizon mesh ("the lensing shader shadow mask IS the event horizon").
-      // But that pass only runs while Sgr A* is the SELECTED stop, so this
-      // sphere stands in as the black horizon when viewed from any other stop
-      // (otherwise the BH reads as a glowing blob from across the row). While
-      // the lens is active, update() turns its color/depth writes OFF: a
-      // visible sphere in the pre-lens frame blacks out the disc around the
-      // horizon and the warp smears that into a wide empty annulus.
+      // come from the sim's screen-space gravitational-lensing pass (see
+      // update()), which runs from every viewpoint — the sim has no horizon
+      // mesh ("the lensing shader shadow mask IS the event horizon"), and a
+      // visible sphere here would black out the disc around the horizon in
+      // the pre-lens frame, smearing into a wide empty annulus. The click
+      // target renders nothing (colorWrite/depthWrite off).
       this._bhEHWorld = bhR * 1.20;                   // sim: bhEHRadius = bhR × 1.20
       clickMesh = new THREE.Mesh(
         new THREE.SphereGeometry(this._bhEHWorld, 32, 32),
-        new THREE.MeshBasicMaterial({ color: 0x000000 }));
-      this._bhSphere = clickMesh;
+        new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false }));
       inner.add(clickMesh);
     } else {
       // Galaxy disc — same additive disc textures the sim uses for the Milky
@@ -1109,33 +1120,48 @@ const room = {
     // so copying first left the camera outside the sphere (black sky while orbiting).
     this._skybox.position.copy(this.camera.position);
 
-    // At the Sgr A* stop, render through the sim's gravitational-lensing pass:
-    // project the horizon to screen space (same math as world.js) and let the
-    // shader draw the shadow void, photon ring and background warp. The
-    // stand-in horizon sphere only draws while the lens is OFF (see _buildMega).
-    const lensOn = this.selected === this._bhIndex && !!this._bhWorldPos;
-    if (this._bhSphere) {
-      this._bhSphere.material.colorWrite = !lensOn;
-      this._bhSphere.material.depthWrite = !lensOn;
+    // Sgr A*'s gravitational lens runs whenever the horizon is in front of the
+    // camera and big enough to matter (≥ ~1px) — from its own stop OR across
+    // the row, so the lensed look never vanishes with distance. Same
+    // projection math as world.js; no minimum-size floors (the sim's 0.015
+    // floor assumes the BH is always the focus — here it would paint a giant
+    // phantom shadow when the BH is a distant speck).
+    let lensOn = false;
+    if (this._bhWorldPos) {
+      this.camera.updateMatrixWorld(true);
+      const v = this._bhWorldPos.clone().applyMatrix4(this.camera.matrixWorldInverse);
+      if (-v.z > 0) {   // in front of the camera
+        const camToBH = this.camera.position.distanceTo(this._bhWorldPos);
+        const halfTanFov = Math.tan(this.camera.fov * Math.PI / 360);
+        const shadowR = this._bhEHWorld / (camToBH * halfTanFov * 2.0);
+        const p = this._bhWorldPos.clone().project(this.camera);
+        const margin = 1 + 6 * shadowR;   // include the halo just off-screen
+        if (shadowR > 0.0015 && Math.abs(p.x) < margin && Math.abs(p.y) < margin) {
+          const u = this._lensMat.uniforms;
+          u.uShadowR.value = shadowR;
+          u.uInnerR.value  = shadowR * 0.82;
+          u.uOuterR.value  = shadowR * 1.35;
+          u.uAspect.value  = innerWidth / innerHeight;
+          u.uCenter.value.set((p.x + 1.0) * 0.5, (p.y + 1.0) * 0.5);
+          // BH centre's logarithmic depth (three.js: log2(1+w)/log2(far+1)) —
+          // the shader's per-pixel occlusion guard compares scene depth to this.
+          u.uBHDepth.value = Math.log2(1 - v.z) / Math.log2(this.camera.far + 1);
+          lensOn = true;
+        }
+      }
     }
     if (lensOn) {
-      this.camera.updateMatrixWorld(true);
-      const camToBH = this.camera.position.distanceTo(this._bhWorldPos);
-      const halfTanFov = Math.tan(this.camera.fov * Math.PI / 360);
-      const shadowR = this._bhEHWorld / (camToBH * halfTanFov * 2.0);
-      const u = this._lensUniforms;
-      u.uShadowR.value = Math.max(shadowR, 0.015);
-      u.uInnerR.value  = Math.max(shadowR * 0.82, 0.012);
-      u.uOuterR.value  = Math.max(shadowR * 1.35, 0.04);
-      u.uAspect.value  = innerWidth / innerHeight;
-      const p = this._bhWorldPos.clone().project(this.camera);
-      u.uCenter.value.set((p.x + 1.0) * 0.5, (p.y + 1.0) * 0.5);
       const w = ctx.renderer.domElement.width, h = ctx.renderer.domElement.height;
-      if (w !== this._composerW || h !== this._composerH) {
-        this._composer.setSize(innerWidth, innerHeight);
-        this._composerW = w; this._composerH = h;
+      if (w !== this._rtW || h !== this._rtH) {
+        this._rt.setSize(w, h);
+        this._rtW = w; this._rtH = h;
       }
-      this._composer.render();
+      ctx.renderer.setRenderTarget(this._rt);
+      ctx.renderer.render(this.scene, this.camera);
+      ctx.renderer.setRenderTarget(null);
+      this._lensMat.uniforms.tDiffuse.value = this._rt.texture;
+      this._lensMat.uniforms.tDepth.value   = this._rt.depthTexture;
+      ctx.renderer.render(this._lensScene, this._lensCam);
     } else {
       ctx.renderer.render(this.scene, this.camera);
     }
