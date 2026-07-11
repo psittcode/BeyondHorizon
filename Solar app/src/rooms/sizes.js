@@ -34,7 +34,8 @@ import { data } from '../data/planets.js';
 import { LY_KM } from '../core/scale.js';
 import {
   makeGriddedMoonGeometry, makeMoonShapeGeometry, makeAsteroidGeometry,
-  REAL_MOON_SHAPES, BH_DISK_VERT, BH_DISK_FRAG,
+  REAL_MOON_SHAPES, BH_DISK_VERT, BH_DISK_FRAG, BH_LENS_FRAG,
+  orbitalToXYZ, ORBIT_COLORS,
 } from '../world.js';
 
 const KM_PER_UNIT   = 14959787.07;  // same anchor as the solar view (1 AU = 10 units)
@@ -549,11 +550,12 @@ function buildBodyCatalog() {
 const LY_UNITS = LY_KM / KM_PER_UNIT;
 const MEGA_ENTRIES = [
   {
-    // Right after the Sun — its event horizon dwarfs the Sun but fits well
-    // inside Kepler-22b's orbit, so this is its size-order slot.
+    // Right after the Sun — with its accretion disc (10× the horizon radius,
+    // as the sim models it) Sgr A* spans ≈ 205 million km ≈ 1.4 AU: genuinely
+    // almost as wide as Kepler-22b's whole orbit. Supermassive is not a metaphor.
     name: 'Sagittarius A*', type: 'Supermassive black hole · heart of the Milky Way',
-    mega: 'sgr-a', span: (12.3e6 / KM_PER_UNIT / 1.2) * 10, sky: 'stars',
-    stats: 'Event horizon ≈ 24 million km wide · 4.3 million Suns',
+    mega: 'sgr-a', span: (12.3e6 / KM_PER_UNIT / 1.2) * 10,
+    stats: 'Accretion disc ≈ 205 million km wide · event horizon ≈ 24 million km · 4.3 million Suns',
   },
   {
     name: 'The Kepler-22 System', type: 'Planetary system', mega: 'kepler-system',
@@ -586,6 +588,9 @@ const room = {
   _spins: [],           // { obj, rate } — rotation.y advanced every frame
   _plume: null,
   _bhMats: [],          // Sgr A* accretion-disc materials (uTime advanced per frame)
+  _bhIndex: -1,         // index of the Sgr A* stop in bodies
+  _bhWorldPos: null, _bhEHWorld: 0,
+  _composer: null, _lensUniforms: null, _composerW: 0, _composerH: 0,
   _lastT: 0, _fly: null, _active: false,
   _raycaster: null, _downXY: null,
 
@@ -701,6 +706,29 @@ const room = {
       scene.add(group);
     }
 
+    // Gravitational-lensing composer for the Sagittarius A* stop — the sim's
+    // exact screen-space pass (shadow void, photon ring, warm halo, background
+    // warp), fed the BH's projected screen position/radius each frame. Only
+    // used while Sgr A* is the selected stop; every other stop renders direct,
+    // so the lens can never paint its void over a foreground planet elsewhere.
+    this._bhIndex = this.bodies.findIndex(x => x.mega === 'sgr-a');
+    this._composer = new THREE.EffectComposer(ctx.renderer);
+    this._composer.addPass(new THREE.RenderPass(scene, this.camera));
+    this._lensUniforms = {
+      tDiffuse:  { value: null },
+      uCenter:   { value: new THREE.Vector2(0.5, 0.5) },
+      uStrength: { value: 1.80 },
+      uInnerR:   { value: 0.03 },
+      uOuterR:   { value: 0.12 },
+      uShadowR:  { value: 0.06 },
+      uAspect:   { value: innerWidth / innerHeight },
+    };
+    this._composer.addPass(new THREE.ShaderPass(new THREE.ShaderMaterial({
+      uniforms: this._lensUniforms,
+      vertexShader: 'varying vec2 vUv; void main(){ vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }',
+      fragmentShader: BH_LENS_FRAG,
+    })));
+
     // Ring shadow uniforms need world transforms — resolve them, then bake the
     // (static) planet position + ring-plane normal into each tinted ring.
     scene.updateMatrixWorld(true);
@@ -766,10 +794,22 @@ const room = {
         planet.position.set(0.849 * AU_UNITS, 0, 0);
         inner.add(planet);
       } else {
+        // The real orbit structure from the sim: each body's true inclined
+        // Keplerian ellipse (Sun at the focus, from its e/i/Ω/ω elements) in
+        // that body's orbit-ring colour — Pluto and Eris visibly tilted out of
+        // the ecliptic, exactly like the main view.
         data.forEach(p => {
-          inner.add(makeOrbitLine(p.dist,
-            p.kind === 'dwarf' ? 0x99aabb : 0xaaccff,
-            p.kind === 'dwarf' ? 0.28 : 0.55));
+          const pts = [];
+          for (let k = 0; k <= 512; k++) {
+            const nu = (k / 512) * Math.PI * 2;
+            pts.push(orbitalToXYZ(p.dist, p.e, p.i, p.Om, p.w, nu, new THREE.Vector3()));
+          }
+          inner.add(new THREE.Line(
+            new THREE.BufferGeometry().setFromPoints(pts),
+            new THREE.LineBasicMaterial({
+              color: ORBIT_COLORS[p.name] || 0xffffff, transparent: true,
+              opacity: p.kind === 'dwarf' ? 0.35 : 0.55,
+            })));
         });
       }
       // Invisible-ish disc as the click target for the whole system.
@@ -800,7 +840,10 @@ const room = {
             uZoomOut:  { value: 0.0 },
           },
           vertexShader: BH_DISK_VERT, fragmentShader: BH_DISK_FRAG,
-          transparent: true, depthWrite: false, depthTest: false,
+          // depthTest ON (the sim runs it off): here the BH has true-scale
+          // neighbours, and without the test its disc drew straight through
+          // foreground planets.
+          transparent: true, depthWrite: false, depthTest: true,
           blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
         });
         const layerMesh = new THREE.Mesh(diskGeo, layerMat);
@@ -822,40 +865,19 @@ const room = {
       gx.fillStyle = gr; gx.fillRect(0, 0, 256, 256);
       const gSprite = new THREE.Sprite(new THREE.SpriteMaterial({
         map: new THREE.CanvasTexture(gc), blending: THREE.AdditiveBlending,
-        transparent: true, depthWrite: false, depthTest: false,
+        transparent: true, depthWrite: false,
       }));
       gSprite.scale.set(bhR * 7, bhR * 7, 1);
       gSprite.renderOrder = 15;
       inner.add(gSprite);
 
-      // The sim draws the event-horizon shadow + photon ring in its screen-space
-      // lensing pass; here the same look is baked into a camera-facing billboard
-      // drawn over the discs: black void (radius = bhR×1.20×1.18, the shadow the
-      // lens shader paints), a tight photon ring, and a warm halo at its edge.
-      const shadowR = bhR * 1.20 * 1.18;
-      const spriteHalf = shadowR * 2.0;               // billboard half-width (world)
-      const frac = shadowR / spriteHalf;              // shadow edge in [0,1] of half-width
-      const sc = document.createElement('canvas'); sc.width = sc.height = 512;
-      const sx = sc.getContext('2d');
-      const ring = sx.createRadialGradient(256, 256, 0, 256, 256, 256);
-      ring.addColorStop(0, 'rgba(0,0,0,1)');
-      ring.addColorStop(Math.max(0, frac - 0.015), 'rgba(0,0,0,1)');
-      ring.addColorStop(frac, 'rgba(255,199,89,1)');          // photon ring
-      ring.addColorStop(Math.min(1, frac + 0.05), 'rgba(255,160,60,0.35)'); // warm halo
-      ring.addColorStop(Math.min(1, frac + 0.22), 'rgba(255,120,30,0.06)');
-      ring.addColorStop(1, 'rgba(0,0,0,0)');
-      sx.fillStyle = ring; sx.fillRect(0, 0, 512, 512);
-      const shadow = new THREE.Sprite(new THREE.SpriteMaterial({
-        map: new THREE.CanvasTexture(sc), transparent: true,
-        depthWrite: false, depthTest: false,
-      }));
-      shadow.scale.set(spriteHalf * 2, spriteHalf * 2, 1);
-      shadow.renderOrder = 30;                        // over the discs, like the lens pass
-      inner.add(shadow);
-
-      // Click target: an invisible-in-practice black sphere inside the shadow.
+      // The event-horizon shadow, photon ring, warm halo and background warp
+      // come from the sim's screen-space gravitational-lensing pass (see the
+      // composer in update()), exactly like the galaxy view. The black sphere
+      // is the physical horizon: a depth-writing occluder + click target.
+      this._bhEHWorld = bhR * 1.20;                   // sim: bhEHRadius = bhR × 1.20
       clickMesh = new THREE.Mesh(
-        new THREE.SphereGeometry(shadowR, 32, 32),
+        new THREE.SphereGeometry(this._bhEHWorld, 32, 32),
         new THREE.MeshBasicMaterial({ color: 0x000000 }));
       inner.add(clickMesh);
     } else {
@@ -874,8 +896,12 @@ const room = {
 
     const group = new THREE.Group();
     group.add(inner);
-    group.rotation.x = 0.6;                     // tip the plane toward the camera
+    // Tip flat entries toward the camera for a 3/4 view — except Sgr A*, whose
+    // disc stays flat: the near-grazing camera + lensing give the sim's
+    // "plasma wrapped around the void" look, not a top-down vinyl record.
+    group.rotation.x = b.mega === 'sgr-a' ? 0 : 0.6;
     group.position.set(b.x, 0, 0);
+    if (b.mega === 'sgr-a') this._bhWorldPos = new THREE.Vector3(b.x, 0, 0);
     clickMesh.userData.bodyIndex = this.bodies.indexOf(b);
 
     b.group = group; b.mesh = clickMesh;
@@ -902,9 +928,11 @@ const room = {
     }
     const b = this.bodies[i];
     if (b.mega) {
-      const dist = b.span * 2.3;
+      const dist = b.span * (b.mega === 'sgr-a' ? 2.0 : 2.3);
+      // Sgr A*: near-grazing view of the flat disc, like the sim's BH framing.
+      const lift = b.mega === 'sgr-a' ? 0.09 : 0.18;
       const target = new THREE.Vector3(b.x, 0, 0);
-      const pos = target.clone().add(new THREE.Vector3(0, dist * 0.18, dist));
+      const pos = target.clone().add(new THREE.Vector3(0, dist * lift, dist));
       return { target, pos };
     }
     const dist = b.r * (b.ring ? 6.2 : 3.6);
@@ -1070,7 +1098,31 @@ const room = {
     // in update(), and at galaxy scale one frame's delta dwarfs the sky radius,
     // so copying first left the camera outside the sphere (black sky while orbiting).
     this._skybox.position.copy(this.camera.position);
-    ctx.renderer.render(this.scene, this.camera);
+
+    // At the Sgr A* stop, render through the sim's gravitational-lensing pass:
+    // project the horizon to screen space (same math as world.js) and let the
+    // shader draw the shadow void, photon ring and background warp.
+    if (this.selected === this._bhIndex && this._bhWorldPos) {
+      this.camera.updateMatrixWorld(true);
+      const camToBH = this.camera.position.distanceTo(this._bhWorldPos);
+      const halfTanFov = Math.tan(this.camera.fov * Math.PI / 360);
+      const shadowR = this._bhEHWorld / (camToBH * halfTanFov * 2.0);
+      const u = this._lensUniforms;
+      u.uShadowR.value = Math.max(shadowR, 0.015);
+      u.uInnerR.value  = Math.max(shadowR * 0.82, 0.012);
+      u.uOuterR.value  = Math.max(shadowR * 1.35, 0.04);
+      u.uAspect.value  = innerWidth / innerHeight;
+      const p = this._bhWorldPos.clone().project(this.camera);
+      u.uCenter.value.set((p.x + 1.0) * 0.5, (p.y + 1.0) * 0.5);
+      const w = ctx.renderer.domElement.width, h = ctx.renderer.domElement.height;
+      if (w !== this._composerW || h !== this._composerH) {
+        this._composer.setSize(innerWidth, innerHeight);
+        this._composerW = w; this._composerH = h;
+      }
+      this._composer.render();
+    } else {
+      ctx.renderer.render(this.scene, this.camera);
+    }
   },
 
   exit(ctx) {

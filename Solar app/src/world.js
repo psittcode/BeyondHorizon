@@ -631,37 +631,7 @@ loadGLB('need_some_space.glb').then(function(gltf) {
     finalComposer.addPass(new THREE.ShaderPass(new THREE.ShaderMaterial({
       uniforms: _lensUniforms,
       vertexShader: 'varying vec2 vUv; void main(){ vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }',
-      fragmentShader: [
-        'uniform sampler2D tDiffuse;',
-        'uniform vec2 uCenter;',
-        'uniform float uStrength,uInnerR,uOuterR,uShadowR,uAspect;',
-        'varying vec2 vUv;',
-        'void main(){',
-        '  vec2 d=(vUv-uCenter)*vec2(uAspect,1.0);',
-        '  float dist=length(d);',
-        // Shadow extended from 0.97 to 1.18 — black takes up more of the
-        // visible BH. Photon ring and halo move outward to the new shadow
-        // edge (peaked at uShadowR*1.18), and the halo sigma is narrowed
-        // (0.28 -> 0.19) so the outer fade ends at roughly the same screen
-        // radius as before — i.e. the overall "sphere" stays the same size,
-        // just the dark void inside it grows.
-        '  float shadowR = uShadowR * 1.18;',
-        '  if(dist < shadowR){ gl_FragColor=vec4(0.0,0.0,0.0,1.0); return; }',
-        // Gravitational warp — smooth Gaussian, no hard threshold (eliminates seam-line artifacts)
-        '  vec2 uv=vUv;',
-        '  float warpMag=uStrength*uShadowR*exp(-pow((dist/uShadowR-1.0)*1.1,2.0));',
-        '  vec2 dir=d/max(dist,0.001); dir.x/=uAspect;',
-        '  uv-=dir*warpMag; uv=clamp(uv,0.001,0.999);',
-        '  vec4 col=texture2D(tDiffuse,uv);',
-        // Photon ring + warm halo at the new shadow edge
-        '  float prD=(dist-shadowR)/(uShadowR*0.04);',
-        '  float prRing=exp(-prD*prD);',
-        '  float haloD=(dist-shadowR)/(uShadowR*0.19);',
-        '  float halo=exp(-haloD*haloD)*0.28;',
-        '  col.rgb+=vec3(1.0,0.78,0.35)*(prRing+halo)*4.5;',
-        '  gl_FragColor=col;',
-        '}'
-      ].join('\n')
+      fragmentShader: BH_LENS_FRAG
     })));
 
     scene.add(bhSpin);
@@ -672,6 +642,40 @@ loadGLB('need_some_space.glb').then(function(gltf) {
 }).catch(function(error) {
   console.error('GLB load error:', error);
 });
+
+// Gravitational-lensing screen-space shader (shadow void + photon ring + warp)
+// — exported for the True-Size room's Sagittarius A* composer.
+export const BH_LENS_FRAG = [
+  'uniform sampler2D tDiffuse;',
+  'uniform vec2 uCenter;',
+  'uniform float uStrength,uInnerR,uOuterR,uShadowR,uAspect;',
+  'varying vec2 vUv;',
+  'void main(){',
+  '  vec2 d=(vUv-uCenter)*vec2(uAspect,1.0);',
+  '  float dist=length(d);',
+  // Shadow extended from 0.97 to 1.18 — black takes up more of the
+  // visible BH. Photon ring and halo move outward to the new shadow
+  // edge (peaked at uShadowR*1.18), and the halo sigma is narrowed
+  // (0.28 -> 0.19) so the outer fade ends at roughly the same screen
+  // radius as before — i.e. the overall "sphere" stays the same size,
+  // just the dark void inside it grows.
+  '  float shadowR = uShadowR * 1.18;',
+  '  if(dist < shadowR){ gl_FragColor=vec4(0.0,0.0,0.0,1.0); return; }',
+  // Gravitational warp — smooth Gaussian, no hard threshold (eliminates seam-line artifacts)
+  '  vec2 uv=vUv;',
+  '  float warpMag=uStrength*uShadowR*exp(-pow((dist/uShadowR-1.0)*1.1,2.0));',
+  '  vec2 dir=d/max(dist,0.001); dir.x/=uAspect;',
+  '  uv-=dir*warpMag; uv=clamp(uv,0.001,0.999);',
+  '  vec4 col=texture2D(tDiffuse,uv);',
+  // Photon ring + warm halo at the new shadow edge
+  '  float prD=(dist-shadowR)/(uShadowR*0.04);',
+  '  float prRing=exp(-prD*prD);',
+  '  float haloD=(dist-shadowR)/(uShadowR*0.19);',
+  '  float halo=exp(-haloD*haloD)*0.28;',
+  '  col.rgb+=vec3(1.0,0.78,0.35)*(prRing+halo)*4.5;',
+  '  gl_FragColor=col;',
+  '}'
+].join('\n');
 
 // Black-hole accretion-disk shaders — module scope + exported so the True-Size
 // room's Sagittarius A* uses the exact same material as the galaxy-view BH.
@@ -1257,7 +1261,7 @@ let mercuryDemoMult   = 1;
 // DEGREES; nu (true anomaly) in radians. Degenerates to the old flat circle when
 // e=i=Om=0. `a` is the semi-major axis in scene units (the body's `dist`).
 const _DEG = Math.PI / 180;
-function orbitalToXYZ(a, e, iDeg, OmDeg, wDeg, nu, out) {
+export function orbitalToXYZ(a, e, iDeg, OmDeg, wDeg, nu, out) {
   const i = iDeg * _DEG, Om = OmDeg * _DEG, w = wDeg * _DEG;
   const r = a * (1 - e * e) / (1 + e * Math.cos(nu));
   const u = w + nu;                       // argument of latitude
@@ -1303,7 +1307,7 @@ function buildOrbitPoints(m, segs) {
 // Per-planet orbit-ring tints — each orbit coloured to match that body's real
 // appearance (Mars reddish, Neptune deep blue, Saturn pale gold, etc.). Anything
 // not listed falls back to white. Edit a value here to recolour that orbit.
-const ORBIT_COLORS = {
+export const ORBIT_COLORS = {
   Mercury:  0xa9a29b,  // grey
   Venus:    0xe6c98f,  // warm cream-yellow
   Earth:    0x4a90d9,  // blue
