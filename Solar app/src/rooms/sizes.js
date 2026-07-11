@@ -589,7 +589,7 @@ const room = {
   _plume: null,
   _bhMats: [],          // Sgr A* accretion-disc materials (uTime advanced per frame)
   _bhIndex: -1,         // index of the Sgr A* stop in bodies
-  _bhWorldPos: null, _bhEHWorld: 0,
+  _bhWorldPos: null, _bhEHWorld: 0, _bhSphere: null,
   _composer: null, _lensUniforms: null, _composerW: 0, _composerH: 0,
   _lastT: 0, _fly: null, _active: false,
   _raycaster: null, _downXY: null,
@@ -873,16 +873,19 @@ const room = {
 
       // The event-horizon shadow, photon ring, warm halo and background warp
       // come from the sim's screen-space gravitational-lensing pass (see the
-      // composer in update()), exactly like the galaxy view. Crucially there is
-      // NO black sphere mesh — the sim has none ("the lensing shader shadow
-      // mask IS the event horizon"). A visible sphere blacks out the disc
-      // around the horizon in the pre-lens frame, and the warp then smears
-      // that black outward into a wide empty annulus between the photon ring
-      // and the disc. The click target renders nothing (colorWrite off).
+      // composer in update()), exactly like the galaxy view — the sim has no
+      // horizon mesh ("the lensing shader shadow mask IS the event horizon").
+      // But that pass only runs while Sgr A* is the SELECTED stop, so this
+      // sphere stands in as the black horizon when viewed from any other stop
+      // (otherwise the BH reads as a glowing blob from across the row). While
+      // the lens is active, update() turns its color/depth writes OFF: a
+      // visible sphere in the pre-lens frame blacks out the disc around the
+      // horizon and the warp smears that into a wide empty annulus.
       this._bhEHWorld = bhR * 1.20;                   // sim: bhEHRadius = bhR × 1.20
       clickMesh = new THREE.Mesh(
         new THREE.SphereGeometry(this._bhEHWorld, 32, 32),
-        new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false }));
+        new THREE.MeshBasicMaterial({ color: 0x000000 }));
+      this._bhSphere = clickMesh;
       inner.add(clickMesh);
     } else {
       // Galaxy disc — same additive disc textures the sim uses for the Milky
@@ -1108,8 +1111,14 @@ const room = {
 
     // At the Sgr A* stop, render through the sim's gravitational-lensing pass:
     // project the horizon to screen space (same math as world.js) and let the
-    // shader draw the shadow void, photon ring and background warp.
-    if (this.selected === this._bhIndex && this._bhWorldPos) {
+    // shader draw the shadow void, photon ring and background warp. The
+    // stand-in horizon sphere only draws while the lens is OFF (see _buildMega).
+    const lensOn = this.selected === this._bhIndex && !!this._bhWorldPos;
+    if (this._bhSphere) {
+      this._bhSphere.material.colorWrite = !lensOn;
+      this._bhSphere.material.depthWrite = !lensOn;
+    }
+    if (lensOn) {
       this.camera.updateMatrixWorld(true);
       const camToBH = this.camera.position.distanceTo(this._bhWorldPos);
       const halfTanFov = Math.tan(this.camera.fov * Math.PI / 360);
