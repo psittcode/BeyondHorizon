@@ -624,6 +624,10 @@ const room = {
     this.controls.dampingFactor = 0.08;
     this.controls.zoomSpeed = 0.5;
     this.controls.enabled = false;
+    // Keep the main loop at full rate while damping is still settling after
+    // the pointer is released (raw input is already covered by world.js's
+    // listeners on the shared canvas — see isActive() / animate()'s pacing).
+    if (ctx.markCameraActive) this.controls.addEventListener('change', ctx.markCameraActive);
 
     // ── Build + lay out the line-up ─────────────────────────────────────────
     this.bodies = buildBodyCatalog();
@@ -1055,9 +1059,20 @@ const room = {
     }
   },
 
+  // Frame-pacing report for world.js's animate(): full 60fps only while the
+  // camera is flying between stops — everything else (drags, wheel zooms,
+  // damping) refreshes _camDirtyUntil via the shared-canvas input listeners
+  // and this room's controls 'change' hook, so a still scene idles at 10fps
+  // exactly like the main views (the fans settle; the shader flows just
+  // advance in coarser steps since all motion here is delta-timed).
+  isActive() {
+    return !!this._fly;
+  },
+
   // ── Room contract ──────────────────────────────────────────────────────────
   enter(ctx) {
     ctx.controls.enabled = false;               // main-view controls off
+    if (ctx.markCameraActive) ctx.markCameraActive();   // smooth entry
     document.getElementById('speedPanel').style.display = 'none';
     document.getElementById('panel').style.display = 'none';
     document.getElementById('sizeUI').style.display = 'block';

@@ -73,6 +73,10 @@ controls.addEventListener('change', markCameraActive);
 renderer.domElement.addEventListener('wheel',       markCameraActive, { passive: true });
 renderer.domElement.addEventListener('pointerdown', markCameraActive);
 renderer.domElement.addEventListener('pointermove', e => { if (e.buttons) markCameraActive(); });
+// Rooms share the same canvas, so raw input above already covers them; this
+// lets a room ALSO extend the full-rate window itself (e.g. while its own
+// OrbitControls damping is still settling after the pointer is released).
+ctx.markCameraActive = markCameraActive;
 
 // Diagnostic FPS meter (press F to toggle). Reports the ACTUAL rendered framerate over a
 // rolling 0.5s window plus the worst frame time in that window (so spikes show). NB: by
@@ -4899,12 +4903,16 @@ function animate(){
   // something is actually changing, and idle down when it isn't.
   if (document.hidden) return;
   const _frameNow = performance.now();
+  // A room that implements isActive() paces like the main views (60fps only
+  // during interaction/its own flights, 10fps idle — raw pointer/wheel input
+  // feeds _camDirtyUntil above); rooms without it stay always-active.
+  const _paceRoom = viewManager.active;
   const _active =
     isFlyingTo ||                                  // a fly-to / transition is animating
     _frameNow < _camDirtyUntil ||                  // camera moved very recently
     speed > SPEED_REALLIFE * 1.5 ||                // sim running fast enough to see motion
     galacticViewActive || spaceshipViewActive ||   // these views animate continuously
-    !!viewManager.active;                          // a standalone room is driving the frame
+    (_paceRoom ? (_paceRoom.isActive ? !!_paceRoom.isActive() : true) : false);
   const _interval = 1000 / (_active ? FPS_ACTIVE : FPS_IDLE);
   // "Too soon" skip-gate. The fraction must leave enough margin below a vsync that normal
   // refresh jitter can't trip it: at 60fps the interval is 16.67ms, and the old 0.95 factor
