@@ -210,21 +210,24 @@
 
     .menuButtons {
       display: flex;
-      gap: 14px;
+      gap: 10px;
       margin-bottom: 36px;
       flex-wrap: wrap;
     }
+    /* Padding + tracking trimmed (same 13px text, same height) so all three
+       buttons sit snugly on one row. */
     .btnPrimary, .btnGhost {
       font-family: 'Exo 2', sans-serif;
       font-weight: 500;
       font-size: 13px;
-      letter-spacing: 0.22em;
+      letter-spacing: 0.14em;
       text-transform: uppercase;
-      padding: 14px 28px;
+      padding: 14px 16px;
       border-radius: 8px;
       cursor: pointer;
       transition: all 0.25s ease;
       background: transparent;
+      white-space: nowrap;
     }
     .btnPrimary {
       color: #07101e;

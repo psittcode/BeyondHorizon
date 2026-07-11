@@ -149,7 +149,8 @@ const earthTexture = textureLoader.load("2k_earth_daymap.jpg");
 const earthNightTexture = textureLoader.load("2k_earth_nightmap.jpg");
 const ringTexture = textureLoader.load("8k_saturn_ring_alpha.png");
 const milkyWayTexture = textureLoader.load("8k_stars_milky_way.jpg");
-Object.assign(ctx, { sunTexture, milkyWayTexture }); // shared by the Kepler room
+const starsTexture = textureLoader.load("8k_stars.jpg");   // plain star field — galaxy-scale + galactic-view backdrop
+Object.assign(ctx, { sunTexture, milkyWayTexture, starsTexture }); // shared by the Kepler / True-Size rooms
 const callistoTexture = textureLoader.load("Callisto.png");
 const europaTexture = textureLoader.load("Europa.png");
 const ganymedeTexture = textureLoader.load("Ganymede.png");
@@ -172,13 +173,15 @@ const skybox = new THREE.Mesh(skyGeometry, skyMaterial);
 scene.add(skybox);
 
 // ── Galaxy-view skybox ────────────────────────────────────────────────────────
-// Same 8k_stars_milky_way.jpg texture as the inner skybox, on a large BackSide
-// sphere. Position is updated every frame to follow the camera so it can never
-// be escaped regardless of zoom level.
+// The plain 8k_stars.jpg star field (NOT the Milky Way panorama — at galaxy
+// scale the Milky Way is the model in front of you, so the backdrop must not
+// also contain it) on a large BackSide sphere. Position is updated every frame
+// to follow the camera so it can never be escaped regardless of zoom level.
+// Also used as the backdrop of the galactic schematic view (see animate()).
 const galaxySkybox = new THREE.Mesh(
   new THREE.SphereGeometry(800000, 32, 32),
   new THREE.MeshBasicMaterial({
-    map: milkyWayTexture,
+    map: starsTexture,
     side: THREE.BackSide,
     depthWrite: false
   })
@@ -4934,8 +4937,10 @@ function animate(){
   if (!bhBuilt && (outsideSkybox || galacticViewActive)) ensureBH();
   // Only drive visibility from here when BH is NOT active — save/restore handles it during BH view
   if (!bhRendererSettings) {
-    skybox.visible       = !outsideSkybox;
-    galaxySkybox.visible =  outsideSkybox;
+    // Galactic (schematic) view swaps to the plain-stars galaxy skybox too —
+    // its backdrop shouldn't be the Milky Way panorama we're floating inside of.
+    skybox.visible       = !outsideSkybox && !galacticViewActive;
+    galaxySkybox.visible =  outsideSkybox ||  galacticViewActive;
     // 3D starfield only in the solar/spaceship views (not at galaxy scale or in
     // the galactic schematic, where it would clutter).
     starfield.visible    = !outsideSkybox && !galacticViewActive;
