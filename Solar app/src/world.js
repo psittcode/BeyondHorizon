@@ -193,6 +193,25 @@ const galaxySkybox = new THREE.Mesh(
 galaxySkybox.visible = false;
 scene.add(galaxySkybox);
 
+// ── Black-hole backdrop skybox ───────────────────────────────────────────────
+// The same 8K Milky Way panorama used by the solar-system skybox, on a
+// camera-following BackSide sphere. Cross-fades in over the plain-stars
+// galaxy backdrop as either BH zoom-in (galactic view or Milky Way view)
+// takes over.
+const bhSkybox = new THREE.Mesh(
+  new THREE.SphereGeometry(750000, 32, 32),
+  new THREE.MeshBasicMaterial({
+    map: milkyWayTexture,
+    side: THREE.BackSide,
+    transparent: true,
+    opacity: 0,
+    depthWrite: false
+  })
+);
+bhSkybox.visible = false;
+bhSkybox.renderOrder = 1; // draw over the plain-stars galaxySkybox
+scene.add(bhSkybox);
+
 // 🌟 3D BACKGROUND STARFIELD — white points scattered through a large volume around
 // the solar system (NASA-Eyes style). They sit at finite distances, so moving/zooming
 // shifts them relative to each other (parallax). A per-point DISTANCE FADE (custom
@@ -287,7 +306,6 @@ let bloomComposer         = null;
 let finalComposer         = null;
 let bhLensingUniforms     = null;
 let bhEHRadius            = 0;   // event horizon sphere world-space radius (for dynamic lensing)
-let bhStarfield           = null; // procedural starfield for BH mode (no galactic band)
 let sgrPanelShown         = false; // Sgr A* info panel currently replacing the Milky Way one
 // The galactic view renders the BH at 2 schematic units in a 400-unit galaxy
 // (0.5% of the galaxy radius). The model's intrinsic radius is 0.04·R, so the
@@ -598,31 +616,6 @@ loadGLB('need_some_space.glb').then(function(gltf) {
     // scale with bhEHRadius so they expand proportionally.
     bhEHRadius = bhR * 1.20;
 
-    // Procedural BH starfield — uniform random points on a sphere, no galactic band.
-    // Shown during BH mode instead of the 8K Milky Way texture (which has a bright
-    // galactic band that appears as a diagonal streak when the camera faces the core).
-    (function() {
-      var _sfGeo = new THREE.BufferGeometry();
-      var _sfPos  = new Float32Array(6000 * 3);
-      var _sfCol  = new Float32Array(6000 * 3);
-      for (var _i = 0; _i < 6000; _i++) {
-        var _theta = Math.random() * Math.PI * 2;
-        var _phi   = Math.acos(2.0 * Math.random() - 1.0);
-        _sfPos[_i*3]   = 450 * Math.sin(_phi) * Math.cos(_theta);
-        _sfPos[_i*3+1] = 450 * Math.sin(_phi) * Math.sin(_theta);
-        _sfPos[_i*3+2] = 450 * Math.cos(_phi);
-        var _b = 0.4 + 0.6 * Math.random();
-        _sfCol[_i*3] = _b; _sfCol[_i*3+1] = _b; _sfCol[_i*3+2] = _b;
-      }
-      _sfGeo.setAttribute('position', new THREE.BufferAttribute(_sfPos, 3));
-      _sfGeo.setAttribute('color',    new THREE.BufferAttribute(_sfCol, 3));
-      bhStarfield = new THREE.Points(
-        _sfGeo,
-        new THREE.PointsMaterial({ size: 1.8, sizeAttenuation: false, vertexColors: true })
-      );
-      bhStarfield.visible = false;
-      scene.add(bhStarfield);
-    })();
 
     // finalComposer: full scene render + gravitational lensing only.
     // Bloom/UnrealBloomPass completely removed — it produced cross-spike artifacts
@@ -3622,6 +3615,21 @@ function updateSpeedLabel() {
 // rooms (Kepler, Andromeda), each of which exposes its own `kmPerUnit`.
 const scaleLabelEl = document.getElementById("scaleLabel");
 const _scaleTarget = new THREE.Vector3();
+// True when the camera is at galaxy scale. Being outside the origin-centred
+// solar skybox sphere is the usual test, but the galactic core sits only
+// ~0.52·R from the origin while SKYBOX_RADIUS reaches ~0.48·R — so orbiting
+// close to the core can swing the camera back to within SKYBOX_RADIUS of the
+// ORIGIN. Without the near-core clause that flipped the app into solar-system
+// mode mid-BH-view (galaxy + BH vanishing at certain camera angles). The
+// target must be near the core too so an ordinary solar-system zoom-out
+// (target at the origin) is unaffected.
+function isGalaxyScale() {
+  if (camera.position.length() > SKYBOX_RADIUS) return true;
+  return galacticCorePos !== null && galaxyVisualRadius > 0 &&
+    camera.position.distanceTo(galacticCorePos) < galaxyVisualRadius * 0.30 &&
+    controls.target.distanceTo(galacticCorePos) < galaxyVisualRadius * 0.30;
+}
+
 function updateScaleReadout() {
   if (!scaleLabelEl) return;
   let cam, focusDist, kmPerUnit;
@@ -3636,7 +3644,7 @@ function updateScaleReadout() {
     focusDist = camera.position.distanceTo(controls.target);
     if (galacticViewActive) {
       kmPerUnit = GALACTIC_KM_PER_UNIT;
-    } else if (camera.position.length() > SKYBOX_RADIUS && galaxyVisualRadius > 0) {
+    } else if (isGalaxyScale() && galaxyVisualRadius > 0) {
       // Zoomed out to the Milky Way model: the Sun sits at 52% of its visual radius = 26,000 ly.
       kmPerUnit = (26000 / (0.52 * galaxyVisualRadius)) * LY_KM;
     } else {
@@ -4236,7 +4244,7 @@ function exitGalacticView() {
   }
   if (beauGaDisc) { beauGaDisc.material.opacity = 1.0; beauGaDisc.material.needsUpdate = true; }
   if (galCentreSprite) { galCentreSprite.material.opacity = 1.0; }
-  if (bhStarfield) bhStarfield.visible = false;
+  bhSkybox.visible = false; bhSkybox.material.opacity = 0;
 
   _restoreGalaxyScale();
   galacticViewActive = false;
@@ -4291,7 +4299,7 @@ function flyToSolarSystem() {
     if (beauGaDisc) { beauGaDisc.material.opacity = 1.0; beauGaDisc.material.needsUpdate = true; }
     if (galCentreSprite) { galCentreSprite.material.opacity = 1.0; }
     if (galBHSprite) { galBHSprite.visible = false; galBHSprite.material.opacity = 0; }
-    if (bhStarfield) bhStarfield.visible = false;
+    bhSkybox.visible = false; bhSkybox.material.opacity = 0;
     _restoreGalaxyScale();
     galacticViewActive = false;
     galacticGroup.visible = false;
@@ -4961,10 +4969,11 @@ function animate(){
   const FRAME_MS = 1000 / 60;
   const deltaScale = deltaMs / FRAME_MS;
 
-  // Show galaxy + Solar System marker only when camera has exited the skybox sphere;
+  // Show galaxy + Solar System marker only when at galaxy scale (camera outside
+  // the skybox sphere, or orbiting the galactic core — see isGalaxyScale());
   // hide the skybox itself at galaxy scale so it doesn't appear as a bubble over the galaxy.
   const camDist = camera.position.length();
-  const outsideSkybox = camDist > SKYBOX_RADIUS;
+  const outsideSkybox = isGalaxyScale();
   // Lazily build the procedural BH + lensing composer the first time we reach
   // galaxy scale (deferred from boot). Runs before any BH render below.
   if (!bhBuilt && (outsideSkybox || galacticViewActive)) ensureBH();
@@ -4982,7 +4991,7 @@ function animate(){
     if (beauGaDisc)    beauGaDisc.visible    = showGalaxy;
   }
   galaxySkybox.position.copy(camera.position);
-  if (bhStarfield) bhStarfield.position.copy(camera.position);
+  bhSkybox.position.copy(camera.position);
   solarSystemMarker.visible = !bhRendererSettings && outsideSkybox && !galacticViewActive;
   keplerSystemMarker.visible = solarSystemMarker.visible;
 
@@ -5109,9 +5118,10 @@ function animate(){
 
   // === BH reveal — same logic as the galactic-view zoom-in ===
   // Mirrors the galactic view's transition exactly: the flat galaxy disc
-  // texture and the core glow fade out as the BH takes over, the procedural
-  // starfield fades in, and the GLB's star particles stay visible all around
-  // the camera. No renderer switch, no scene hiding.
+  // texture and the core glow fade out as the BH takes over, the 8K Milky Way
+  // panorama backdrop fades in (see the bhSkybox block below), and the GLB's
+  // star particles stay visible all around the camera. No renderer switch,
+  // no scene hiding.
   {
     var _onGalaxyPage = outsideSkybox && !galacticViewActive && !spaceshipViewActive;
     if (_onGalaxyPage && BH_CLOSE_DIST > 0) {
@@ -5120,9 +5130,6 @@ function animate(){
         beauGaDisc.material.opacity = Math.max(0.0, 1.0 - bhTransitionT * 2.5);
         beauGaDisc.material.needsUpdate = true;
       }
-      // Procedural starfield fades in (same threshold as galactic view)
-      if (bhStarfield) bhStarfield.visible = bhTransitionT > 0.1;
-
       // Info panel: Sagittarius A* once the BH has clearly taken over,
       // back to the Milky Way article when zooming out. Hysteresis so the
       // panel doesn't flap at the boundary.
@@ -5186,7 +5193,6 @@ function animate(){
       beauGaDisc.material.needsUpdate = true;
     }
     if (galBHSprite) galBHSprite.visible = false; // not needed; real BH is shown
-    if (bhStarfield) bhStarfield.visible = galBHTransitionT > 0.1;
   } else if (!galacticViewActive) {
     if (galBHTransitionT > 0) galBHTransitionT = 0;
     if (galBHSprite && galBHSprite.visible) galBHSprite.visible = false;
@@ -5195,6 +5201,18 @@ function animate(){
     galCentreSprite.material.opacity = 1.0;
   }
   // ── End galactic view BH transition ───────────────────────────────────────
+
+  // ── Black-hole backdrop ────────────────────────────────────────────────────
+  // Cross-fade the 8K Milky Way panorama (the same texture the solar-system
+  // skybox uses) in over the plain-stars backdrop as either BH reveal takes
+  // over. Shared by the galactic view and the Milky Way view.
+  {
+    var _bhBackT = Math.max(bhTransitionT, galacticViewActive ? galBHTransitionT : 0);
+    bhSkybox.visible = _bhBackT > 0.1;
+    bhSkybox.material.opacity = bhSkybox.visible
+      ? Math.min(1.0, (_bhBackT - 0.1) / 0.4)
+      : 0.0;
+  }
 
   // Advance simulation clock — at 1× real life, advances by real elapsed ms
   const simMsPerFrame = deltaMs * (speed / SPEED_REALLIFE);
