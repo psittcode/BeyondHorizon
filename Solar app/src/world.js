@@ -544,19 +544,19 @@ loadGLB('need_some_space.glb').then(function(gltf) {
     bhSpin.visible = false;
 
     // === Stacked thin disks form 3D thickness ===
-    // 5 RingGeometry layers at slight world-Y offsets. Edge-on viewing (camera
+    // 7 RingGeometry layers at slight world-Y offsets. Edge-on viewing (camera
     // at or near the galactic plane) no longer collapses the disk to a single
     // line — the stack shows a Gaussian-profile thickness from any angle.
     // Each layer has its own ShaderMaterial sharing diskGeo (cheap), with a
     // uAlphaMul that dims outer layers so the cross-section looks volumetric.
     var diskGeo = new THREE.RingGeometry(bhR * 0.92, bhR * 10.0, 512, 1);
     bhDiskMaterials = [];
-    var diskLayerCount   = 5;
-    var diskLayerSpacing = bhR * 0.030;  // vertical gap between adjacent layers
+    var diskLayerCount   = 7;
+    var diskLayerSpacing = bhR * 0.045;  // vertical gap between adjacent layers
     for (var di = 0; di < diskLayerCount; di++) {
-      var slot = di - (diskLayerCount - 1) * 0.5;   // -2, -1, 0, 1, 2
+      var slot = di - (diskLayerCount - 1) * 0.5;   // -3 .. 3
       var yOff = slot * diskLayerSpacing;
-      var alphaMul = Math.exp(-Math.pow(slot / 1.6, 2.0)) * 0.55;
+      var alphaMul = Math.exp(-Math.pow(slot / 2.2, 2.0)) * 0.42;
       var layerMat = new THREE.ShaderMaterial({
         uniforms: {
           uInnerR:   { value: bhR * 0.92 },
@@ -770,8 +770,8 @@ export const BH_DISK_FRAG = [
   '  float sigma     = uInnerR * 0.14;',
   '  float pr        = exp(-(innerDist*innerDist) / (2.0*sigma*sigma));',
   '  float heat = pow(max(1.0 - t, 0.0), 1.6);',
-  '  heat *= 0.42 + 0.65 * lay;',
-  '  heat *= 0.82 + 0.26 * c1;',
+  '  heat *= 0.30 + 0.85 * lay;',
+  '  heat *= 0.78 + 0.34 * c1;',
   '  heat += 0.45 * pr;',
   '  heat = clamp(heat, 0.0, 1.0);',
   // Ember-red -> red-orange -> orange -> yellow -> cream-white ramp.
@@ -779,10 +779,12 @@ export const BH_DISK_FRAG = [
   // filaments show clear yellow-cream swaths (TON 618-style renders), but
   // the stops stay red-leaning: the 5 additive layers clip the red channel
   // first, which would drift a greener yellow toward acid tones.
-  '  vec3 col = mix(vec3(0.35,0.03,0.00), vec3(0.90,0.12,0.01), smoothstep(0.00, 0.40, heat));',
-  '  col = mix(col, vec3(1.00,0.38,0.04), smoothstep(0.40, 0.68, heat));',
-  '  col = mix(col, vec3(1.00,0.70,0.20), smoothstep(0.68, 0.88, heat));',
-  '  col = mix(col, vec3(1.00,0.93,0.75), smoothstep(0.88, 1.00, heat));',
+  // Transition bands overlap so no hue boundary is crisp: the yellow zone
+  // feathers into orange along the streaks instead of forming a hard ring.
+  '  vec3 col = mix(vec3(0.35,0.03,0.00), vec3(0.90,0.12,0.01), smoothstep(0.00, 0.42, heat));',
+  '  col = mix(col, vec3(1.00,0.38,0.04), smoothstep(0.42, 0.75, heat));',
+  '  col = mix(col, vec3(1.00,0.70,0.20), smoothstep(0.70, 0.92, heat));',
+  '  col = mix(col, vec3(1.00,0.93,0.75), smoothstep(0.90, 1.00, heat));',
   // Strong over-brightness boost so the additive disk contribution
   // dominates the galaxy texture behind it. With colour > 1.0 each
   // disk pixel writes more luminance than the BeauGa galaxy can.

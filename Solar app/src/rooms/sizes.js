@@ -846,7 +846,7 @@ const room = {
       // true Schwarzschild diameter of Sgr A* (~24.6 million km).
       const bhR = 12.3e6 / KM_PER_UNIT / 1.2;
       const diskGeo = new THREE.RingGeometry(bhR * 0.92, bhR * 10.0, 512, 1);
-      const diskLayerCount = 5, diskLayerSpacing = bhR * 0.030;
+      const diskLayerCount = 7, diskLayerSpacing = bhR * 0.045;
       for (let di = 0; di < diskLayerCount; di++) {
         const slot = di - (diskLayerCount - 1) * 0.5;
         const layerMat = new THREE.ShaderMaterial({
@@ -854,7 +854,7 @@ const room = {
             uInnerR:   { value: bhR * 0.92 },
             uOuterR:   { value: bhR * 10.0 },
             uTime:     { value: 0.0 },
-            uAlphaMul: { value: Math.exp(-Math.pow(slot / 1.6, 2.0)) * 0.55 },
+            uAlphaMul: { value: Math.exp(-Math.pow(slot / 2.2, 2.0)) * 0.42 },
             uLayerY:   { value: slot },
             uZoomOut:  { value: 0.0 },
           },
