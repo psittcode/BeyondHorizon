@@ -757,36 +757,36 @@ export const BH_DISK_FRAG = [
   // Zoom-out: lift the floor so the far-away disk reads as smooth glow.
   '  density = mix(density, max(density, 0.35), uZoomOut * 0.6);',
   '  float effMask = density * cloud;',
-  // === Colour gradient — hot inner to cool outer ===
-  // Inner: white-yellow -> yellow-orange (hot plasma)
-  // Mid:   orange -> burnt orange (cooler)
-  // Outer: dusty rose / salmon (cooler still)
-  // Far:   muted rose -> lavender -> pale purple-white (nebula haze)
-  '  vec3 col;',
-  // Reddish-orange inner, smoothly fading through dusty rose to lavender
-  // out to the nebula-white edge. Each stop's start matches the previous
-  // stop's end so the gradient blends continuously across t.
-  '  if      (t < 0.15) { col = mix(vec3(1.00,0.22,0.06), vec3(1.00,0.17,0.04), smoothstep(0.00, 0.15, t)); }',
-  '  else if (t < 0.32) { col = mix(vec3(1.00,0.17,0.04), vec3(1.00,0.13,0.02), smoothstep(0.15, 0.32, t)); }',
-  '  else if (t < 0.50) { col = mix(vec3(1.00,0.13,0.02), vec3(0.92,0.10,0.02), smoothstep(0.32, 0.50, t)); }',
-  '  else if (t < 0.68) { col = mix(vec3(0.92,0.10,0.02), vec3(0.85,0.22,0.13), smoothstep(0.50, 0.68, t)); }',
-  '  else if (t < 0.85) { col = mix(vec3(0.85,0.22,0.13), vec3(0.72,0.40,0.32), smoothstep(0.68, 0.85, t)); }',
-  '  else if (t < 0.95) { col = mix(vec3(0.72,0.40,0.32), vec3(0.73,0.62,0.78), smoothstep(0.85, 0.95, t)); }',
-  '  else               { col = mix(vec3(0.73,0.62,0.78), vec3(0.93,0.93,1.00), smoothstep(0.95, 1.00, t)); }',
+  // === Blackbody colour — driven by HEAT, not radius zones ===
+  // The old piecewise-by-radius gradient (red inner -> rose -> lavender
+  // outer) read as concentric flag stripes. Real accretion-disk renders
+  // colour by temperature: white-yellow only at the hottest inner rim and
+  // the brightest filaments, through orange and saturated red, down to
+  // deep ember red in the outer disk and the dark lanes. No purple.
+  // heat = radial cooling x filament brightness (+ white-hot inner rim),
+  // so colour tracks the SAME turbulence that drives opacity — bright
+  // streaks glow hotter, dark lanes cool to ember, at every radius.
+  '  float innerDist = max(0.0, r - uInnerR);',
+  '  float sigma     = uInnerR * 0.10;',
+  '  float pr        = exp(-(innerDist*innerDist) / (2.0*sigma*sigma));',
+  '  float heat = pow(max(1.0 - t, 0.0), 1.7);',
+  '  heat *= 0.40 + 0.60 * lay;',
+  '  heat *= 0.82 + 0.26 * c1;',
+  '  heat += 0.40 * pr;',
+  '  heat = clamp(heat, 0.0, 1.0);',
+  // Ember-red -> red-orange -> orange -> yellow -> white-hot ramp. Yellow
+  // and white sit high on the ramp (only the inner rim and the very
+  // brightest filaments reach them) and stay red-leaning: the 5 additive
+  // layers clip the red channel first, which would drift a greener yellow
+  // toward acid tones.
+  '  vec3 col = mix(vec3(0.35,0.03,0.00), vec3(0.90,0.12,0.01), smoothstep(0.00, 0.45, heat));',
+  '  col = mix(col, vec3(1.00,0.38,0.04), smoothstep(0.45, 0.75, heat));',
+  '  col = mix(col, vec3(1.00,0.66,0.16), smoothstep(0.75, 0.92, heat));',
+  '  col = mix(col, vec3(1.00,0.93,0.78), smoothstep(0.92, 1.00, heat));',
   // Strong over-brightness boost so the additive disk contribution
   // dominates the galaxy texture behind it. With colour > 1.0 each
   // disk pixel writes more luminance than the BeauGa galaxy can.
   '  col *= 2.5;',
-  // Gentle brightness variation tied to the big cloud patches so bright
-  // regions also glow slightly hotter, not just more opaque.
-  '  col *= (0.90 + 0.20 * c1);',
-  // === Inner Planckian boost — applied to colour (not alpha) so the
-  // density shaping does not saturate at the inner edge where pBoost
-  // would otherwise blow alpha to 1.
-  '  float innerDist = max(0.0, r - uInnerR);',
-  '  float sigma     = uInnerR * 0.10;',
-  '  float pr        = exp(-(innerDist*innerDist) / (2.0*sigma*sigma));',
-  '  col *= 1.0 + 0.8 * pr;',
   // === Alpha — radial falloff x density mask ===
   // The continuous cloud has a much higher mean coverage than the old
   // sparse ring combs, so a 0.30 scale keeps the 5 additively stacked
