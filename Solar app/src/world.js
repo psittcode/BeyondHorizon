@@ -748,12 +748,12 @@ export const BH_DISK_FRAG = [
   // Shape the streak field into a CONTINUOUS cloud with organic dark
   // lanes — a density floor keeps the disk filled (no black gaps between
   // discrete rings), while the smoothstep gives the lanes contrast.
-  '  float lay     = smoothstep(0.28, 0.88, streak);',
-  '  float density = 0.10 + 0.90 * lay;',
+  '  float lay     = smoothstep(0.20, 0.86, streak);',
+  '  float density = 0.24 + 0.76 * lay;',
   // Outer edge dissolves into wisps: progressively only the bright
   // filaments survive, so the rim is ragged rather than a hard circle.
   '  float wispZone = smoothstep(0.50, 0.95, t);',
-  '  density = mix(density, density * lay, wispZone * 0.85);',
+  '  density = mix(density, density * lay, wispZone * 0.65);',
   // Zoom-out: lift the floor so the far-away disk reads as smooth glow.
   '  density = mix(density, max(density, 0.35), uZoomOut * 0.6);',
   '  float effMask = density * cloud;',
@@ -767,22 +767,22 @@ export const BH_DISK_FRAG = [
   // so colour tracks the SAME turbulence that drives opacity — bright
   // streaks glow hotter, dark lanes cool to ember, at every radius.
   '  float innerDist = max(0.0, r - uInnerR);',
-  '  float sigma     = uInnerR * 0.10;',
+  '  float sigma     = uInnerR * 0.14;',
   '  float pr        = exp(-(innerDist*innerDist) / (2.0*sigma*sigma));',
-  '  float heat = pow(max(1.0 - t, 0.0), 1.7);',
-  '  heat *= 0.40 + 0.60 * lay;',
+  '  float heat = pow(max(1.0 - t, 0.0), 1.6);',
+  '  heat *= 0.42 + 0.65 * lay;',
   '  heat *= 0.82 + 0.26 * c1;',
-  '  heat += 0.40 * pr;',
+  '  heat += 0.45 * pr;',
   '  heat = clamp(heat, 0.0, 1.0);',
-  // Ember-red -> red-orange -> orange -> yellow -> white-hot ramp. Yellow
-  // and white sit high on the ramp (only the inner rim and the very
-  // brightest filaments reach them) and stay red-leaning: the 5 additive
-  // layers clip the red channel first, which would drift a greener yellow
-  // toward acid tones.
-  '  vec3 col = mix(vec3(0.35,0.03,0.00), vec3(0.90,0.12,0.01), smoothstep(0.00, 0.45, heat));',
-  '  col = mix(col, vec3(1.00,0.38,0.04), smoothstep(0.45, 0.75, heat));',
-  '  col = mix(col, vec3(1.00,0.66,0.16), smoothstep(0.75, 0.92, heat));',
-  '  col = mix(col, vec3(1.00,0.93,0.78), smoothstep(0.92, 1.00, heat));',
+  // Ember-red -> red-orange -> orange -> yellow -> cream-white ramp.
+  // Yellow starts mid-ramp so the inner half of the disk and the bright
+  // filaments show clear yellow-cream swaths (TON 618-style renders), but
+  // the stops stay red-leaning: the 5 additive layers clip the red channel
+  // first, which would drift a greener yellow toward acid tones.
+  '  vec3 col = mix(vec3(0.35,0.03,0.00), vec3(0.90,0.12,0.01), smoothstep(0.00, 0.40, heat));',
+  '  col = mix(col, vec3(1.00,0.38,0.04), smoothstep(0.40, 0.68, heat));',
+  '  col = mix(col, vec3(1.00,0.70,0.20), smoothstep(0.68, 0.88, heat));',
+  '  col = mix(col, vec3(1.00,0.93,0.75), smoothstep(0.88, 1.00, heat));',
   // Strong over-brightness boost so the additive disk contribution
   // dominates the galaxy texture behind it. With colour > 1.0 each
   // disk pixel writes more luminance than the BeauGa galaxy can.
@@ -792,7 +792,7 @@ export const BH_DISK_FRAG = [
   // sparse ring combs, so a 0.30 scale keeps the 5 additively stacked
   // layers from clipping into a flat orange mass (tuned via screenshots).
   '  float bright = pow(max(1.0-t, 0.0), 1.3) * 5.0;',
-  '  float alpha  = clamp(effMask * bright * 0.30, 0.0, 1.0);',
+  '  float alpha  = clamp(effMask * bright * 0.36, 0.0, 1.0);',
   '  alpha = min(alpha, 0.95);',
   '  alpha *= uAlphaMul;',
   '  gl_FragColor = vec4(col, alpha);',
