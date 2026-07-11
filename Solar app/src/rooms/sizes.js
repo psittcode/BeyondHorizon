@@ -873,12 +873,16 @@ const room = {
 
       // The event-horizon shadow, photon ring, warm halo and background warp
       // come from the sim's screen-space gravitational-lensing pass (see the
-      // composer in update()), exactly like the galaxy view. The black sphere
-      // is the physical horizon: a depth-writing occluder + click target.
+      // composer in update()), exactly like the galaxy view. Crucially there is
+      // NO black sphere mesh — the sim has none ("the lensing shader shadow
+      // mask IS the event horizon"). A visible sphere blacks out the disc
+      // around the horizon in the pre-lens frame, and the warp then smears
+      // that black outward into a wide empty annulus between the photon ring
+      // and the disc. The click target renders nothing (colorWrite off).
       this._bhEHWorld = bhR * 1.20;                   // sim: bhEHRadius = bhR × 1.20
       clickMesh = new THREE.Mesh(
         new THREE.SphereGeometry(this._bhEHWorld, 32, 32),
-        new THREE.MeshBasicMaterial({ color: 0x000000 }));
+        new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false }));
       inner.add(clickMesh);
     } else {
       // Galaxy disc — same additive disc textures the sim uses for the Milky
@@ -905,7 +909,10 @@ const room = {
     clickMesh.userData.bodyIndex = this.bodies.indexOf(b);
 
     b.group = group; b.mesh = clickMesh;
-    this._spins.push({ obj: inner, rate: 0.0006 });
+    // Sgr A* excluded: the sim's BH geometry is static — all apparent motion
+    // comes from the disc shader's uTime flow, so spinning the mesh would
+    // add movement the original doesn't have.
+    if (b.mega !== 'sgr-a') this._spins.push({ obj: inner, rate: 0.0006 });
     this.scene.add(group);
   },
 
