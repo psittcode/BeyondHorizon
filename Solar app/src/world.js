@@ -505,183 +505,9 @@ loadGLB('need_some_space.glb').then(function(gltf) {
     // that appeared as directional streaks when viewed at any angle.
     // New approach: single RingGeometry, pure radial + smooth sinusoidal functions only.
 
-    var diskVert = [
-      'varying float vRadius;',
-      'varying float vAngle;',
-      'void main(){',
-      '  vRadius = length(position.xy);',
-      '  vAngle  = atan(position.y, position.x);',
-      '  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);',
-      '}'
-    ].join('\n');
+    var diskVert = BH_DISK_VERT;
 
-    var diskFrag = [
-      'uniform float uInnerR, uOuterR, uTime, uAlphaMul, uLayerY, uZoomOut;',
-      'varying float vRadius, vAngle;',
-      // --- 2D value noise + 4-octave FBM for cloud-like turbulence ---
-      'float hash21(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }',
-      'float vnoise(vec2 p){',
-      '  vec2 i = floor(p);',
-      '  vec2 f = fract(p);',
-      '  vec2 u = f*f*(3.0 - 2.0*f);',
-      '  return mix(mix(hash21(i+vec2(0.0,0.0)), hash21(i+vec2(1.0,0.0)), u.x),',
-      '             mix(hash21(i+vec2(0.0,1.0)), hash21(i+vec2(1.0,1.0)), u.x), u.y);',
-      '}',
-      'float fbm4(vec2 p){',
-      '  float v = 0.0;',
-      '  v += 0.533 * vnoise(p);',
-      '  v += 0.267 * vnoise(p * 2.03);',
-      '  v += 0.133 * vnoise(p * 4.07);',
-      '  v += 0.067 * vnoise(p * 8.13);',
-      '  return v;',
-      '}',
-      'void main(){',
-      '  float t    = clamp((vRadius - uInnerR) / (uOuterR - uInnerR), 0.0, 1.0);',
-      '  float logR = log(max(vRadius / max(uInnerR, 0.001), 1.001));',
-      // Static disk-local coords — used by all LARGE-scale noise so it
-      // can\'t form arc-shaped shadow stripes. NO uLayerY offset so the 5
-      // stacked layers reinforce the same pattern from any view angle.
-      '  vec2 pStatic = vec2(vRadius*cos(vAngle), vRadius*sin(vAngle)) / max(uInnerR * 0.55, 0.001);',
-      // Rotating disk-local coords — used ONLY for high-frequency orbital
-      // motion below. Features too fine to form visible arc stripes, but
-      // sweep around the BH over time to give the disk a sense of flow.
-      '  float rotAng = vAngle - uTime * 0.18;',
-      '  vec2 pCloud  = vec2(vRadius*cos(rotAng), vRadius*sin(rotAng)) / max(uInnerR * 0.55, 0.001);',
-      // Grain octaves on pStatic (no rotation). grainBig scale bumped
-      // 1.0 -> 3.5 so the dark patches of the noise field are ~3x smaller
-      // — small enough that they no longer span large angular arcs on
-      // the disk and don\'t read as shadow blobs / strips. Weights
-      // shifted 0.70/0.30 -> 0.50/0.50 so the large grain doesn\'t
-      // dominate visually either.
-      '  float grainBig  = vnoise(pStatic * 3.5);',
-      '  float grainFine = vnoise(pStatic * 20.0);',
-      '  float grainHi   = 0.50 * grainBig + 0.50 * grainFine;',
-      // Static colour-modulation noise sources.
-      '  float cloudS     = vnoise(pStatic * 1.4);',
-      '  float grainColor = vnoise(pStatic * 8.0);',
-      // Orbital-motion noise — rotates with the disk over time. High
-      // frequency (scale 28) so features are tiny — they sweep around
-      // the BH visually as uTime advances, giving the disk a sense of
-      // flow without the features being large enough to form visible
-      // arc-shaped shadow stripes.
-      '  float orbitalGrain = vnoise(pCloud * 28.0);',
-      // === Dual ring sets — ~80 rings with non-uniform clustering ===
-      // Two ring sets at spacings 0.030 and 0.044 in logR (was 0.14 / 0.20).
-      // Set 1 -> ~80 rings, set 2 -> ~55 rings. They drift in and out of
-      // alignment for natural clustering.
-      // Ring positions: NO uLayerY offset (layer reinforcement from above).
-      // Smooth organic clustering only — rings stay as concentric arcs,
-      // not zigzag wobble.
-      '  float perturbLogR  = logR + 0.02 * sin(logR * 5.0 + 1.0);',
-      '  float ringSpacing1 = 0.030;',
-      '  float ringInput1   = perturbLogR / ringSpacing1;',
-      '  float ringDist1    = min(fract(ringInput1), 1.0 - fract(ringInput1));',
-      '  float ringSpacing2 = 0.044;',
-      '  float ringInput2   = perturbLogR / ringSpacing2 + 0.3;',
-      '  float ringDist2    = min(fract(ringInput2), 1.0 - fract(ringInput2));',
-      // === Core + halo per ring (canvas "shadowBlur" emulation) ===
-      // Halo widens AND brightens with zoom-out so the world-space halo
-      // grows in screen size as the camera retreats — same blurry feel at
-      // far zoom as at close zoom.
-      '  float core1 = exp(-ringDist1 * ringDist1 * 80.0);',
-      '  float core2 = exp(-ringDist2 * ringDist2 * 80.0);',
-      '  float haloK = mix(12.0, 30.0, smoothstep(0.0, 0.5, t));',
-      // Aggressive widening: at full zoom-out, haloK -> haloK/3 so the
-      // halo is 3x wider in world-space than at close zoom.
-      '  haloK *= 1.0 / (1.0 + uZoomOut * 2.0);',
-      '  float halo1 = exp(-ringDist1 * ringDist1 * haloK);',
-      '  float halo2 = exp(-ringDist2 * ringDist2 * haloK);',
-      '  float coreMask = max(core1, core2);',
-      '  float haloMask = max(halo1, halo2);',
-      // Halo brightness also boosted with zoom-out: 0.40 -> up to 0.80
-      // so the diffuse glow dominates over crisp ring cores at far zoom.
-      '  float haloMul = mix(0.40, 0.80, uZoomOut);',
-      '  float ringMaskHard = max(coreMask, haloMask * haloMul);',
-      // Per-ring opacity — narrowed to [0.45, 0.90] so the dimmest rings
-      // still pop visibly above the uniform bleed floor below.
-      '  float ringIndex = floor(ringInput1 + 0.5);',
-      '  float ringOpVar = 0.45 + 0.45 * hash21(vec2(ringIndex * 0.7, 3.0));',
-      '  ringMaskHard *= ringOpVar;',
-      // Removed: rotating-cloud arc-patchiness multiplier was creating
-      // consistent dark shadow stripes that swept around the disk as the
-      // cloud field rotated with the disk. All brightness variation now
-      // comes from the static grain octaves below — no rotating shadows.
-      // Grain strength ramps with radial position AND camera zoom-out.
-      // Both ramps push toward 0.85 so a near-fully-swinging grain
-      // multiplier acts at outer disk OR full zoom-out. At zoom-out from
-      // any angle (including straight above) the grain becomes the
-      // dominant brightness modulation, breaking the ring-circle
-      // appearance into a grainy cloud.
-      '  float grainStrength = mix(0.40, 0.80, smoothstep(0.0, 0.85, t));',
-      '  grainStrength = mix(grainStrength, 0.85, uZoomOut * 0.7);',
-      '  ringMaskHard *= (1.0 - grainStrength) + grainStrength * grainHi;',
-      // Subtle orbital flow — tiny rotating noise patches modulate ring
-      // brightness ±12% as they sweep around the BH. Visible as motion
-      // without forming arc-shaped shadow stripes.
-      '  ringMaskHard *= 0.88 + 0.24 * orbitalGrain;',
-      // === Bleed floor fades with radial position AND zoom-out ===
-      // Lowered base (0.08 -> 0.05) and further reduced by zoom-out so the
-      // grain's full swing (0.40 multiplier at full strength) doesn't run
-      // into the floor and average back into solid mass. At zoom-out the
-      // gaps between rings get darker, letting the grain dominate visually.
-      '  float bleedFloor = 0.05 * pow(max(1.0 - t, 0.0), 0.5) * (1.0 - 0.5 * uZoomOut);',
-      '  ringMaskHard = max(ringMaskHard, bleedFloor);',
-      // === Soft haze base — diffuse glow behind rings ===
-      // Brightens with zoom-out (0.06 -> 0.18 max) for ambient cloud glow.
-      // Capped so it doesn\'t overpower grain variation in gaps.
-      '  float baseHaze = 0.06 * (1.0 - smoothstep(0.0, 0.95, t)) * (1.0 + 2.0 * uZoomOut);',
-      '  ringMaskHard = max(ringMaskHard, baseHaze);',
-      // === Outer fog transition ===
-      // For t > 0.65 the rings dissolve smoothly into a diffuse fog layer.
-      // fogMix=0 -> pure ring-gated alpha; fogMix=1 -> pure cloud-driven fog.
-      '  float fogMix   = smoothstep(0.65, 0.92, t);',
-      '  float fogAlpha = 0.25 + 0.40 * cloudS;',
-      '  float effMask  = mix(ringMaskHard, fogAlpha, fogMix);',
-      // === Colour gradient — hot inner to cool outer ===
-      // Inner: white-yellow -> yellow-orange (hot plasma)
-      // Mid:   orange -> burnt orange (cooler)
-      // Outer: dusty rose / salmon (cooler still)
-      // Far:   muted rose -> lavender -> pale purple-white (nebula haze)
-      '  vec3 col;',
-      // Reddish-orange inner, smoothly fading through dusty rose to lavender
-      // out to the nebula-white edge. Each stop's start matches the previous
-      // stop's end so the gradient blends continuously across t.
-      '  if      (t < 0.15) { col = mix(vec3(1.00,0.22,0.06), vec3(1.00,0.17,0.04), smoothstep(0.00, 0.15, t)); }',
-      '  else if (t < 0.32) { col = mix(vec3(1.00,0.17,0.04), vec3(1.00,0.13,0.02), smoothstep(0.15, 0.32, t)); }',
-      '  else if (t < 0.50) { col = mix(vec3(1.00,0.13,0.02), vec3(0.92,0.10,0.02), smoothstep(0.32, 0.50, t)); }',
-      '  else if (t < 0.68) { col = mix(vec3(0.92,0.10,0.02), vec3(0.85,0.22,0.13), smoothstep(0.50, 0.68, t)); }',
-      '  else if (t < 0.85) { col = mix(vec3(0.85,0.22,0.13), vec3(0.72,0.40,0.32), smoothstep(0.68, 0.85, t)); }',
-      '  else if (t < 0.95) { col = mix(vec3(0.72,0.40,0.32), vec3(0.73,0.62,0.78), smoothstep(0.85, 0.95, t)); }',
-      '  else               { col = mix(vec3(0.73,0.62,0.78), vec3(0.93,0.93,1.00), smoothstep(0.95, 1.00, t)); }',
-      // Strong over-brightness boost so the additive disk contribution
-      // dominates the galaxy texture behind it. With colour > 1.0 each
-      // disk pixel writes more luminance than the BeauGa galaxy can.
-      '  col *= 2.5;',
-      // Removed: cloudS-based colour brightness modulation. Even without
-      // rotation its scale-1.4 features formed large patches that read as
-      // arc-shaped shadow stripes on the annular disk geometry. Only the
-      // small-scale grainColor (scale 8) survives, dropped to ±4 % so it
-      // adds subtle texture without forming visible shadow patches.
-      '  col *= (0.96 + 0.08 * grainColor);',
-      // === Inner Planckian boost — applied to colour (not alpha) so the
-      // per-ring opacity hash (0.30-0.90) doesn't saturate inside the cap
-      // at the inner edge where pBoost would otherwise blow alpha to 1.
-      '  float innerDist = max(0.0, vRadius - uInnerR);',
-      '  float sigma     = uInnerR * 0.10;',
-      '  float pr        = exp(-(innerDist*innerDist) / (2.0*sigma*sigma));',
-      '  col *= 1.0 + 0.8 * pr;',
-      // === Alpha — radial falloff × ring mask ===
-      // Cap dropped 0.55 -> 0.38 to compensate for the higher ring count.
-      // With ~80 rings cumulatively additive blending across 5 layers, a
-      // lower per-layer cap is needed to keep the cumulative disk from
-      // saturating into one opaque mass.
-      '  float bright = pow(max(1.0-t, 0.0), 1.3) * 5.0;',
-      '  float alpha  = clamp(effMask * bright, 0.0, 1.0);',
-      '  alpha = min(alpha, 0.95);',
-      '  alpha *= uAlphaMul;',
-      '  gl_FragColor = vec4(col, alpha);',
-      '}'
-    ].join('\n');
+    var diskFrag = BH_DISK_FRAG;
 
     var bhSpin = new THREE.Group();
     bhSpin.position.copy(galacticCorePos);
@@ -846,6 +672,186 @@ loadGLB('need_some_space.glb').then(function(gltf) {
 }).catch(function(error) {
   console.error('GLB load error:', error);
 });
+
+// Black-hole accretion-disk shaders — module scope + exported so the True-Size
+// room's Sagittarius A* uses the exact same material as the galaxy-view BH.
+export const BH_DISK_VERT = [
+  'varying float vRadius;',
+  'varying float vAngle;',
+  'void main(){',
+  '  vRadius = length(position.xy);',
+  '  vAngle  = atan(position.y, position.x);',
+  '  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);',
+  '}'
+].join('\n');
+
+export const BH_DISK_FRAG = [
+  'uniform float uInnerR, uOuterR, uTime, uAlphaMul, uLayerY, uZoomOut;',
+  'varying float vRadius, vAngle;',
+  // --- 2D value noise + 4-octave FBM for cloud-like turbulence ---
+  'float hash21(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }',
+  'float vnoise(vec2 p){',
+  '  vec2 i = floor(p);',
+  '  vec2 f = fract(p);',
+  '  vec2 u = f*f*(3.0 - 2.0*f);',
+  '  return mix(mix(hash21(i+vec2(0.0,0.0)), hash21(i+vec2(1.0,0.0)), u.x),',
+  '             mix(hash21(i+vec2(0.0,1.0)), hash21(i+vec2(1.0,1.0)), u.x), u.y);',
+  '}',
+  'float fbm4(vec2 p){',
+  '  float v = 0.0;',
+  '  v += 0.533 * vnoise(p);',
+  '  v += 0.267 * vnoise(p * 2.03);',
+  '  v += 0.133 * vnoise(p * 4.07);',
+  '  v += 0.067 * vnoise(p * 8.13);',
+  '  return v;',
+  '}',
+  'void main(){',
+  '  float t    = clamp((vRadius - uInnerR) / (uOuterR - uInnerR), 0.0, 1.0);',
+  '  float logR = log(max(vRadius / max(uInnerR, 0.001), 1.001));',
+  // Static disk-local coords — used by all LARGE-scale noise so it
+  // can\'t form arc-shaped shadow stripes. NO uLayerY offset so the 5
+  // stacked layers reinforce the same pattern from any view angle.
+  '  vec2 pStatic = vec2(vRadius*cos(vAngle), vRadius*sin(vAngle)) / max(uInnerR * 0.55, 0.001);',
+  // Rotating disk-local coords — used ONLY for high-frequency orbital
+  // motion below. Features too fine to form visible arc stripes, but
+  // sweep around the BH over time to give the disk a sense of flow.
+  '  float rotAng = vAngle - uTime * 0.18;',
+  '  vec2 pCloud  = vec2(vRadius*cos(rotAng), vRadius*sin(rotAng)) / max(uInnerR * 0.55, 0.001);',
+  // Grain octaves on pStatic (no rotation). grainBig scale bumped
+  // 1.0 -> 3.5 so the dark patches of the noise field are ~3x smaller
+  // — small enough that they no longer span large angular arcs on
+  // the disk and don\'t read as shadow blobs / strips. Weights
+  // shifted 0.70/0.30 -> 0.50/0.50 so the large grain doesn\'t
+  // dominate visually either.
+  '  float grainBig  = vnoise(pStatic * 3.5);',
+  '  float grainFine = vnoise(pStatic * 20.0);',
+  '  float grainHi   = 0.50 * grainBig + 0.50 * grainFine;',
+  // Static colour-modulation noise sources.
+  '  float cloudS     = vnoise(pStatic * 1.4);',
+  '  float grainColor = vnoise(pStatic * 8.0);',
+  // Orbital-motion noise — rotates with the disk over time. High
+  // frequency (scale 28) so features are tiny — they sweep around
+  // the BH visually as uTime advances, giving the disk a sense of
+  // flow without the features being large enough to form visible
+  // arc-shaped shadow stripes.
+  '  float orbitalGrain = vnoise(pCloud * 28.0);',
+  // === Dual ring sets — ~80 rings with non-uniform clustering ===
+  // Two ring sets at spacings 0.030 and 0.044 in logR (was 0.14 / 0.20).
+  // Set 1 -> ~80 rings, set 2 -> ~55 rings. They drift in and out of
+  // alignment for natural clustering.
+  // Ring positions: NO uLayerY offset (layer reinforcement from above).
+  // Smooth organic clustering only — rings stay as concentric arcs,
+  // not zigzag wobble.
+  '  float perturbLogR  = logR + 0.02 * sin(logR * 5.0 + 1.0);',
+  '  float ringSpacing1 = 0.030;',
+  '  float ringInput1   = perturbLogR / ringSpacing1;',
+  '  float ringDist1    = min(fract(ringInput1), 1.0 - fract(ringInput1));',
+  '  float ringSpacing2 = 0.044;',
+  '  float ringInput2   = perturbLogR / ringSpacing2 + 0.3;',
+  '  float ringDist2    = min(fract(ringInput2), 1.0 - fract(ringInput2));',
+  // === Core + halo per ring (canvas "shadowBlur" emulation) ===
+  // Halo widens AND brightens with zoom-out so the world-space halo
+  // grows in screen size as the camera retreats — same blurry feel at
+  // far zoom as at close zoom.
+  '  float core1 = exp(-ringDist1 * ringDist1 * 80.0);',
+  '  float core2 = exp(-ringDist2 * ringDist2 * 80.0);',
+  '  float haloK = mix(12.0, 30.0, smoothstep(0.0, 0.5, t));',
+  // Aggressive widening: at full zoom-out, haloK -> haloK/3 so the
+  // halo is 3x wider in world-space than at close zoom.
+  '  haloK *= 1.0 / (1.0 + uZoomOut * 2.0);',
+  '  float halo1 = exp(-ringDist1 * ringDist1 * haloK);',
+  '  float halo2 = exp(-ringDist2 * ringDist2 * haloK);',
+  '  float coreMask = max(core1, core2);',
+  '  float haloMask = max(halo1, halo2);',
+  // Halo brightness also boosted with zoom-out: 0.40 -> up to 0.80
+  // so the diffuse glow dominates over crisp ring cores at far zoom.
+  '  float haloMul = mix(0.40, 0.80, uZoomOut);',
+  '  float ringMaskHard = max(coreMask, haloMask * haloMul);',
+  // Per-ring opacity — narrowed to [0.45, 0.90] so the dimmest rings
+  // still pop visibly above the uniform bleed floor below.
+  '  float ringIndex = floor(ringInput1 + 0.5);',
+  '  float ringOpVar = 0.45 + 0.45 * hash21(vec2(ringIndex * 0.7, 3.0));',
+  '  ringMaskHard *= ringOpVar;',
+  // Removed: rotating-cloud arc-patchiness multiplier was creating
+  // consistent dark shadow stripes that swept around the disk as the
+  // cloud field rotated with the disk. All brightness variation now
+  // comes from the static grain octaves below — no rotating shadows.
+  // Grain strength ramps with radial position AND camera zoom-out.
+  // Both ramps push toward 0.85 so a near-fully-swinging grain
+  // multiplier acts at outer disk OR full zoom-out. At zoom-out from
+  // any angle (including straight above) the grain becomes the
+  // dominant brightness modulation, breaking the ring-circle
+  // appearance into a grainy cloud.
+  '  float grainStrength = mix(0.40, 0.80, smoothstep(0.0, 0.85, t));',
+  '  grainStrength = mix(grainStrength, 0.85, uZoomOut * 0.7);',
+  '  ringMaskHard *= (1.0 - grainStrength) + grainStrength * grainHi;',
+  // Subtle orbital flow — tiny rotating noise patches modulate ring
+  // brightness ±12% as they sweep around the BH. Visible as motion
+  // without forming arc-shaped shadow stripes.
+  '  ringMaskHard *= 0.88 + 0.24 * orbitalGrain;',
+  // === Bleed floor fades with radial position AND zoom-out ===
+  // Lowered base (0.08 -> 0.05) and further reduced by zoom-out so the
+  // grain's full swing (0.40 multiplier at full strength) doesn't run
+  // into the floor and average back into solid mass. At zoom-out the
+  // gaps between rings get darker, letting the grain dominate visually.
+  '  float bleedFloor = 0.05 * pow(max(1.0 - t, 0.0), 0.5) * (1.0 - 0.5 * uZoomOut);',
+  '  ringMaskHard = max(ringMaskHard, bleedFloor);',
+  // === Soft haze base — diffuse glow behind rings ===
+  // Brightens with zoom-out (0.06 -> 0.18 max) for ambient cloud glow.
+  // Capped so it doesn\'t overpower grain variation in gaps.
+  '  float baseHaze = 0.06 * (1.0 - smoothstep(0.0, 0.95, t)) * (1.0 + 2.0 * uZoomOut);',
+  '  ringMaskHard = max(ringMaskHard, baseHaze);',
+  // === Outer fog transition ===
+  // For t > 0.65 the rings dissolve smoothly into a diffuse fog layer.
+  // fogMix=0 -> pure ring-gated alpha; fogMix=1 -> pure cloud-driven fog.
+  '  float fogMix   = smoothstep(0.65, 0.92, t);',
+  '  float fogAlpha = 0.25 + 0.40 * cloudS;',
+  '  float effMask  = mix(ringMaskHard, fogAlpha, fogMix);',
+  // === Colour gradient — hot inner to cool outer ===
+  // Inner: white-yellow -> yellow-orange (hot plasma)
+  // Mid:   orange -> burnt orange (cooler)
+  // Outer: dusty rose / salmon (cooler still)
+  // Far:   muted rose -> lavender -> pale purple-white (nebula haze)
+  '  vec3 col;',
+  // Reddish-orange inner, smoothly fading through dusty rose to lavender
+  // out to the nebula-white edge. Each stop's start matches the previous
+  // stop's end so the gradient blends continuously across t.
+  '  if      (t < 0.15) { col = mix(vec3(1.00,0.22,0.06), vec3(1.00,0.17,0.04), smoothstep(0.00, 0.15, t)); }',
+  '  else if (t < 0.32) { col = mix(vec3(1.00,0.17,0.04), vec3(1.00,0.13,0.02), smoothstep(0.15, 0.32, t)); }',
+  '  else if (t < 0.50) { col = mix(vec3(1.00,0.13,0.02), vec3(0.92,0.10,0.02), smoothstep(0.32, 0.50, t)); }',
+  '  else if (t < 0.68) { col = mix(vec3(0.92,0.10,0.02), vec3(0.85,0.22,0.13), smoothstep(0.50, 0.68, t)); }',
+  '  else if (t < 0.85) { col = mix(vec3(0.85,0.22,0.13), vec3(0.72,0.40,0.32), smoothstep(0.68, 0.85, t)); }',
+  '  else if (t < 0.95) { col = mix(vec3(0.72,0.40,0.32), vec3(0.73,0.62,0.78), smoothstep(0.85, 0.95, t)); }',
+  '  else               { col = mix(vec3(0.73,0.62,0.78), vec3(0.93,0.93,1.00), smoothstep(0.95, 1.00, t)); }',
+  // Strong over-brightness boost so the additive disk contribution
+  // dominates the galaxy texture behind it. With colour > 1.0 each
+  // disk pixel writes more luminance than the BeauGa galaxy can.
+  '  col *= 2.5;',
+  // Removed: cloudS-based colour brightness modulation. Even without
+  // rotation its scale-1.4 features formed large patches that read as
+  // arc-shaped shadow stripes on the annular disk geometry. Only the
+  // small-scale grainColor (scale 8) survives, dropped to ±4 % so it
+  // adds subtle texture without forming visible shadow patches.
+  '  col *= (0.96 + 0.08 * grainColor);',
+  // === Inner Planckian boost — applied to colour (not alpha) so the
+  // per-ring opacity hash (0.30-0.90) doesn't saturate inside the cap
+  // at the inner edge where pBoost would otherwise blow alpha to 1.
+  '  float innerDist = max(0.0, vRadius - uInnerR);',
+  '  float sigma     = uInnerR * 0.10;',
+  '  float pr        = exp(-(innerDist*innerDist) / (2.0*sigma*sigma));',
+  '  col *= 1.0 + 0.8 * pr;',
+  // === Alpha — radial falloff × ring mask ===
+  // Cap dropped 0.55 -> 0.38 to compensate for the higher ring count.
+  // With ~80 rings cumulatively additive blending across 5 layers, a
+  // lower per-layer cap is needed to keep the cumulative disk from
+  // saturating into one opaque mass.
+  '  float bright = pow(max(1.0-t, 0.0), 1.3) * 5.0;',
+  '  float alpha  = clamp(effMask * bright, 0.0, 1.0);',
+  '  alpha = min(alpha, 0.95);',
+  '  alpha *= uAlphaMul;',
+  '  gl_FragColor = vec4(col, alpha);',
+  '}'
+].join('\n');
 
 // Build the procedural black hole + lensing composer the first time we reach
 // galaxy scale (deferred from boot to cut startup GPU/shader-compile cost).

@@ -582,23 +582,6 @@
   gap: 8px;
   pointer-events: auto;
 }
-#sizeOverview {
-  font-family: 'Exo 2', sans-serif;
-  font-size: 12px;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  padding: 8px 16px;
-  border-radius: 20px;
-  background: rgba(5, 10, 30, 0.82);
-  border: 1px solid rgba(100, 150, 255, 0.4);
-  color: #cfe0ff;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-#sizeOverview:hover {
-  background: rgba(100, 150, 255, 0.2);
-  color: #ffffff;
-}
 #sizeCount {
   font-family: 'Exo 2', sans-serif;
   font-size: 11px;

@@ -34,7 +34,7 @@ import { data } from '../data/planets.js';
 import { LY_KM } from '../core/scale.js';
 import {
   makeGriddedMoonGeometry, makeMoonShapeGeometry, makeAsteroidGeometry,
-  REAL_MOON_SHAPES,
+  REAL_MOON_SHAPES, BH_DISK_VERT, BH_DISK_FRAG,
 } from '../world.js';
 
 const KM_PER_UNIT   = 14959787.07;  // same anchor as the solar view (1 AU = 10 units)
@@ -43,9 +43,8 @@ const R_EARTH_KM    = 6371;
 const SKYBOX_RADIUS = 3000;
 const FLY_MS = 900;
 
-// Special `selected` values (real stops are indices >= 0).
-const INTRO    = -1;   // start of the tour: empty sky just before the smallest body
-const OVERVIEW = -2;   // the "Full line-up" framing of the whole bodies row
+// Special `selected` value (real stops are indices >= 0).
+const INTRO = -1;   // start of the tour: empty sky just before the smallest body
 
 // Fixed "sun" direction for the whole room (world space, pointing TOWARD the
 // light). Every lit material, atmosphere rim and ring shadow uses this one
@@ -550,6 +549,13 @@ function buildBodyCatalog() {
 const LY_UNITS = LY_KM / KM_PER_UNIT;
 const MEGA_ENTRIES = [
   {
+    // Right after the Sun — its event horizon dwarfs the Sun but fits well
+    // inside Kepler-22b's orbit, so this is its size-order slot.
+    name: 'Sagittarius A*', type: 'Supermassive black hole · heart of the Milky Way',
+    mega: 'sgr-a', span: (12.3e6 / KM_PER_UNIT / 1.2) * 10, sky: 'stars',
+    stats: 'Event horizon ≈ 24 million km wide · 4.3 million Suns',
+  },
+  {
     name: 'The Kepler-22 System', type: 'Planetary system', mega: 'kepler-system',
     span: 0.849 * AU_UNITS,
     stats: 'Kepler-22b’s orbit ≈ 0.85 AU · 254 million km across',
@@ -558,11 +564,6 @@ const MEGA_ENTRIES = [
     name: 'The Solar System', type: 'Planetary system', mega: 'solar-system',
     span: 678.6,   // Eris's semi-major axis (data units)
     stats: 'Out to Eris’s orbit ≈ 136 AU · 20 billion km across',
-  },
-  {
-    name: 'Sagittarius A*', type: 'Supermassive black hole · heart of the Milky Way',
-    mega: 'sgr-a', span: (12.3e6 / KM_PER_UNIT) * 4.2, sky: 'stars',
-    stats: 'Event horizon ≈ 24 million km wide · 4.3 million Suns',
   },
   {
     name: 'The Milky Way', type: 'Spiral galaxy · our home', mega: 'milky-way',
@@ -584,6 +585,7 @@ const room = {
   _skybox: null, _skyGalaxyTex: null, _skyStarsTex: null, _currentSky: 'galaxy',
   _spins: [],           // { obj, rate } — rotation.y advanced every frame
   _plume: null,
+  _bhMats: [],          // Sgr A* accretion-disc materials (uTime advanced per frame)
   _lastT: 0, _fly: null, _active: false,
   _raycaster: null, _downXY: null,
 
@@ -735,7 +737,6 @@ const room = {
     });
     document.getElementById('sizePrev').onclick = () => this.step(-1);
     document.getElementById('sizeNext').onclick = () => this.step(1);
-    document.getElementById('sizeOverview').onclick = () => this.select(OVERVIEW);
   },
 
   // Build one cosmic-scale entry: a whole planetary system (star + true-scale
@@ -779,50 +780,84 @@ const room = {
       clickMesh.rotation.x = -Math.PI / 2;
       inner.add(clickMesh);
     } else if (b.mega === 'sgr-a') {
-      // Sagittarius A*: pitch-black event-horizon sphere (Schwarzschild radius
-      // ≈ 12.3 million km for 4.3M solar masses), a warm halo behind it, and a
-      // white-hot → deep-orange accretion disc rendered additively.
-      const RS = 12.3e6 / KM_PER_UNIT;
+      // Sagittarius A*: the SAME procedural black hole the galaxy view builds
+      // (world.js bhBuilder) — five stacked accretion-disc shader layers using
+      // the shared BH_DISK_VERT/FRAG materials, plus the same soft orange glow
+      // sprite. Scaled so the event horizon (bhR × 1.20 in the sim) equals the
+      // true Schwarzschild diameter of Sgr A* (~24.6 million km).
+      const bhR = 12.3e6 / KM_PER_UNIT / 1.2;
+      const diskGeo = new THREE.RingGeometry(bhR * 0.92, bhR * 10.0, 512, 1);
+      const diskLayerCount = 5, diskLayerSpacing = bhR * 0.030;
+      for (let di = 0; di < diskLayerCount; di++) {
+        const slot = di - (diskLayerCount - 1) * 0.5;
+        const layerMat = new THREE.ShaderMaterial({
+          uniforms: {
+            uInnerR:   { value: bhR * 0.92 },
+            uOuterR:   { value: bhR * 10.0 },
+            uTime:     { value: 0.0 },
+            uAlphaMul: { value: Math.exp(-Math.pow(slot / 1.6, 2.0)) * 0.55 },
+            uLayerY:   { value: slot },
+            uZoomOut:  { value: 0.0 },
+          },
+          vertexShader: BH_DISK_VERT, fragmentShader: BH_DISK_FRAG,
+          transparent: true, depthWrite: false, depthTest: false,
+          blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
+        });
+        const layerMesh = new THREE.Mesh(diskGeo, layerMat);
+        layerMesh.rotation.x = -Math.PI / 2;
+        layerMesh.position.y = slot * diskLayerSpacing;
+        layerMesh.renderOrder = 25;
+        inner.add(layerMesh);
+        this._bhMats.push(layerMat);
+      }
+
+      // Soft orange glow sprite — same canvas gradient as the sim's BH.
+      const gc = document.createElement('canvas'); gc.width = gc.height = 256;
+      const gx = gc.getContext('2d');
+      const gr = gx.createRadialGradient(128, 128, 0, 128, 128, 128);
+      gr.addColorStop(0,    'rgba(255,120,10,0.25)');
+      gr.addColorStop(0.40, 'rgba(220,60,2,0.10)');
+      gr.addColorStop(0.70, 'rgba(160,25,0,0.03)');
+      gr.addColorStop(1.0,  'rgba(100,8,0,0)');
+      gx.fillStyle = gr; gx.fillRect(0, 0, 256, 256);
+      const gSprite = new THREE.Sprite(new THREE.SpriteMaterial({
+        map: new THREE.CanvasTexture(gc), blending: THREE.AdditiveBlending,
+        transparent: true, depthWrite: false, depthTest: false,
+      }));
+      gSprite.scale.set(bhR * 7, bhR * 7, 1);
+      gSprite.renderOrder = 15;
+      inner.add(gSprite);
+
+      // The sim draws the event-horizon shadow + photon ring in its screen-space
+      // lensing pass; here the same look is baked into a camera-facing billboard
+      // drawn over the discs: black void (radius = bhR×1.20×1.18, the shadow the
+      // lens shader paints), a tight photon ring, and a warm halo at its edge.
+      const shadowR = bhR * 1.20 * 1.18;
+      const spriteHalf = shadowR * 2.0;               // billboard half-width (world)
+      const frac = shadowR / spriteHalf;              // shadow edge in [0,1] of half-width
+      const sc = document.createElement('canvas'); sc.width = sc.height = 512;
+      const sx = sc.getContext('2d');
+      const ring = sx.createRadialGradient(256, 256, 0, 256, 256, 256);
+      ring.addColorStop(0, 'rgba(0,0,0,1)');
+      ring.addColorStop(Math.max(0, frac - 0.015), 'rgba(0,0,0,1)');
+      ring.addColorStop(frac, 'rgba(255,199,89,1)');          // photon ring
+      ring.addColorStop(Math.min(1, frac + 0.05), 'rgba(255,160,60,0.35)'); // warm halo
+      ring.addColorStop(Math.min(1, frac + 0.22), 'rgba(255,120,30,0.06)');
+      ring.addColorStop(1, 'rgba(0,0,0,0)');
+      sx.fillStyle = ring; sx.fillRect(0, 0, 512, 512);
+      const shadow = new THREE.Sprite(new THREE.SpriteMaterial({
+        map: new THREE.CanvasTexture(sc), transparent: true,
+        depthWrite: false, depthTest: false,
+      }));
+      shadow.scale.set(spriteHalf * 2, spriteHalf * 2, 1);
+      shadow.renderOrder = 30;                        // over the discs, like the lens pass
+      inner.add(shadow);
+
+      // Click target: an invisible-in-practice black sphere inside the shadow.
       clickMesh = new THREE.Mesh(
-        new THREE.SphereGeometry(RS, 48, 48),
+        new THREE.SphereGeometry(shadowR, 32, 32),
         new THREE.MeshBasicMaterial({ color: 0x000000 }));
       inner.add(clickMesh);
-      inner.add(makeGlowSprite(0xff9944, RS * 0.65));
-      const inFrac = 1.5 / 4.2;   // disc inner edge as a fraction of its outer radius
-      const disk = new THREE.Mesh(
-        new THREE.RingGeometry(RS * 1.5, RS * 4.2, 96),
-        new THREE.ShaderMaterial({
-          transparent: true, depthWrite: false, side: THREE.DoubleSide,
-          blending: THREE.AdditiveBlending,
-          uniforms: { uInFrac: { value: inFrac } },
-          vertexShader: `
-            varying vec2 vUv;
-            #include <common>
-            #include <logdepthbuf_pars_vertex>
-            void main() {
-              vUv = uv;
-              gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-              #include <logdepthbuf_vertex>
-            }
-          `,
-          fragmentShader: `
-            uniform float uInFrac;
-            varying vec2 vUv;
-            #include <logdepthbuf_pars_fragment>
-            void main() {
-              #include <logdepthbuf_fragment>
-              float rr = length(vUv - 0.5) * 2.0;                       // r / outer
-              float t = clamp((rr - uInFrac) / (1.0 - uInFrac), 0.0, 1.0);
-              vec3 col = mix(vec3(1.0, 0.97, 0.88), vec3(1.0, 0.45, 0.12),
-                             smoothstep(0.0, 0.55, t));
-              float a = pow(1.0 - t, 1.8) * 1.4;
-              if (a < 0.004) discard;
-              gl_FragColor = vec4(col, a);
-            }
-          `,
-        }));
-      disk.rotation.x = -Math.PI / 2;
-      inner.add(disk);
     } else {
       // Galaxy disc — same additive disc textures the sim uses for the Milky
       // Way (galaxyDiamond1) and the Andromeda room (androgalaxy).
@@ -851,7 +886,6 @@ const room = {
   // ── Camera framing ─────────────────────────────────────────────────────────
   // i >= 0: a body/stop. INTRO (-1): an empty patch of sky just before the
   // smallest body, so the tour begins on nothing and ▶ reveals Deimos.
-  // OVERVIEW (-2): fit the whole classic bodies row.
   _frameFor(i) {
     if (i === INTRO) {
       const first = this.bodies[0];
@@ -864,18 +898,6 @@ const room = {
       const target = new THREE.Vector3(first.x - first.r * 40, first.r, 0);
       const pos = target.clone().add(
         new THREE.Vector3(0.85, 0.2, 0.49).multiplyScalar(dist));
-      return { target, pos };
-    }
-    if (i === OVERVIEW) {   // megas are too big to share the frame
-      const row = this.bodies.filter(b => !b.mega);
-      const first = row[0], last = row[row.length - 1];
-      const maxR = last.r;
-      const halfW = (last.x + last.span - (first.x - first.span)) / 2 * 1.22;
-      const midX  = (first.x - first.span + last.x + last.span) / 2;
-      const tanH  = Math.tan(this.camera.fov * Math.PI / 360) * this.camera.aspect;
-      const dist  = Math.max(halfW / tanH, maxR * 2.6);
-      const target = new THREE.Vector3(midX, maxR * 0.5, 0);
-      const pos = target.clone().add(new THREE.Vector3(0, dist * 0.10, dist));
       return { target, pos };
     }
     const b = this.bodies[i];
@@ -921,6 +943,13 @@ const room = {
         dur: FLY_MS * (1 + Math.min(1.6, bumpA * 0.22)),
       };
       this.controls.enabled = false;
+      // Open the distance limits for the flight. controls.update() runs every
+      // frame even while disabled and CLAMPS the camera radius to the limits of
+      // the *previous* stop — flying out to a galaxy from a planet, the clamp
+      // yanked the camera back in each frame (the zoom in-out-in stutter).
+      // _applyLimits() restores proper limits on arrival.
+      this.controls.minDistance = 0;
+      this.controls.maxDistance = Infinity;
     }
     this._updateCaption();
   },
@@ -932,29 +961,22 @@ const room = {
     this._skybox.material.needsUpdate = true;
   },
 
-  // Cyclic tour: intro → smallest → … → Andromeda → back to the intro. From
-  // the overview, ▶ starts the tour at the smallest body and ◀ jumps to the end.
+  // Cyclic tour: intro → smallest → … → Andromeda → back to the intro.
   step(dir) {
     const n = this.bodies.length;
-    let i;
-    if (this.selected === OVERVIEW) i = dir > 0 ? 0 : n - 1;
-    else {
-      i = this.selected + dir;
-      if (i >= n) i = INTRO;
-      if (i < INTRO) i = n - 1;
-    }
+    let i = this.selected + dir;
+    if (i >= n) i = INTRO;
+    if (i < INTRO) i = n - 1;
     this.select(i);
   },
 
   _applyLimits() {
-    // INTRO sits at the smallest body's scale — its camera distance (a few
-    // Deimos radii) is far below the overview's minDistance, and OrbitControls
-    // CLAMPS the camera out to minDistance on the next update, wrecking the
-    // framing. So the intro borrows the first body's limits.
-    const b = this.selected >= 0 ? this.bodies[this.selected]
-            : this.selected === INTRO ? this.bodies[0] : null;
-    this.controls.minDistance = b ? (b.mega ? b.span * 0.05 : b.r * 1.25) : 0.002;
-    this.controls.maxDistance = b ? Math.max(b.span * 12, 0.01) : SKYBOX_RADIUS * 0.9;
+    // INTRO sits at the smallest body's scale, so it borrows the first body's
+    // limits — a stale larger minDistance would let OrbitControls clamp the
+    // camera thousands of Deimos radii out and wreck the framing.
+    const b = this.selected >= 0 ? this.bodies[this.selected] : this.bodies[0];
+    this.controls.minDistance = b.mega ? b.span * 0.05 : b.r * 1.25;
+    this.controls.maxDistance = Math.max(b.span * 12, 0.01);
   },
 
   _updateCaption() {
@@ -970,11 +992,6 @@ const room = {
       subEl.textContent  = `${this.bodies.length} stops · true relative scale`;
       statEl.textContent = 'Press ▶ to begin — smallest to largest';
       cntEl.textContent  = 'Start';
-    } else if (this.selected === OVERVIEW) {
-      nameEl.textContent = 'The Solar System & Kepler-22';
-      subEl.textContent  = `${this.bodies.length} stops · true relative scale`;
-      statEl.textContent = 'Step through with ◀ ▶ or click a body';
-      cntEl.textContent  = 'Overview';
     } else {
       const b = this.bodies[this.selected];
       nameEl.textContent = b.name;
@@ -1011,6 +1028,9 @@ const room = {
     // Gentle self-rotation so the textures read as globes, not stickers.
     for (const s of this._spins) s.obj.rotation.y += s.rate * dScale;
 
+    // Sgr A*'s accretion discs flow at the sim's rate (world.js: deltaMs × 0.0005).
+    for (const m of this._bhMats) m.uniforms.uTime.value += dScale * (1000 / 60) * 0.0005;
+
     // Enceladus's jets stream steadily; sprite size follows the viewport/fov.
     if (this._plume) {
       const u = this._plume.uniforms;
@@ -1028,10 +1048,15 @@ const room = {
       f.t = Math.min(1, f.t + (now - (f._last || now - 16)) / f.dur);
       f._last = now;
       const e = f.t < 0.5 ? 4 * f.t * f.t * f.t : 1 - Math.pow(-2 * f.t + 2, 3) / 2; // easeInOutCubic
-      const target = f.fromT.clone().lerp(f.toT, e);
+      // The target pans only through the middle of the flight (smoothstep
+      // window): the camera first ZOOMS OUT in place over the start body, then
+      // slides across while high, then settles down onto the destination —
+      // reads as a scale change, never a sideways whip at close zoom.
+      const p = THREE.MathUtils.smoothstep(e, 0.22, 0.85);
+      const target = f.fromT.clone().lerp(f.toT, p);
       const dir0 = f.fromP.clone().sub(f.fromT).normalize();
       const dir1 = f.toP.clone().sub(f.toT).normalize();
-      const dir = dir0.lerp(dir1, e).normalize();
+      const dir = dir0.lerp(dir1, p).normalize();
       const d = Math.exp((1 - e) * Math.log(f.d0) + e * Math.log(f.d1)
                          + f.bumpA * Math.sin(Math.PI * e));
       this.controls.target.copy(target);
