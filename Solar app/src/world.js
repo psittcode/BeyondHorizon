@@ -288,6 +288,7 @@ let finalComposer         = null;
 let bhLensingUniforms     = null;
 let bhEHRadius            = 0;   // event horizon sphere world-space radius (for dynamic lensing)
 let bhStarfield           = null; // procedural starfield for BH mode (no galactic band)
+let sgrPanelShown         = false; // Sgr A* info panel currently replacing the Milky Way one
 let bhDiskMaterials       = null; // materials of each stacked disk layer, for uTime animation
 let galacticGlowSprite    = null; // bright white glow at the galactic core, visible at far zoom before BH detail kicks in
 let galaxyPivot           = null; // pivot Group at galacticCorePos so milkyWayModel rotates wobble-free
@@ -4093,8 +4094,6 @@ let galCamBeforeSpaceship = null;  // camera state saved when entering spaceship
 let galEarthZoomedIn = false;      // true when camera is locked on Earth in galactic view
 
 function enterGalacticView() {
-  // Leave the BH skybox environment if active so the scene isn't left hidden
-  exitBHSkyboxMode();
   // Leave the Kepler-22 system scene if it's showing (it takes over the renderer)
   viewManager.exitActive();
   // Fully exit spaceship view first — the two views are independent
@@ -4259,7 +4258,6 @@ function exitGalacticView() {
 // Fly the camera from wherever it is back into the solar system (triggered by the
 // "The Solar System" button that appears when zoomed out to galaxy scale).
 function flyToSolarSystem() {
-  exitBHSkyboxMode();
   viewManager.exitActive();
   renderer.setClearColor(0x000000, 1); // TEST: restore default clear colour when leaving Milky Way view
   showBodiesList();
@@ -4370,34 +4368,9 @@ function showSagAPanel() {
   document.getElementById('backToList').style.display = 'none';
 }
 
-// Restore the renderer + scene after the black-hole skybox environment.
-// Called from the animate loop when the user zooms back out past the fade
-// threshold, and defensively from every view-switch entry point so a forced
-// exit (button press while inside the BH view) can never leave the scene hidden.
-function exitBHSkyboxMode() {
-  if (!bhRendererSettings) return;
-  renderer.toneMapping         = bhOrigToneMapping;
-  renderer.toneMappingExposure = bhOrigExposure;
-  renderer.outputEncoding      = bhOrigOutputEncoding;
-  if (bhOrigClearColor !== null) renderer.setClearColor(bhOrigClearColor, 1);
-  if (bhPointLight)  bhPointLight.visible  = false;
-  if (bhPointLight2) bhPointLight2.visible = false;
-  if (bhPointLight3) bhPointLight3.visible = false;
-  if (_bhSavedVisibility) {
-    _bhSavedVisibility.forEach(function(wasVisible, obj) { obj.visible = wasVisible; });
-    _bhSavedVisibility = null;
-  }
-  // Hide procedural starfield, restore full-brightness 8K skybox
-  if (bhStarfield) bhStarfield.visible = false;
-  if (galaxySkybox && galaxySkybox.material) galaxySkybox.material.color.setScalar(1.0);
-  bhRendererSettings = false;
-  bhTransitionT = 0;
-}
-
 function flyToMilkyWay() {
   if (!galacticCorePos) return; // GLB not yet loaded
 
-  exitBHSkyboxMode();
   viewManager.exitActive();
   renderer.setClearColor(0x000005, 1); // TEST: force near-black canvas background for Milky Way view
 
@@ -4753,7 +4726,6 @@ let seSavedHelioVis     = null;
 
 function enterSpaceshipView() {
   spaceshipEnteredFrom = 'main';
-  exitBHSkyboxMode();
   viewManager.exitActive();
   if (galacticViewActive) exitGalacticView();
   document.getElementById('panel').style.display = 'none';
@@ -4925,7 +4897,6 @@ document.getElementById('otherGalaxiesBtn').onclick = () => { flyToKeplerDot(); 
 
 // The Andromeda Galaxy view now lives in rooms/andromeda.js (lazy-loaded room).
 document.getElementById('andromedaBtn').onclick = () => {
-  exitBHSkyboxMode();
   if (galacticViewActive) exitGalacticView();
   if (spaceshipViewActive) exitSpaceshipView();
   viewManager.enter('andromeda');
@@ -5054,7 +5025,9 @@ function animate(){
   if (galacticGlowSprite) {
     const showGlow = !bhRendererSettings && outsideSkybox && !galacticViewActive && !spaceshipViewActive;
     galacticGlowSprite.visible = showGlow;
-    var _gOp = Math.max(0.0, Math.min(1.0, (0.90 - bhTransitionT) / 0.40));
+    // Fade out as the BH takes over — same rate as the galactic view's
+    // galCentreSprite (gone by t ≈ 0.33) so the two reveals feel identical.
+    var _gOp = Math.max(0.0, Math.min(1.0, 1.0 - bhTransitionT * 3.0));
     // Glow now smaller (galaxyRadius * 0.18) so reduce opacity to match —
     // less prominence in the centre, still readable at far zoom.
     galacticGlowSprite.material.opacity = _gOp * 0.50;
@@ -5102,14 +5075,12 @@ function animate(){
 
   if (BH_CLOSE_DIST > 0) {
     if (blackHoleModel) {
-      // BH model visible only once the camera is close enough that the detail
-      // is actually worth drawing. At far zoom (bhTransitionT < 0.15) the BH
-      // hides and only the galacticGlowSprite remains — at that scale the
-      // model is sub-pixel anyway and the giant glow is the better visual.
-      // The skybox environment engages earlier (at 0.06), so by the time the
-      // model appears the galaxy is already hidden — it never draws on top.
+      // BH model fades in as soon as the transition starts — same threshold
+      // as the galactic-view zoom-in (galBHTransitionT > 0.04). The disk's
+      // uZoomOut uniform keeps it near-transparent at the start, so the
+      // reveal is gradual, not a pop.
       var _galaxyShown = outsideSkybox && !galacticViewActive && !spaceshipViewActive;
-      blackHoleModel.visible = _galaxyShown && bhTransitionT > 0.15;
+      blackHoleModel.visible = _galaxyShown && bhTransitionT > 0.04;
     }
     if (bhDiskMaterials && blackHoleModel && blackHoleModel.visible) {
       var _dt = deltaMs * 0.0005;
@@ -5121,46 +5092,37 @@ function animate(){
     }
   }
 
-  // === BH skybox environment switch ===
-  // When the camera zooms close enough to the galactic core, swap into a
-  // dedicated black-hole environment — hide the galaxy, black background,
-  // dimmed real skybox + procedural starfield, lensing composer — the same
-  // "new skybox" experience as the galactic-view BH zoom-in. The side panel
-  // switches to Sagittarius A* while inside and back to the Milky Way on exit.
-  if (bhTransitionT > 0.06 && !bhRendererSettings) {
-    bhOrigToneMapping    = renderer.toneMapping;
-    bhOrigExposure       = renderer.toneMappingExposure;
-    bhOrigOutputEncoding = renderer.outputEncoding;
-    bhOrigClearColor     = renderer.getClearColor(new THREE.Color()).getHex();
-    renderer.toneMapping         = THREE.ReinhardToneMapping;
-    renderer.toneMappingExposure = 1.2;
-    renderer.outputEncoding      = THREE.sRGBEncoding;
-    renderer.setClearColor(0x000000, 1); // pure black background
-    _bhSavedVisibility = new Map();
-    const _bhTree = new Set();
-    if (blackHoleModel) blackHoleModel.traverse(function(o) { _bhTree.add(o); });
-    scene.traverse(function(obj) {
-      if (obj === scene) return;
-      _bhSavedVisibility.set(obj, obj.visible);
-      // Hide everything except BH meshes — procedural starfield shown explicitly below
-      if (!_bhTree.has(obj)) obj.visible = false;
-    });
-    if (bhPointLight)  bhPointLight.visible  = true;
-    if (bhPointLight2) bhPointLight2.visible = true;
-    if (bhPointLight3) bhPointLight3.visible = true;
-    // Procedural starfield fills in the black background (no galactic band)
-    if (bhStarfield) bhStarfield.visible = true;
-    // Dim the real 8K skybox so lensing shader warps the actual starfield texture
-    if (galaxySkybox && galaxySkybox.material) {
-      galaxySkybox.visible = true;
-      galaxySkybox.material.color.setScalar(0.35);
+  // === BH reveal — same logic as the galactic-view zoom-in ===
+  // Mirrors the galactic view's transition exactly: the flat galaxy disc
+  // texture and the core glow fade out as the BH takes over, the procedural
+  // starfield fades in, and the GLB's star particles stay visible all around
+  // the camera. No renderer switch, no scene hiding.
+  {
+    var _onGalaxyPage = outsideSkybox && !galacticViewActive && !spaceshipViewActive;
+    if (_onGalaxyPage && BH_CLOSE_DIST > 0) {
+      // Galaxy disc texture fades out as BH takes over (same rate as galactic view)
+      if (beauGaDisc) {
+        beauGaDisc.material.opacity = Math.max(0.0, 1.0 - bhTransitionT * 2.5);
+        beauGaDisc.material.needsUpdate = true;
+      }
+      // Procedural starfield fades in (same threshold as galactic view)
+      if (bhStarfield) bhStarfield.visible = bhTransitionT > 0.1;
+
+      // Info panel: Sagittarius A* once the BH has clearly taken over,
+      // back to the Milky Way article when zooming out. Hysteresis so the
+      // panel doesn't flap at the boundary.
+      if (!sgrPanelShown && bhTransitionT > 0.45) {
+        sgrPanelShown = true;
+        showSagAPanel();
+      } else if (sgrPanelShown && bhTransitionT < 0.25) {
+        sgrPanelShown = false;
+        showMilkyWayPanel();
+      }
+    } else if (sgrPanelShown) {
+      // Left the Milky Way page via a view button / fly-out — that flow sets
+      // its own panel; just reset the flag so the panel can re-trigger later.
+      sgrPanelShown = false;
     }
-    bhRendererSettings = true;
-    showSagAPanel();
-  } else if (bhTransitionT <= 0.03 && bhRendererSettings) {
-    exitBHSkyboxMode();
-    // Back at galaxy scale — restore the Milky Way info panel
-    showMilkyWayPanel();
   }
   // ── End black hole transition ─────────────────────────────────────────────
 
@@ -6562,7 +6524,6 @@ window.addEventListener("resize", ()=>{
 
   document.getElementById('btnSizes').addEventListener('click', () => {
     dismissMenu(() => {
-      exitBHSkyboxMode();
       viewManager.enter('sizes').catch(e => console.warn('enter sizes failed:', e));
     });
   });
