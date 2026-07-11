@@ -487,3 +487,120 @@
   user-select: none;
   white-space: nowrap;
 }
+
+/* ─────────── TRUE-SIZE COMPARISON VIEW ─────────── */
+/* Overlay UI for the size-comparison room (src/rooms/sizes.js). Styled to match
+   the main-menu look: Orbitron titles, Exo 2 body text, translucent dark cards
+   with the app's blue accent. */
+#sizeUI {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;   /* the canvas below keeps orbit/zoom input */
+  z-index: 50;
+}
+#sizeTitle {
+  position: absolute;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-family: 'Orbitron', sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.34em;
+  text-transform: uppercase;
+  color: rgba(205, 222, 255, 0.85);
+  text-shadow: 0 0 18px rgba(109, 168, 255, 0.5);
+  user-select: none;
+}
+#sizeNavBar {
+  position: absolute;
+  bottom: 26px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 16px;
+  background: rgba(5, 10, 30, 0.82);
+  border: 1px solid rgba(100, 150, 255, 0.4);
+  border-radius: 12px;
+  pointer-events: auto;
+  backdrop-filter: blur(6px);
+}
+.sizeNavBtn {
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  background: rgba(100, 150, 255, 0.12);
+  border: 1px solid rgba(100, 150, 255, 0.45);
+  color: #cfe0ff;
+  font-size: 15px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  flex: none;
+}
+.sizeNavBtn:hover {
+  background: rgba(100, 150, 255, 0.28);
+  border-color: rgba(150, 190, 255, 0.8);
+  color: #ffffff;
+}
+#sizeCaption {
+  min-width: 300px;
+  text-align: center;
+  user-select: none;
+}
+#sizeName {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: #ffffff;
+}
+#sizeSub {
+  font-family: 'Exo 2', sans-serif;
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  color: rgba(160, 190, 240, 0.85);
+  margin-top: 2px;
+}
+#sizeStats {
+  font-family: 'Exo 2', sans-serif;
+  font-size: 12.5px;
+  color: rgba(255, 214, 160, 0.95);
+  margin-top: 5px;
+}
+#sizeFooter {
+  position: absolute;
+  bottom: 32px;
+  right: 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  pointer-events: auto;
+}
+#sizeOverview {
+  font-family: 'Exo 2', sans-serif;
+  font-size: 12px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  padding: 8px 16px;
+  border-radius: 20px;
+  background: rgba(5, 10, 30, 0.82);
+  border: 1px solid rgba(100, 150, 255, 0.4);
+  color: #cfe0ff;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+#sizeOverview:hover {
+  background: rgba(100, 150, 255, 0.2);
+  color: #ffffff;
+}
+#sizeCount {
+  font-family: 'Exo 2', sans-serif;
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  color: rgba(160, 190, 240, 0.7);
+  padding-right: 6px;
+  user-select: none;
+}

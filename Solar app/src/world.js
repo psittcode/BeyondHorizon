@@ -13,6 +13,7 @@ import { scaleRatioN, formatRatio, realPerCm, AU_KM, LY_KM } from './core/scale.
 // on first entry, so its code + assets don't load until you visit it.
 viewManager.register('andromeda', () => import('./rooms/andromeda.js'));
 viewManager.register('kepler',    () => import('./rooms/kepler.js'));
+viewManager.register('sizes',     () => import('./rooms/sizes.js'));
 import('./rooms/kepler.js'); // preload so entry stays instant (continuous zoom-in)
 
 const scene = new THREE.Scene();
@@ -1453,7 +1454,7 @@ document.getElementById("toggleOrbits").addEventListener("click", () => {
 // each moon gets its own seed for variety.
 function _mulberry32(a){ return function(){ a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
 function _randUnit(rand){ let x, y, z, l; do { x = rand()*2-1; y = rand()*2-1; z = rand()*2-1; l = x*x+y*y+z*z; } while (l > 1 || l < 1e-4); l = Math.sqrt(l); return new THREE.Vector3(x/l, y/l, z/l); }
-function makeAsteroidGeometry(radius, seed) {
+export function makeAsteroidGeometry(radius, seed) {
   // Indexed sphere (shared vertices) so computeVertexNormals() averages them into
   // SMOOTH normals. An icosphere is non-indexed → faceted/blocky shading.
   const geo = new THREE.SphereGeometry(radius, 128, 96);
@@ -1511,7 +1512,7 @@ function makeAsteroidGeometry(radius, seed) {
 //   lumpiness     amplitude of the soft surface undulation (Phobos rough, Deimos smooth)
 //   lumpSeed      deterministic seed so the shape is stable across reloads
 //   craters:[{ dir:[x,y,z], angRadius (rad), depth, rim }]  carved depressions
-function makeMoonShapeGeometry(meanRadius, opts) {
+export function makeMoonShapeGeometry(meanRadius, opts) {
   const { axes = [1, 1, 1], lumpiness = 0.05, lumpSeed = 1, craters = [] } = opts || {};
   const geo = new THREE.SphereGeometry(meanRadius, 160, 120);   // hi-res so big craters read cleanly
   const rand = _mulberry32((lumpSeed >>> 0) || 1);
@@ -1582,7 +1583,7 @@ function makeMoonShapeGeometry(meanRadius, opts) {
 // local +x, matching the radial tidal-lock orientation the other moons use. A duplicate
 // seam column (lon 360 == lon 0) and equirectangular UVs (u = lon/360, v = (lat+90)/180)
 // let the body's existing equirectangular texture map cleanly with no seam smear.
-function makeGriddedMoonGeometry(shape, meanRadius) {
+export function makeGriddedMoonGeometry(shape, meanRadius) {
   const { nLat, nLon, latStep, lonStep, radii } = shape;
   const D2R = Math.PI / 180;
   const cols = nLon + 1;                          // +1: duplicate the lon seam so UVs wrap 0→1
@@ -1632,7 +1633,7 @@ function makeGriddedMoonGeometry(shape, meanRadius) {
 
 // Moon name → its real measured gridded shape model. Phobos & Deimos are NASA PDS Thomas
 // models; Nix & Hydra are the New Horizons SPC models (resampled to the same grid format).
-const REAL_MOON_SHAPES = { Phobos: phobosShape, Deimos: deimosShape, Nix: nixShape, Hydra: hydraShape };
+export const REAL_MOON_SHAPES = { Phobos: phobosShape, Deimos: deimosShape, Nix: nixShape, Hydra: hydraShape };
 
 // helper function to create a moon
 function createMoon(size, distance, speed, color, infoText, texture, startAngle) {
@@ -6505,6 +6506,12 @@ window.addEventListener("resize", ()=>{
       if (typeof enterGalacticView === 'function') {
         try { enterGalacticView(); } catch (e) { console.warn('enterGalacticView failed:', e); }
       }
+    });
+  });
+
+  document.getElementById('btnSizes').addEventListener('click', () => {
+    dismissMenu(() => {
+      viewManager.enter('sizes').catch(e => console.warn('enter sizes failed:', e));
     });
   });
 

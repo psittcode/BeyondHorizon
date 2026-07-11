@@ -62,6 +62,7 @@
       <div class="menuButtons">
         <button class="btnPrimary" id="btnEnter">Enter Simulation</button>
         <button class="btnGhost" id="btnGalaxy">Explore the Galaxy</button>
+        <button class="btnGhost" id="btnSizes">True Size</button>
       </div>
 
       <div class="creditLine">A Beyond Horizons experience · Built with Three.js</div>
@@ -74,6 +75,24 @@
       <div class="stripTitle">Relative distance of each planet from the Sun</div>
       <div class="stripLegend">AU = astronomical unit&nbsp;&nbsp;·&nbsp;&nbsp;1 AU = 149,597,871 km</div>
     </div>
+  </div>
+</div>
+
+<!-- TRUE-SIZE COMPARISON UI (shown only while the size-comparison room is active) -->
+<div id="sizeUI" style="display:none;">
+  <div id="sizeTitle">True Size Comparison</div>
+  <div id="sizeNavBar">
+    <button id="sizePrev" class="sizeNavBtn" title="Previous body (smaller)">&#9664;</button>
+    <div id="sizeCaption">
+      <div id="sizeName">The Solar System</div>
+      <div id="sizeSub">true relative scale</div>
+      <div id="sizeStats"></div>
+    </div>
+    <button id="sizeNext" class="sizeNavBtn" title="Next body (larger)">&#9654;</button>
+  </div>
+  <div id="sizeFooter">
+    <button id="sizeOverview">Full line-up</button>
+    <div id="sizeCount">Overview</div>
   </div>
 </div>
 
