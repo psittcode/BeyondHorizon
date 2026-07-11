@@ -289,6 +289,10 @@ let bhLensingUniforms     = null;
 let bhEHRadius            = 0;   // event horizon sphere world-space radius (for dynamic lensing)
 let bhStarfield           = null; // procedural starfield for BH mode (no galactic band)
 let sgrPanelShown         = false; // Sgr A* info panel currently replacing the Milky Way one
+// The galactic view renders the BH at 2 schematic units in a 400-unit galaxy
+// (0.5% of the galaxy radius). The model's intrinsic radius is 0.04·R, so the
+// Milky Way view scales it by (2/400)/0.04 = 0.125 to get the same proportion.
+const BH_MW_SCALE         = (2 / 400) / 0.04;
 let bhDiskMaterials       = null; // materials of each stacked disk layer, for uTime animation
 let galacticGlowSprite    = null; // bright white glow at the galactic core, visible at far zoom before BH detail kicks in
 let galaxyPivot           = null; // pivot Group at galacticCorePos so milkyWayModel rotates wobble-free
@@ -495,9 +499,13 @@ loadGLB('need_some_space.glb').then(function(gltf) {
   milkyWayModel.visible = false;
   beauGaDisc.visible = false;
 
-  // Set black hole thresholds based on actual galaxy scale
-  BH_CLOSE_DIST = galaxyVisualRadius * 0.10;
-  BH_FAR_DIST   = galaxyVisualRadius * 0.55;
+  // Set black hole thresholds to the same proportions as the galactic view
+  // (GAL_BH_FAR = 50, GAL_BH_CLOSE = 6 against its schematic galaxy radius of
+  // 400): the reveal starts at 12.5% of the galaxy radius and completes at
+  // 1.5% — deep inside the core, so the surrounding dust is far away and the
+  // view matches the galactic-view BH zoom-in exactly.
+  BH_CLOSE_DIST = galaxyVisualRadius * (GAL_BH_CLOSE / 400);
+  BH_FAR_DIST   = galaxyVisualRadius * (GAL_BH_FAR / 400);
 
   // Procedural black hole — flat RingGeometry layers + Fresnel event horizon.
   // Deferred: defined here but built lazily on the first galaxy-scale frame
@@ -5081,6 +5089,13 @@ function animate(){
       // reveal is gradual, not a pop.
       var _galaxyShown = outsideSkybox && !galacticViewActive && !spaceshipViewActive;
       blackHoleModel.visible = _galaxyShown && bhTransitionT > 0.04;
+      if (_galaxyShown && galacticCorePos) {
+        // Mirror the galactic view's per-frame placement: core position,
+        // galactic-view proportions (BH = 0.5% of galaxy radius), flat disk.
+        blackHoleModel.position.copy(galacticCorePos);
+        blackHoleModel.scale.setScalar(BH_MW_SCALE);
+        blackHoleModel.quaternion.identity();
+      }
     }
     if (bhDiskMaterials && blackHoleModel && blackHoleModel.visible) {
       var _dt = deltaMs * 0.0005;
@@ -5743,11 +5758,12 @@ function animate(){
       if (bhEHRadius > 0) {
         var _camToBH = camera.position.distanceTo(_bhWorldPos);
         var _halfTanFov = Math.tan(camera.fov * Math.PI / 360);
-        // In galactic view blackHoleModel is scaled down by _galF, so the
-        // world-space event horizon radius is bhEHRadius * _galF, not bhEHRadius.
+        // The BH model is scaled in both views — by _galF in the galactic
+        // view, by BH_MW_SCALE in the Milky Way view — so the world-space
+        // event horizon radius must be scaled the same way.
         var _ehWorld = galacticViewActive && galaxyVisualRadius > 0
           ? bhEHRadius * (20.0 / (galaxyVisualRadius * 0.4))
-          : bhEHRadius;
+          : bhEHRadius * BH_MW_SCALE;
         var _shadowR = _ehWorld / (_camToBH * _halfTanFov * 2.0);
         bhLensingUniforms.uShadowR.value = Math.max(_shadowR, 0.015);
         bhLensingUniforms.uInnerR.value  = Math.max(_shadowR * 0.82, 0.012);
