@@ -6,7 +6,7 @@ import { deimosShape } from './data/deimosShape.js';
 import { phobosShape } from './data/phobosShape.js';
 import { nixShape } from './data/nixShape.js';
 import { hydraShape } from './data/hydraShape.js';
-import { MILKY_WAY_INFO, marsTransformedInfo, SUN_INFO, MOON_INFO } from './data/info.js';
+import { MILKY_WAY_INFO, SGR_A_INFO, marsTransformedInfo, SUN_INFO, MOON_INFO } from './data/info.js';
 import { scaleRatioN, formatRatio, realPerCm, AU_KM, LY_KM } from './core/scale.js';
 
 // Rooms (lazy-loaded). register() only stores a factory; the module is import()-ed
@@ -4093,6 +4093,8 @@ let galCamBeforeSpaceship = null;  // camera state saved when entering spaceship
 let galEarthZoomedIn = false;      // true when camera is locked on Earth in galactic view
 
 function enterGalacticView() {
+  // Leave the BH skybox environment if active so the scene isn't left hidden
+  exitBHSkyboxMode();
   // Leave the Kepler-22 system scene if it's showing (it takes over the renderer)
   viewManager.exitActive();
   // Fully exit spaceship view first — the two views are independent
@@ -4257,6 +4259,7 @@ function exitGalacticView() {
 // Fly the camera from wherever it is back into the solar system (triggered by the
 // "The Solar System" button that appears when zoomed out to galaxy scale).
 function flyToSolarSystem() {
+  exitBHSkyboxMode();
   viewManager.exitActive();
   renderer.setClearColor(0x000000, 1); // TEST: restore default clear colour when leaving Milky Way view
   showBodiesList();
@@ -4361,9 +4364,40 @@ function showMilkyWayPanel() {
   document.getElementById('backToList').style.display = 'none';
 }
 
+function showSagAPanel() {
+  document.getElementById('panel').style.display = 'block';
+  document.getElementById('panelContent').innerHTML = SGR_A_INFO;
+  document.getElementById('backToList').style.display = 'none';
+}
+
+// Restore the renderer + scene after the black-hole skybox environment.
+// Called from the animate loop when the user zooms back out past the fade
+// threshold, and defensively from every view-switch entry point so a forced
+// exit (button press while inside the BH view) can never leave the scene hidden.
+function exitBHSkyboxMode() {
+  if (!bhRendererSettings) return;
+  renderer.toneMapping         = bhOrigToneMapping;
+  renderer.toneMappingExposure = bhOrigExposure;
+  renderer.outputEncoding      = bhOrigOutputEncoding;
+  if (bhOrigClearColor !== null) renderer.setClearColor(bhOrigClearColor, 1);
+  if (bhPointLight)  bhPointLight.visible  = false;
+  if (bhPointLight2) bhPointLight2.visible = false;
+  if (bhPointLight3) bhPointLight3.visible = false;
+  if (_bhSavedVisibility) {
+    _bhSavedVisibility.forEach(function(wasVisible, obj) { obj.visible = wasVisible; });
+    _bhSavedVisibility = null;
+  }
+  // Hide procedural starfield, restore full-brightness 8K skybox
+  if (bhStarfield) bhStarfield.visible = false;
+  if (galaxySkybox && galaxySkybox.material) galaxySkybox.material.color.setScalar(1.0);
+  bhRendererSettings = false;
+  bhTransitionT = 0;
+}
+
 function flyToMilkyWay() {
   if (!galacticCorePos) return; // GLB not yet loaded
 
+  exitBHSkyboxMode();
   viewManager.exitActive();
   renderer.setClearColor(0x000005, 1); // TEST: force near-black canvas background for Milky Way view
 
@@ -4719,6 +4753,7 @@ let seSavedHelioVis     = null;
 
 function enterSpaceshipView() {
   spaceshipEnteredFrom = 'main';
+  exitBHSkyboxMode();
   viewManager.exitActive();
   if (galacticViewActive) exitGalacticView();
   document.getElementById('panel').style.display = 'none';
@@ -4890,6 +4925,7 @@ document.getElementById('otherGalaxiesBtn').onclick = () => { flyToKeplerDot(); 
 
 // The Andromeda Galaxy view now lives in rooms/andromeda.js (lazy-loaded room).
 document.getElementById('andromedaBtn').onclick = () => {
+  exitBHSkyboxMode();
   if (galacticViewActive) exitGalacticView();
   if (spaceshipViewActive) exitSpaceshipView();
   viewManager.enter('andromeda');
@@ -5066,11 +5102,12 @@ function animate(){
 
   if (BH_CLOSE_DIST > 0) {
     if (blackHoleModel) {
-      // Inline galaxy mode: BH model visible when galaxy is shown AND the
-      // camera is close enough that the detail is actually worth drawing.
-      // At very far zoom (bhTransitionT < 0.15) the BH hides and only the
-      // galacticGlowSprite remains — at that scale the model is sub-pixel
-      // anyway and the giant glow is the better visual.
+      // BH model visible only once the camera is close enough that the detail
+      // is actually worth drawing. At far zoom (bhTransitionT < 0.15) the BH
+      // hides and only the galacticGlowSprite remains — at that scale the
+      // model is sub-pixel anyway and the giant glow is the better visual.
+      // The skybox environment engages earlier (at 0.06), so by the time the
+      // model appears the galaxy is already hidden — it never draws on top.
       var _galaxyShown = outsideSkybox && !galacticViewActive && !spaceshipViewActive;
       blackHoleModel.visible = _galaxyShown && bhTransitionT > 0.15;
     }
@@ -5084,13 +5121,13 @@ function animate(){
     }
   }
 
-  // === BH skybox renderer-switch DISABLED for inline-galaxy mode ===
-  // Original (disabled): when bhTransitionT > 0.06, this would hide the
-  // galaxy / set black background / enable the lensing composer. In
-  // inline-galaxy mode we keep the normal renderer running so the BH
-  // disk renders on top of the visible galaxy.
-  // To restore the skybox mode: change "false &&" back to nothing.
-  if (false && bhTransitionT > 0.06 && !bhRendererSettings) {
+  // === BH skybox environment switch ===
+  // When the camera zooms close enough to the galactic core, swap into a
+  // dedicated black-hole environment — hide the galaxy, black background,
+  // dimmed real skybox + procedural starfield, lensing composer — the same
+  // "new skybox" experience as the galactic-view BH zoom-in. The side panel
+  // switches to Sagittarius A* while inside and back to the Milky Way on exit.
+  if (bhTransitionT > 0.06 && !bhRendererSettings) {
     bhOrigToneMapping    = renderer.toneMapping;
     bhOrigExposure       = renderer.toneMappingExposure;
     bhOrigOutputEncoding = renderer.outputEncoding;
@@ -5111,28 +5148,19 @@ function animate(){
     if (bhPointLight)  bhPointLight.visible  = true;
     if (bhPointLight2) bhPointLight2.visible = true;
     if (bhPointLight3) bhPointLight3.visible = true;
+    // Procedural starfield fills in the black background (no galactic band)
+    if (bhStarfield) bhStarfield.visible = true;
     // Dim the real 8K skybox so lensing shader warps the actual starfield texture
     if (galaxySkybox && galaxySkybox.material) {
       galaxySkybox.visible = true;
       galaxySkybox.material.color.setScalar(0.35);
     }
     bhRendererSettings = true;
+    showSagAPanel();
   } else if (bhTransitionT <= 0.03 && bhRendererSettings) {
-    renderer.toneMapping         = bhOrigToneMapping;
-    renderer.toneMappingExposure = bhOrigExposure;
-    renderer.outputEncoding      = bhOrigOutputEncoding;
-    if (bhOrigClearColor !== null) renderer.setClearColor(bhOrigClearColor, 1);
-    if (bhPointLight)  bhPointLight.visible  = false;
-    if (bhPointLight2) bhPointLight2.visible = false;
-    if (bhPointLight3) bhPointLight3.visible = false;
-    if (_bhSavedVisibility) {
-      _bhSavedVisibility.forEach(function(wasVisible, obj) { obj.visible = wasVisible; });
-      _bhSavedVisibility = null;
-    }
-    // Hide procedural starfield, restore full-brightness 8K skybox
-    if (bhStarfield) bhStarfield.visible = false;
-    if (galaxySkybox && galaxySkybox.material) galaxySkybox.material.color.setScalar(1.0);
-    bhRendererSettings = false;
+    exitBHSkyboxMode();
+    // Back at galaxy scale — restore the Milky Way info panel
+    showMilkyWayPanel();
   }
   // ── End black hole transition ─────────────────────────────────────────────
 
@@ -6534,6 +6562,7 @@ window.addEventListener("resize", ()=>{
 
   document.getElementById('btnSizes').addEventListener('click', () => {
     dismissMenu(() => {
+      exitBHSkyboxMode();
       viewManager.enter('sizes').catch(e => console.warn('enter sizes failed:', e));
     });
   });

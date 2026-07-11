@@ -13,6 +13,16 @@ The Milky Way resides in a neighborhood of over 50 galaxies called the Local Gro
 <span style="font-size:10px;opacity:0.6;">Source: NASA Science – Galaxies; NASA – Milky Way Galaxy; NASA Scientific Visualization Studio</span>
 `;
 
+export const SGR_A_INFO = `
+<b style="font-size:15px;letter-spacing:0.5px;">Sagittarius A*</b><br><br>
+Sagittarius A* (pronounced "A-star", abbreviated Sgr A*) is the supermassive black hole at the very heart of the Milky Way, about 26,000 light-years from Earth in the direction of the constellation Sagittarius. Every star in the galaxy — including our Sun — ultimately orbits around it.<br><br>
+Sgr A* has a mass of roughly 4 million Suns compressed into a region smaller than Mercury's orbit. Its event horizon — the boundary beyond which not even light can escape — is about 24 million kilometers across, only about 17 times wider than the Sun itself.<br><br>
+The black hole was first detected in 1974 as an unusually bright, compact source of radio waves. Decades of tracking stars whipping around an invisible point at up to 3% of the speed of light proved that only a supermassive black hole could explain their orbits — work that earned the 2020 Nobel Prize in Physics for Reinhard Genzel and Andrea Ghez.<br><br>
+In May 2022 the Event Horizon Telescope collaboration released the first direct image of Sgr A*: a glowing orange ring of superheated gas bent around the black hole's dark central shadow. The light of the accretion disk is warped by the black hole's extreme gravity — an effect called gravitational lensing — which is why a ring of light appears to wrap above and below the shadow, just as in the view you are seeing now.<br><br>
+Compared with the giant black holes in other galaxies, Sgr A* is remarkably quiet. It is consuming very little material at present — if it were a person, it would live on a grain of rice every million years. Occasional flares light up as blobs of gas fall in, but our galactic center is a calm neighborhood by cosmic standards.<br><br>
+<span style="font-size:10px;opacity:0.6;">Source: NASA – Sagittarius A*; Event Horizon Telescope Collaboration; Nobel Prize in Physics 2020</span>
+`;
+
 export const KEPLER_22B_INFO = `<b>Kepler-22b — Earth's Distant Twin?</b><br><br>
 
 Tucked away in the constellation of Cygnus, the Swan, lies one of the most tantalizing discoveries in modern astronomy. Kepler-22b is an exoplanet orbiting within the habitable zone of the Sun-like star Kepler-22, located about 640 light-years from Earth. To put that distance into perspective, light itself — traveling at 299,792 kilometers per second — would still take 640 years to make the journey. A spacecraft moving at the speed of our fastest current probes would take hundreds of thousands of years to arrive. And yet, despite that almost incomprehensible distance, Kepler-22b holds a special place in human history: it was the first exoplanet ever discovered lying inside its parent star's habitable zone.<br><br>
