@@ -43,6 +43,10 @@ const R_EARTH_KM    = 6371;
 const SKYBOX_RADIUS = 3000;
 const FLY_MS = 900;
 
+// Special `selected` values (real stops are indices >= 0).
+const INTRO    = -1;   // start of the tour: empty sky just before the smallest body
+const OVERVIEW = -2;   // the "Full line-up" framing of the whole bodies row
+
 // Fixed "sun" direction for the whole room (world space, pointing TOWARD the
 // light). Every lit material, atmosphere rim and ring shadow uses this one
 // vector, so the terminator is consistent across all bodies. Angled well off
@@ -556,6 +560,11 @@ const MEGA_ENTRIES = [
     stats: 'Out to Eris’s orbit ≈ 136 AU · 20 billion km across',
   },
   {
+    name: 'Sagittarius A*', type: 'Supermassive black hole · heart of the Milky Way',
+    mega: 'sgr-a', span: (12.3e6 / KM_PER_UNIT) * 4.2, sky: 'stars',
+    stats: 'Event horizon ≈ 24 million km wide · 4.3 million Suns',
+  },
+  {
     name: 'The Milky Way', type: 'Spiral galaxy · our home', mega: 'milky-way',
     span: 50000 * LY_UNITS, sky: 'stars',
     stats: '≈ 100,000 light-years across · 200–400 billion stars',
@@ -612,8 +621,12 @@ const room = {
 
     // ── Build + lay out the line-up ─────────────────────────────────────────
     this.bodies = buildBodyCatalog();
-    // span = half-width the entry occupies in the row (rings stick out past the surface)
-    this.bodies.forEach(b => { b.span = b.ring ? b.r * (b.ring.outer + 0.15) : b.r; });
+    // span = half-width the entry occupies in the row: rings stick out past the
+    // surface, and the stars' glow halos (sprite = 4.6×r wide → ~2.3×r half)
+    // count too so the Sun's and Kepler-22's halos can never overlap.
+    this.bodies.forEach(b => {
+      b.span = b.ring ? b.r * (b.ring.outer + 0.15) : (b.glow ? b.r * 2.4 : b.r);
+    });
     MEGA_ENTRIES.forEach(m => this.bodies.push(Object.assign({}, m)));
 
     // Side-by-side along +x, generously spaced (NASA-Eyes style): the gap scales
@@ -722,7 +735,7 @@ const room = {
     });
     document.getElementById('sizePrev').onclick = () => this.step(-1);
     document.getElementById('sizeNext').onclick = () => this.step(1);
-    document.getElementById('sizeOverview').onclick = () => this.select(-1);
+    document.getElementById('sizeOverview').onclick = () => this.select(OVERVIEW);
   },
 
   // Build one cosmic-scale entry: a whole planetary system (star + true-scale
@@ -765,6 +778,51 @@ const room = {
                                       side: THREE.DoubleSide, depthWrite: false }));
       clickMesh.rotation.x = -Math.PI / 2;
       inner.add(clickMesh);
+    } else if (b.mega === 'sgr-a') {
+      // Sagittarius A*: pitch-black event-horizon sphere (Schwarzschild radius
+      // ≈ 12.3 million km for 4.3M solar masses), a warm halo behind it, and a
+      // white-hot → deep-orange accretion disc rendered additively.
+      const RS = 12.3e6 / KM_PER_UNIT;
+      clickMesh = new THREE.Mesh(
+        new THREE.SphereGeometry(RS, 48, 48),
+        new THREE.MeshBasicMaterial({ color: 0x000000 }));
+      inner.add(clickMesh);
+      inner.add(makeGlowSprite(0xff9944, RS * 0.65));
+      const inFrac = 1.5 / 4.2;   // disc inner edge as a fraction of its outer radius
+      const disk = new THREE.Mesh(
+        new THREE.RingGeometry(RS * 1.5, RS * 4.2, 96),
+        new THREE.ShaderMaterial({
+          transparent: true, depthWrite: false, side: THREE.DoubleSide,
+          blending: THREE.AdditiveBlending,
+          uniforms: { uInFrac: { value: inFrac } },
+          vertexShader: `
+            varying vec2 vUv;
+            #include <common>
+            #include <logdepthbuf_pars_vertex>
+            void main() {
+              vUv = uv;
+              gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+              #include <logdepthbuf_vertex>
+            }
+          `,
+          fragmentShader: `
+            uniform float uInFrac;
+            varying vec2 vUv;
+            #include <logdepthbuf_pars_fragment>
+            void main() {
+              #include <logdepthbuf_fragment>
+              float rr = length(vUv - 0.5) * 2.0;                       // r / outer
+              float t = clamp((rr - uInFrac) / (1.0 - uInFrac), 0.0, 1.0);
+              vec3 col = mix(vec3(1.0, 0.97, 0.88), vec3(1.0, 0.45, 0.12),
+                             smoothstep(0.0, 0.55, t));
+              float a = pow(1.0 - t, 1.8) * 1.4;
+              if (a < 0.004) discard;
+              gl_FragColor = vec4(col, a);
+            }
+          `,
+        }));
+      disk.rotation.x = -Math.PI / 2;
+      inner.add(disk);
     } else {
       // Galaxy disc — same additive disc textures the sim uses for the Milky
       // Way (galaxyDiamond1) and the Andromeda room (androgalaxy).
@@ -791,8 +849,24 @@ const room = {
   },
 
   // ── Camera framing ─────────────────────────────────────────────────────────
+  // i >= 0: a body/stop. INTRO (-1): an empty patch of sky just before the
+  // smallest body, so the tour begins on nothing and ▶ reveals Deimos.
+  // OVERVIEW (-2): fit the whole classic bodies row.
   _frameFor(i) {
-    if (i < 0) {   // overview: fit the classic bodies row (megas are too big to share it)
+    if (i === INTRO) {
+      const first = this.bodies[0];
+      const dist = first.r * 3.6;
+      // Empty patch of sky just before the smallest body. Distance alone can't
+      // empty the frame (the bodies grow along the row, so the line-up stays
+      // visible from any offset) — instead the camera sits on the ROW side of
+      // the target, looking away down the line toward -x, so the whole row is
+      // behind it and the tour opens on nothing but stars.
+      const target = new THREE.Vector3(first.x - first.r * 40, first.r, 0);
+      const pos = target.clone().add(
+        new THREE.Vector3(0.85, 0.2, 0.49).multiplyScalar(dist));
+      return { target, pos };
+    }
+    if (i === OVERVIEW) {   // megas are too big to share the frame
       const row = this.bodies.filter(b => !b.mega);
       const first = row[0], last = row[row.length - 1];
       const maxR = last.r;
@@ -828,10 +902,23 @@ const room = {
       this._fly = null;
       this._applyLimits();
     } else {
+      // Zoom-arc parameters: when two stops are far apart relative to their
+      // framing distances (Sun → Kepler-22 system → Solar System…), the camera
+      // pulls BACK to a peak distance around the midpoint and dives back in —
+      // the hop reads as a scale change, not a sideways pan. For neighbouring
+      // moons the peak never exceeds the endpoints, so nothing changes.
+      const fromT = this.controls.target.clone(), fromP = this.camera.position.clone();
+      const d0 = Math.max(fromP.distanceTo(fromT), 1e-9);
+      const d1 = Math.max(f.pos.distanceTo(f.target), 1e-9);
+      const sep = fromT.distanceTo(f.target);
+      const dPeak = Math.max(d0, d1, sep * 0.55);
+      const bumpA = Math.max(0, Math.log(dPeak) - (Math.log(d0) + Math.log(d1)) / 2);
       this._fly = {
         t: 0,
-        fromT: this.controls.target.clone(), toT: f.target,
-        fromP: this.camera.position.clone(), toP: f.pos,
+        fromT, toT: f.target,
+        fromP, toP: f.pos,
+        d0, d1, bumpA,
+        dur: FLY_MS * (1 + Math.min(1.6, bumpA * 0.22)),
       };
       this.controls.enabled = false;
     }
@@ -845,17 +932,27 @@ const room = {
     this._skybox.material.needsUpdate = true;
   },
 
-  // Cyclic: overview → smallest → … → Andromeda → overview → …
+  // Cyclic tour: intro → smallest → … → Andromeda → back to the intro. From
+  // the overview, ▶ starts the tour at the smallest body and ◀ jumps to the end.
   step(dir) {
     const n = this.bodies.length;
-    let i = this.selected + dir;
-    if (i >= n) i = -1;
-    if (i < -1) i = n - 1;
+    let i;
+    if (this.selected === OVERVIEW) i = dir > 0 ? 0 : n - 1;
+    else {
+      i = this.selected + dir;
+      if (i >= n) i = INTRO;
+      if (i < INTRO) i = n - 1;
+    }
     this.select(i);
   },
 
   _applyLimits() {
-    const b = this.selected >= 0 ? this.bodies[this.selected] : null;
+    // INTRO sits at the smallest body's scale — its camera distance (a few
+    // Deimos radii) is far below the overview's minDistance, and OrbitControls
+    // CLAMPS the camera out to minDistance on the next update, wrecking the
+    // framing. So the intro borrows the first body's limits.
+    const b = this.selected >= 0 ? this.bodies[this.selected]
+            : this.selected === INTRO ? this.bodies[0] : null;
     this.controls.minDistance = b ? (b.mega ? b.span * 0.05 : b.r * 1.25) : 0.002;
     this.controls.maxDistance = b ? Math.max(b.span * 12, 0.01) : SKYBOX_RADIUS * 0.9;
   },
@@ -865,7 +962,15 @@ const room = {
     const subEl  = document.getElementById('sizeSub');
     const statEl = document.getElementById('sizeStats');
     const cntEl  = document.getElementById('sizeCount');
-    if (this.selected < 0) {
+    // Only the ▶ button shows on the intro panel — the tour hasn't started yet.
+    document.getElementById('sizePrev').style.visibility =
+      this.selected === INTRO ? 'hidden' : 'visible';
+    if (this.selected === INTRO) {
+      nameEl.textContent = 'The Solar System & Kepler-22';
+      subEl.textContent  = `${this.bodies.length} stops · true relative scale`;
+      statEl.textContent = 'Press ▶ to begin — smallest to largest';
+      cntEl.textContent  = 'Start';
+    } else if (this.selected === OVERVIEW) {
       nameEl.textContent = 'The Solar System & Kepler-22';
       subEl.textContent  = `${this.bodies.length} stops · true relative scale`;
       statEl.textContent = 'Step through with ◀ ▶ or click a body';
@@ -915,26 +1020,31 @@ const room = {
     }
 
     // Camera fly: target lerps linearly, camera distance interpolates in LOG
-    // space so hops between a 6 km moon and a galaxy stay smooth.
+    // space so hops between a 6 km moon and a galaxy stay smooth. The bumpA
+    // term (see select()) arcs the distance up to a midpoint peak on long hops
+    // so the transition reads as zooming out and back in, not a sideways pan.
     if (this._fly) {
       const f = this._fly;
-      f.t = Math.min(1, f.t + (now - (f._last || now - 16)) / FLY_MS);
+      f.t = Math.min(1, f.t + (now - (f._last || now - 16)) / f.dur);
       f._last = now;
       const e = f.t < 0.5 ? 4 * f.t * f.t * f.t : 1 - Math.pow(-2 * f.t + 2, 3) / 2; // easeInOutCubic
       const target = f.fromT.clone().lerp(f.toT, e);
-      const d0 = f.fromP.distanceTo(f.fromT), d1 = f.toP.distanceTo(f.toT);
       const dir0 = f.fromP.clone().sub(f.fromT).normalize();
       const dir1 = f.toP.clone().sub(f.toT).normalize();
       const dir = dir0.lerp(dir1, e).normalize();
-      const d = Math.exp((1 - e) * Math.log(Math.max(d0, 1e-9)) + e * Math.log(d1));
+      const d = Math.exp((1 - e) * Math.log(f.d0) + e * Math.log(f.d1)
+                         + f.bumpA * Math.sin(Math.PI * e));
       this.controls.target.copy(target);
       this.camera.position.copy(target).addScaledVector(dir, d);
       this.camera.up.set(0, 1, 0);
       if (f.t >= 1) { this._fly = null; this._applyLimits(); this.controls.enabled = true; }
     }
 
-    this._skybox.position.copy(this.camera.position);   // sky can never be exited
     this.controls.update();
+    // Sky follows the camera AFTER controls.update() — damping moves the camera
+    // in update(), and at galaxy scale one frame's delta dwarfs the sky radius,
+    // so copying first left the camera outside the sphere (black sky while orbiting).
+    this._skybox.position.copy(this.camera.position);
     ctx.renderer.render(this.scene, this.camera);
   },
 
