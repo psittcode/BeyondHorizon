@@ -723,7 +723,15 @@ const room = {
                'uniform sampler2D tDiffuse;\nuniform sampler2D tDepth;\nuniform float uBHDepth;')
       .replace('void main(){',
                'void main(){\n' +
-               '  if (texture2D(tDepth, vUv).x < uBHDepth) { gl_FragColor = texture2D(tDiffuse, vUv); return; }');
+               '  if (texture2D(tDepth, vUv).x < uBHDepth) { gl_FragColor = texture2D(tDiffuse, vUv); return; }')
+      // True-scale corrections: the sim's shader inflates the black void 18%
+      // past the horizon (an aesthetic choice for the galaxy view) and wraps
+      // it in a wide warm halo — together they fatten the apparent sphere by
+      // ~40%. This room's caption promises a 24M-km horizon against a
+      // 205M-km disc, so the void is drawn at exactly the EH radius and the
+      // halo is tightened so the glowing rim hugs the shadow.
+      .replace('float shadowR = uShadowR * 1.18;', 'float shadowR = uShadowR;')
+      .replace('(uShadowR*0.19)', '(uShadowR*0.10)');
     const depthTex = new THREE.DepthTexture(innerWidth, innerHeight);
     depthTex.type = THREE.UnsignedIntType;
     this._rt = new THREE.WebGLRenderTarget(innerWidth, innerHeight);
