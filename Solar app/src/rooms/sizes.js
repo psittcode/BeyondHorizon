@@ -932,10 +932,22 @@ const room = {
 
     const group = new THREE.Group();
     group.add(inner);
-    // Tip flat entries toward the camera for a 3/4 view — except Sgr A*, whose
-    // disc stays flat: the near-grazing camera + lensing give the sim's
-    // "plasma wrapped around the void" look, not a top-down vinyl record.
-    group.rotation.x = b.mega === 'sgr-a' ? 0 : 0.6;
+    // Orientation per entry:
+    //  · Planetary systems (Solar System, Kepler-22) — match the main sim's
+    //    ecliptic: keep the orbit plane flat and roll it 23.4° about the view
+    //    axis, exactly the tilt world.js gives the ecliptic via its camera.up
+    //    (world.js ECLIPTIC_TILT). No forward tip, so the rings read the same
+    //    way they do in the live solar view.
+    //  · Sgr A* — stays flat: the near-grazing camera + lensing give the sim's
+    //    "plasma wrapped around the void" look, not a top-down vinyl record.
+    //  · Galaxy discs — tipped 0.6 rad toward the camera for a readable 3/4
+    //    face-on view of the disc.
+    const ECLIPTIC_TILT = 23.4 * Math.PI / 180;
+    if (b.mega === 'solar-system' || b.mega === 'kepler-system') {
+      group.rotation.z = ECLIPTIC_TILT;
+    } else {
+      group.rotation.x = b.mega === 'sgr-a' ? 0 : 0.6;
+    }
     group.position.set(b.x, 0, 0);
     if (b.mega === 'sgr-a') this._bhWorldPos = new THREE.Vector3(b.x, 0, 0);
     clickMesh.userData.bodyIndex = this.bodies.indexOf(b);
