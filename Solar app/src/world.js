@@ -629,9 +629,11 @@ loadGLB('need_some_space.glb').then(function(gltf) {
     // Event horizon radius used for dynamic shadow calculation.
     // No sphere mesh: the lensing shader shadow mask IS the event horizon — eliminates
     // any frame-to-frame desync between a mesh position and the screen-space mask.
-    // Bumped 1.00 → 1.20 (+20%) — central dark void grows, photon ring and halo
-    // scale with bhEHRadius so they expand proportionally.
-    bhEHRadius = bhR * 1.20;
+    // 0.99 puts the DRAWN black circle at Sgr A*'s true proportion: the lens
+    // shader paints black out to bhEHRadius × 1.18, and the true horizon is
+    // (24 / 205) of the 10-bhR disc = 1.171 bhR, so bhEHRadius = 1.171 / 1.18.
+    // (The old 1.20 bump made the sphere ~21% too wide against the disc.)
+    bhEHRadius = bhR * 0.99;
 
 
     // finalComposer: full scene render + gravitational lensing only.
