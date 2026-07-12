@@ -590,3 +590,115 @@
   padding-right: 6px;
   user-select: none;
 }
+
+/* ─────────── BLACK HOLE TUNER ─────────── */
+#bhTunerBtn {
+  display: none;                 /* shown by setBHTunerAvailable() while a BH is on screen */
+  position: absolute;
+  bottom: 32px;
+  right: 24px;
+  z-index: 60;
+  background: rgba(5, 10, 30, 0.88);
+  color: #ffb37a;
+  font-family: monospace;
+  font-size: 12px;
+  padding: 8px 16px;
+  border-radius: 20px;
+  border: 1px solid rgba(255, 150, 80, 0.45);
+  cursor: pointer;
+  user-select: none;
+}
+#bhTunerBtn:hover { background: rgba(30, 18, 8, 0.92); }
+#bhTunerPanel {
+  display: none;
+  position: absolute;
+  bottom: 76px;
+  right: 24px;
+  z-index: 60;
+  width: 340px;
+  max-height: calc(100vh - 130px);
+  overflow-y: auto;
+  background: rgba(5, 8, 20, 0.92);
+  border: 1px solid rgba(255, 150, 80, 0.35);
+  border-radius: 10px;
+  padding: 12px 14px;
+  font-family: monospace;
+  font-size: 12px;
+  color: #e8d8c8;
+}
+#bhTunerHead {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  color: #ffb37a;
+  letter-spacing: 0.12em;
+  margin-bottom: 6px;
+}
+#bhTunerClose { cursor: pointer; padding: 2px 6px; color: #c09070; }
+#bhTunerClose:hover { color: #fff; }
+#bhTunerRatio {
+  color: #ffd9a0;
+  font-size: 11px;
+  margin-bottom: 8px;
+  white-space: pre;
+}
+.bhTunerSection {
+  color: rgba(255, 179, 122, 0.75);
+  font-size: 10px;
+  letter-spacing: 0.22em;
+  margin: 10px 0 4px;
+  border-bottom: 1px solid rgba(255, 150, 80, 0.18);
+  padding-bottom: 2px;
+}
+.bhTunerRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 3px 0;
+}
+.bhTunerLabel {
+  flex: 0 0 104px;
+  color: #cfc0b0;
+  font-size: 11px;
+}
+.bhTunerRow input[type="range"] {
+  flex: 1 1 auto;
+  min-width: 60px;
+  accent-color: #ff9550;
+  height: 14px;
+}
+.bhTunerRow input[type="number"] {
+  flex: 0 0 62px;
+  background: rgba(20, 14, 8, 0.9);
+  color: #ffd9a0;
+  border: 1px solid rgba(255, 150, 80, 0.3);
+  border-radius: 4px;
+  font-family: monospace;
+  font-size: 11px;
+  padding: 2px 4px;
+}
+.bhTunerDerived {
+  flex: 0 0 100%;
+  text-align: right;
+  color: rgba(200, 170, 140, 0.65);
+  font-size: 10px;
+  margin-top: -2px;
+}
+.bhTunerRow { flex-wrap: wrap; }
+#bhTunerFoot {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+#bhTunerFoot button {
+  flex: 1;
+  background: rgba(40, 24, 10, 0.9);
+  color: #ffb37a;
+  border: 1px solid rgba(255, 150, 80, 0.4);
+  border-radius: 6px;
+  font-family: monospace;
+  font-size: 11px;
+  padding: 6px 0;
+  cursor: pointer;
+}
+#bhTunerFoot button:hover { background: rgba(70, 40, 16, 0.95); }

@@ -572,8 +572,10 @@ loadGLB('need_some_space.glb').then(function(gltf) {
     // is what the lensing warp SAMPLES for pixels around the sphere; its
     // displaced sample radius sweeps through ~0 near the shadow edge, so any
     // central hole paints a dark annulus around the sphere. uInnerR stays
-    // 0.92 so the visible coloring is unchanged.
-    var diskGeo = new THREE.RingGeometry(bhR * 0.05, bhR * 10.0, 512, 1);
+    // 0.92 so the visible coloring is unchanged. Geometry outer is 14 bhR —
+    // headroom for the tuner's discOuter slider; the VISIBLE outer edge is
+    // the uOuterR uniform (default 10 bhR = 205M km).
+    var diskGeo = new THREE.RingGeometry(bhR * 0.05, bhR * 14.0, 512, 1);
     bhDiskMaterials = [];
     var diskLayerCount   = 7;
     var diskLayerSpacing = bhR * 0.045;  // vertical gap between adjacent layers
@@ -582,14 +584,14 @@ loadGLB('need_some_space.glb').then(function(gltf) {
       var yOff = slot * diskLayerSpacing;
       var alphaMul = Math.exp(-Math.pow(slot / 2.2, 2.0)) * 0.42;
       var layerMat = new THREE.ShaderMaterial({
-        uniforms: {
-          uInnerR:   { value: bhR * 0.92 },
-          uOuterR:   { value: bhR * 10.0 },
+        uniforms: Object.assign({
+          uInnerR:   { value: bhR * BH_TUNE.discInner },
+          uOuterR:   { value: bhR * BH_TUNE.discOuter },
           uTime:     { value: 0.0 },
           uAlphaMul: { value: alphaMul },
           uLayerY:   { value: slot },
           uZoomOut:  { value: 0.0 }
-        },
+        }, bhTuneDiskUniforms()),
         vertexShader:   diskVert,
         fragmentShader: diskFrag,
         transparent: true,
@@ -606,6 +608,7 @@ loadGLB('need_some_space.glb').then(function(gltf) {
       bhSpin.add(layerMesh);
       bhDiskMaterials.push(layerMat);
     }
+    bhTuneRegister('disks', { mats: bhDiskMaterials, bhR: bhR });
 
     // Soft orange glow — camera-facing sprite with radial gradient (sphere would be invisible
     // because the camera is always inside the glow radius in BH mode, culling all front faces)
@@ -627,10 +630,18 @@ loadGLB('need_some_space.glb').then(function(gltf) {
         depthWrite: false,
         depthTest: false
       }));
-      _gSprite.scale.set(bhR * 7, bhR * 7, 1);
+      _gSprite.scale.set(bhR * BH_TUNE.glowSize, bhR * BH_TUNE.glowSize, 1);
       _gSprite.renderOrder = 15;
       bhSpin.add(_gSprite);
+      bhTuneRegister('glows', { sprite: _gSprite, bhR: bhR });
     })();
+
+    // Warm ambient light for the BH environment — parented to bhSpin so it
+    // only illuminates while the BH is visible. Intensity is the tuner's
+    // warmAmbient (default 0 = off).
+    var _bhWarm = new THREE.AmbientLight(0xffb37a, BH_TUNE.warmAmbient);
+    bhSpin.add(_bhWarm);
+    bhTuneRegister('lights', _bhWarm);
 
     // Event horizon radius used for dynamic shadow calculation.
     // No sphere mesh: the lensing shader shadow mask IS the event horizon — eliminates
@@ -648,16 +659,17 @@ loadGLB('need_some_space.glb').then(function(gltf) {
     finalComposer.addPass(new THREE.RenderPass(scene, camera));
 
     // Gravitational lensing pass — uShadowR updated dynamically every frame
-    var _lensUniforms = {
+    var _lensUniforms = Object.assign({
       tDiffuse:  { value: null },
       uCenter:   { value: new THREE.Vector2(0.5, 0.5) },
-      uStrength: { value: 1.80 },
+      uStrength: { value: BH_TUNE.warpStrength },
       uInnerR:   { value: 0.03 },
       uOuterR:   { value: 0.12 },
       uShadowR:  { value: 0.06 },
       uAspect:   { value: window.innerWidth / window.innerHeight }
-    };
+    }, bhTuneLensUniforms());
     bhLensingUniforms = _lensUniforms;
+    bhTuneRegister('lenses', _lensUniforms);
     finalComposer.addPass(new THREE.ShaderPass(new THREE.ShaderMaterial({
       uniforms: _lensUniforms,
       vertexShader: 'varying vec2 vUv; void main(){ vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }',
@@ -673,12 +685,108 @@ loadGLB('need_some_space.glb').then(function(gltf) {
   console.error('GLB load error:', error);
 });
 
+// ── Black-hole tuner ────────────────────────────────────────────────────────
+// Every visual constant of the black hole — size, photon ring, halo, warp,
+// disc shading, lighting — lives in this one table so the on-screen
+// "BH Tuner" panel can adjust it live with visible numbers. One table drives
+// EVERY black hole in the app (galaxy view + True-Size room): each view
+// registers its materials here and applyBHTune() pushes the values out.
+// Radius-like values are stored in bhR units (1 bhR ≈ 20.5M km — the disc is
+// 10 bhR = 205M km wide) because each view uses a different world scale.
+// Values persist in localStorage under 'bhTune'.
+export const BH_TUNE_DEFAULTS = {
+  sphereScale:   1.00, // × true event-horizon radius (1.0 = exact 24M km)
+  discOuter:     10.0, // visible disc outer radius, bhR units (10 = 205M km)
+  discInner:     0.92, // disc inner colour anchor, bhR units
+  glowSize:      7.0,  // orange glow sprite width, bhR units
+  ringWidth:     0.04, // photon ring gaussian width, × shadow radius
+  ringIntensity: 4.5,  // photon ring brightness
+  haloWidth:     0.19, // warm halo gaussian width, × shadow radius
+  haloIntensity: 1.26, // warm halo brightness
+  warpStrength:  1.80, // gravitational background warp
+  brightExp:     0.32, // disc alpha radial falloff exponent (lower = wider visible disc)
+  brightPeak:    3.8,  // disc alpha peak at the inner edge
+  heatExp:       1.15, // disc colour cooling exponent (lower = hotter outer disc)
+  wispStart:     0.70, // where the ragged rim dissolve begins (fraction of disc)
+  colorBoost:    2.5,  // disc emissive colour multiplier
+  spinSpeed:     1.0,  // disc flow speed ×
+  glowOpacity:   1.0,  // glow sprite opacity
+  warmAmbient:   0.0,  // warm ambient light intensity in the BH environment
+};
+export const BH_TUNE = Object.assign({}, BH_TUNE_DEFAULTS, (function() {
+  try { return JSON.parse(localStorage.getItem('bhTune') || '{}'); }
+  catch (e) { return {}; }
+})());
+
+const bhTuneReg = { disks: [], lenses: [], glows: [], lights: [] };
+export function bhTuneRegister(kind, item) {
+  bhTuneReg[kind].push(item);
+  applyBHTune();
+}
+export function applyBHTune() {
+  const T = BH_TUNE;
+  bhTuneReg.disks.forEach(d => d.mats.forEach(m => {
+    const u = m.uniforms;
+    u.uInnerR.value     = d.bhR * T.discInner;
+    u.uOuterR.value     = d.bhR * T.discOuter;
+    u.uBrightExp.value  = T.brightExp;
+    u.uBrightPeak.value = T.brightPeak;
+    u.uHeatExp.value    = T.heatExp;
+    u.uWispStart.value  = T.wispStart;
+    u.uColorBoost.value = T.colorBoost;
+  }));
+  bhTuneReg.lenses.forEach(u => {
+    u.uStrength.value = T.warpStrength;
+    u.uPRW.value      = T.ringWidth;
+    u.uPRI.value      = T.ringIntensity;
+    u.uHaloW.value    = T.haloWidth;
+    u.uHaloI.value    = T.haloIntensity;
+  });
+  bhTuneReg.glows.forEach(g => {
+    g.sprite.scale.set(g.bhR * T.glowSize, g.bhR * T.glowSize, 1);
+    g.sprite.material.opacity = T.glowOpacity;
+  });
+  bhTuneReg.lights.forEach(l => { l.intensity = T.warmAmbient; });
+}
+// Fresh tuner-driven uniform entries for a new disc / lens material.
+export function bhTuneDiskUniforms() {
+  return {
+    uBrightExp:  { value: BH_TUNE.brightExp },
+    uBrightPeak: { value: BH_TUNE.brightPeak },
+    uHeatExp:    { value: BH_TUNE.heatExp },
+    uWispStart:  { value: BH_TUNE.wispStart },
+    uColorBoost: { value: BH_TUNE.colorBoost },
+  };
+}
+export function bhTuneLensUniforms() {
+  return {
+    uPRW:   { value: BH_TUNE.ringWidth },
+    uPRI:   { value: BH_TUNE.ringIntensity },
+    uHaloW: { value: BH_TUNE.haloWidth },
+    uHaloI: { value: BH_TUNE.haloIntensity },
+  };
+}
+// The tuner button only shows while a black hole is actually on screen.
+// Two independent callers (world.js loop, True-Size room) OR their flags.
+const _bhTunerAvail = { world: false, room: false };
+export function setBHTunerAvailable(source, on) {
+  if (_bhTunerAvail[source] === !!on) return;
+  _bhTunerAvail[source] = !!on;
+  const any = _bhTunerAvail.world || _bhTunerAvail.room;
+  const btn = document.getElementById('bhTunerBtn');
+  if (btn) btn.style.display = any ? 'block' : 'none';
+  if (!any) {
+    const panel = document.getElementById('bhTunerPanel');
+    if (panel) panel.style.display = 'none';
+  }
+}
+
 // Gravitational-lensing screen-space shader (shadow void + photon ring + warp)
 // — exported for the True-Size room's Sagittarius A* composer.
 export const BH_LENS_FRAG = [
   'uniform sampler2D tDiffuse;',
   'uniform vec2 uCenter;',
-  'uniform float uStrength,uInnerR,uOuterR,uShadowR,uAspect;',
+  'uniform float uStrength,uInnerR,uOuterR,uShadowR,uAspect,uPRW,uPRI,uHaloW,uHaloI;',
   'varying vec2 vUv;',
   'void main(){',
   '  vec2 d=(vUv-uCenter)*vec2(uAspect,1.0);',
@@ -699,13 +807,13 @@ export const BH_LENS_FRAG = [
   '  vec2 dir=d/max(dist,0.001); dir.x/=uAspect;',
   '  uv-=dir*warpMag; uv=clamp(uv,0.001,0.999);',
   '  vec4 col=texture2D(tDiffuse,uv);',
-  // Photon ring + tight warm halo at the shadow edge — sigma 0.10 keeps
-  // the glowing rim hugging the void instead of fattening the sphere.
-  '  float prD=(dist-shadowR)/(uShadowR*0.04);',
+  // Photon ring + warm halo at the shadow edge — widths and brightness are
+  // tuner uniforms (BH_TUNE: ringWidth/ringIntensity/haloWidth/haloIntensity).
+  '  float prD=(dist-shadowR)/(uShadowR*uPRW);',
   '  float prRing=exp(-prD*prD);',
-  '  float haloD=(dist-shadowR)/(uShadowR*0.10);',
-  '  float halo=exp(-haloD*haloD)*0.28;',
-  '  col.rgb+=vec3(1.0,0.78,0.35)*(prRing+halo)*4.5;',
+  '  float haloD=(dist-shadowR)/(uShadowR*uHaloW);',
+  '  float halo=exp(-haloD*haloD);',
+  '  col.rgb+=vec3(1.0,0.78,0.35)*(prRing*uPRI+halo*uHaloI);',
   '  gl_FragColor=col;',
   '}'
 ].join('\n');
@@ -724,6 +832,7 @@ export const BH_DISK_VERT = [
 
 export const BH_DISK_FRAG = [
   'uniform float uInnerR, uOuterR, uTime, uAlphaMul, uLayerY, uZoomOut;',
+  'uniform float uBrightExp, uBrightPeak, uHeatExp, uWispStart, uColorBoost;',
   'varying vec2 vPos;',
   'float hash21(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }',
   // Value noise periodic in x (the lattice wraps every `per` cells). The x
@@ -780,10 +889,8 @@ export const BH_DISK_FRAG = [
   '  float density = 0.24 + 0.76 * lay;',
   // Outer edge dissolves into wisps: progressively only the bright
   // filaments survive, so the rim is ragged rather than a hard circle.
-  // Starts at 0.70 (was 0.50) so the wisp dissolve only affects the true
-  // outer rim — the geometry spans the full 205M-km disc and the mid
-  // radii must stay filled, not thin out from half-radius.
-  '  float wispZone = smoothstep(0.70, 1.00, t);',
+  // Start point is the tuner's wispStart (default 0.70).
+  '  float wispZone = smoothstep(uWispStart, 1.00, t);',
   '  density = mix(density, density * lay, wispZone * 0.65);',
   // Zoom-out: lift the floor so the far-away disk reads as smooth glow.
   '  density = mix(density, max(density, 0.35), uZoomOut * 0.6);',
@@ -800,11 +907,9 @@ export const BH_DISK_FRAG = [
   '  float innerDist = max(0.0, r - uInnerR);',
   '  float sigma     = uInnerR * 0.14;',
   '  float pr        = exp(-(innerDist*innerDist) / (2.0*sigma*sigma));',
-  // 1.6 -> 1.15: slower radial cooling. At the old exponent the disk hit
-  // near-black ember by half radius, visually truncating the disc to ~4x
-  // the shadow width; the true disc/horizon ratio is ~8.5x, so the outer
-  // half must stay a readable red-orange rather than vanish.
-  '  float heat = pow(max(1.0 - t, 0.0), 1.15);',
+  // Radial cooling exponent from the tuner (default 1.15 — lower keeps the
+  // outer disc a readable red-orange, higher cools it to ember sooner).
+  '  float heat = pow(max(1.0 - t, 0.0), uHeatExp);',
   '  heat *= 0.30 + 0.85 * lay;',
   '  heat *= 0.78 + 0.34 * c1;',
   '  heat += 0.45 * pr;',
@@ -823,17 +928,17 @@ export const BH_DISK_FRAG = [
   // Strong over-brightness boost so the additive disk contribution
   // dominates the galaxy texture behind it. With colour > 1.0 each
   // disk pixel writes more luminance than the BeauGa galaxy can.
-  '  col *= 2.5;',
+  // Tuner: colorBoost (default 2.5).
+  '  col *= uColorBoost;',
   // === Alpha — radial falloff x density mask ===
   // The continuous cloud has a much higher mean coverage than the old
   // sparse ring combs, so a 0.30 scale keeps the 5 additively stacked
   // layers from clipping into a flat orange mass (tuned via screenshots).
-  // Flattened 1.3 -> 0.32 (peak retuned 5.0 -> 3.8): alpha stays strong
-  // almost to the geometric rim, so the disc's VISIBLE edge is its true
-  // 205M-km width (~8.5x the event horizon) — a gentler exponent still
-  // faded out ~30% early, understating the disc against the black sphere.
+  // Radial alpha falloff from the tuner (defaults 0.32 / 3.8): the low
+  // exponent keeps alpha strong almost to the geometric rim so the disc's
+  // VISIBLE edge is its true 205M-km width (~8.5x the event horizon).
   // The wisp zone above supplies the ragged dissolve right at the rim.
-  '  float bright = pow(max(1.0-t, 0.0), 0.32) * 3.8;',
+  '  float bright = pow(max(1.0-t, 0.0), uBrightExp) * uBrightPeak;',
   '  float alpha  = clamp(effMask * bright * 0.36, 0.0, 1.0);',
   '  alpha = min(alpha, 0.95);',
   '  alpha *= uAlphaMul;',
@@ -5085,7 +5190,7 @@ function animate(){
       }
     }
     if (bhDiskMaterials && blackHoleModel && blackHoleModel.visible) {
-      var _dt = deltaMs * 0.0005;
+      var _dt = deltaMs * 0.0005 * BH_TUNE.spinSpeed;
       var _zoomOut = 1.0 - bhTransitionT;
       for (var _di = 0; _di < bhDiskMaterials.length; _di++) {
         bhDiskMaterials[_di].uniforms.uTime.value += _dt;
@@ -5150,7 +5255,7 @@ function animate(){
     blackHoleModel.visible = galBHTransitionT > 0.04;
 
     if (bhDiskMaterials && blackHoleModel.visible) {
-      const _gdt = deltaMs * 0.0005;
+      const _gdt = deltaMs * 0.0005 * BH_TUNE.spinSpeed;
       const _gZoomOut = 1.0 - galBHTransitionT;
       for (var _gdi = 0; _gdi < bhDiskMaterials.length; _gdi++) {
         bhDiskMaterials[_gdi].uniforms.uTime.value    += _gdt;
@@ -5755,6 +5860,7 @@ function animate(){
       bhRendererSettings ||
       (blackHoleModel && blackHoleModel.visible)
     );
+  setBHTunerAvailable('world', !!_useLensComposer);
   if (_useLensComposer) {
     if (bhRendererSettings && galacticCorePos) {
       controls.target.copy(galacticCorePos);
@@ -5778,7 +5884,7 @@ function animate(){
         var _ehWorld = galacticViewActive && galaxyVisualRadius > 0
           ? bhEHRadius * (20.0 / (galaxyVisualRadius * 0.4))
           : bhEHRadius * BH_MW_SCALE;
-        var _shadowR = _ehWorld / (_camToBH * _halfTanFov * 2.0);
+        var _shadowR = _ehWorld / (_camToBH * _halfTanFov * 2.0) * BH_TUNE.sphereScale;
         bhLensingUniforms.uShadowR.value = Math.max(_shadowR, 0.015);
         bhLensingUniforms.uInnerR.value  = Math.max(_shadowR * 0.82, 0.012);
         bhLensingUniforms.uOuterR.value  = Math.max(_shadowR * 1.35, 0.04);
@@ -6570,6 +6676,128 @@ Object.assign(window, {
   flyToSolarSystem, flyToMilkyWay, spaceshipBackBtn,
   returnToMainMenu, collapseGalacticLegend, expandGalacticLegend,
 });
+
+// ── BH Tuner panel ───────────────────────────────────────────────────────────
+// Live controls for every black-hole visual parameter (BH_TUNE), shared by
+// the galaxy view and the True-Size room. Markup shell lives in index.html;
+// rows are built here from the ROWS table. Values persist in localStorage.
+(function initBHTuner() {
+  const btn     = document.getElementById('bhTunerBtn');
+  const panel   = document.getElementById('bhTunerPanel');
+  const rowsBox = document.getElementById('bhTunerRows');
+  const ratioEl = document.getElementById('bhTunerRatio');
+  if (!btn || !panel || !rowsBox) return;
+
+  // [section] or [label, key, min, max, step, derivedFn]
+  const ROWS = [
+    ['SIZE'],
+    ['Black sphere',    'sphereScale', 0.2,  3.0,  0.01, v => '≈ ' + (24 * v).toFixed(1) + ' M km wide'],
+    ['Disc outer edge', 'discOuter',   2.0, 14.0,  0.1,  v => '≈ ' + (20.5 * v).toFixed(0) + ' M km wide'],
+    ['Disc inner edge', 'discInner',   0.1,  3.0,  0.01, v => '≈ ' + (20.5 * v).toFixed(1) + ' M km wide'],
+    ['Glow size',       'glowSize',    0,   20,    0.1,  v => '≈ ' + (20.5 * v).toFixed(0) + ' M km wide'],
+    ['PHOTON RING'],
+    ['Ring width',      'ringWidth',     0.005, 0.30, 0.005, null],
+    ['Ring brightness', 'ringIntensity', 0,    12,    0.1,   null],
+    ['Halo width',      'haloWidth',     0.02,  0.80, 0.01,  null],
+    ['Halo brightness', 'haloIntensity', 0,     4,    0.02,  null],
+    ['Lens warp',       'warpStrength',  0,     4,    0.02,  null],
+    ['ACCRETION DISC'],
+    ['Edge falloff',    'brightExp',  0.05, 2.5, 0.01, null],
+    ['Disc brightness', 'brightPeak', 0.5,  8,   0.1,  null],
+    ['Heat falloff',    'heatExp',    0.3,  3,   0.01, null],
+    ['Wisp start',      'wispStart',  0.1,  1,   0.01, null],
+    ['Flow speed',      'spinSpeed',  0,    5,   0.05, null],
+    ['LIGHTING'],
+    ['Colour boost',    'colorBoost',  0.5, 6, 0.1,  null],
+    ['Glow opacity',    'glowOpacity', 0,   1, 0.01, null],
+    ['Warm ambient',    'warmAmbient', 0,   2, 0.01, null],
+  ];
+
+  const inputs = {};   // key -> { slider, num, derivedEl, derivedFn }
+
+  function saveTune() {
+    try { localStorage.setItem('bhTune', JSON.stringify(BH_TUNE)); } catch (e) {}
+  }
+  function updateRatio() {
+    if (!ratioEl) return;
+    const sphere = 24 * BH_TUNE.sphereScale;
+    const disc   = 20.5 * BH_TUNE.discOuter;
+    ratioEl.textContent =
+      'disc : sphere = ' + (disc / sphere).toFixed(2) + ':1  (true 8.54:1)';
+  }
+  function setValue(key, v, fromSlider) {
+    const row = inputs[key];
+    v = Math.max(row.min, Math.min(row.max, v));
+    BH_TUNE[key] = v;
+    if (!fromSlider) row.slider.value = v;
+    row.num.value = v;
+    if (row.derivedFn) row.derivedEl.textContent = row.derivedFn(v);
+    applyBHTune();
+    saveTune();
+    updateRatio();
+  }
+
+  ROWS.forEach(r => {
+    if (r.length === 1) {
+      const h = document.createElement('div');
+      h.className = 'bhTunerSection';
+      h.textContent = r[0];
+      rowsBox.appendChild(h);
+      return;
+    }
+    const [label, key, min, max, step, derivedFn] = r;
+    const row = document.createElement('div');
+    row.className = 'bhTunerRow';
+
+    const lab = document.createElement('span');
+    lab.className = 'bhTunerLabel';
+    lab.textContent = label;
+
+    const slider = document.createElement('input');
+    slider.type = 'range';
+    slider.min = min; slider.max = max; slider.step = step;
+    slider.value = BH_TUNE[key];
+
+    const num = document.createElement('input');
+    num.type = 'number';
+    num.min = min; num.max = max; num.step = step;
+    num.value = BH_TUNE[key];
+
+    const derived = document.createElement('span');
+    derived.className = 'bhTunerDerived';
+    if (derivedFn) derived.textContent = derivedFn(BH_TUNE[key]);
+
+    inputs[key] = { slider, num, derivedEl: derived, derivedFn, min, max };
+    slider.addEventListener('input', () => setValue(key, parseFloat(slider.value), true));
+    num.addEventListener('change', () => {
+      const v = parseFloat(num.value);
+      if (!isNaN(v)) setValue(key, v, false);
+    });
+
+    row.appendChild(lab);
+    row.appendChild(slider);
+    row.appendChild(num);
+    if (derivedFn) row.appendChild(derived);
+    rowsBox.appendChild(row);
+  });
+  updateRatio();
+
+  btn.addEventListener('click', () => {
+    panel.style.display = panel.style.display === 'block' ? 'none' : 'block';
+  });
+  document.getElementById('bhTunerClose').addEventListener('click', () => {
+    panel.style.display = 'none';
+  });
+  document.getElementById('bhTunerReset').addEventListener('click', () => {
+    Object.keys(BH_TUNE_DEFAULTS).forEach(k => setValue(k, BH_TUNE_DEFAULTS[k], false));
+  });
+  document.getElementById('bhTunerCopy').addEventListener('click', function() {
+    const txt = JSON.stringify(BH_TUNE, null, 2);
+    if (navigator.clipboard) navigator.clipboard.writeText(txt);
+    this.textContent = 'Copied!';
+    setTimeout(() => { this.textContent = 'Copy values'; }, 1200);
+  });
+})();
 
 
 

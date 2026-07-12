@@ -35,6 +35,8 @@ import { LY_KM } from '../core/scale.js';
 import {
   makeGriddedMoonGeometry, makeMoonShapeGeometry, makeAsteroidGeometry,
   REAL_MOON_SHAPES, BH_DISK_VERT, BH_DISK_FRAG, BH_LENS_FRAG,
+  BH_TUNE, bhTuneRegister, bhTuneDiskUniforms, bhTuneLensUniforms,
+  setBHTunerAvailable,
   orbitalToXYZ, ORBIT_COLORS,
 } from '../world.js';
 
@@ -732,21 +734,22 @@ const room = {
     this._rt = new THREE.WebGLRenderTarget(innerWidth, innerHeight);
     this._rt.depthTexture = depthTex;
     this._lensMat = new THREE.ShaderMaterial({
-      uniforms: {
+      uniforms: Object.assign({
         tDiffuse:  { value: null },
         tDepth:    { value: null },
         uBHDepth:  { value: 1.0 },
         uCenter:   { value: new THREE.Vector2(0.5, 0.5) },
-        uStrength: { value: 1.80 },
+        uStrength: { value: BH_TUNE.warpStrength },
         uInnerR:   { value: 0.03 },
         uOuterR:   { value: 0.12 },
         uShadowR:  { value: 0.06 },
         uAspect:   { value: innerWidth / innerHeight },
-      },
+      }, bhTuneLensUniforms()),
       vertexShader: 'varying vec2 vUv; void main(){ vUv=uv; gl_Position=vec4(position.xy,0.0,1.0); }',
       fragmentShader: LENS_FRAG_DEPTH,
       depthTest: false, depthWrite: false,
     });
+    bhTuneRegister('lenses', this._lensMat.uniforms);
     this._lensScene = new THREE.Scene();
     this._lensScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), this._lensMat));
     this._lensCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
@@ -851,19 +854,21 @@ const room = {
       // Inner radius 0.05 bhR (hidden under the shadow) feeds the lensing
       // warp real disc material at every sample radius — same fix as the
       // sim's diskGeo; a central hole paints a dark annulus around the sphere.
-      const diskGeo = new THREE.RingGeometry(bhR * 0.05, bhR * 10.0, 512, 1);
+      // Outer 14 bhR is headroom for the BH Tuner's discOuter slider; the
+      // visible edge is the uOuterR uniform (default 10 bhR = 205M km).
+      const diskGeo = new THREE.RingGeometry(bhR * 0.05, bhR * 14.0, 512, 1);
       const diskLayerCount = 7, diskLayerSpacing = bhR * 0.045;
       for (let di = 0; di < diskLayerCount; di++) {
         const slot = di - (diskLayerCount - 1) * 0.5;
         const layerMat = new THREE.ShaderMaterial({
-          uniforms: {
-            uInnerR:   { value: bhR * 0.92 },
-            uOuterR:   { value: bhR * 10.0 },
+          uniforms: Object.assign({
+            uInnerR:   { value: bhR * BH_TUNE.discInner },
+            uOuterR:   { value: bhR * BH_TUNE.discOuter },
             uTime:     { value: 0.0 },
             uAlphaMul: { value: Math.exp(-Math.pow(slot / 2.2, 2.0)) * 0.42 },
             uLayerY:   { value: slot },
             uZoomOut:  { value: 0.0 },
-          },
+          }, bhTuneDiskUniforms()),
           vertexShader: BH_DISK_VERT, fragmentShader: BH_DISK_FRAG,
           // depthTest ON (the sim runs it off): here the BH has true-scale
           // neighbours, and without the test its disc drew straight through
@@ -878,6 +883,7 @@ const room = {
         inner.add(layerMesh);
         this._bhMats.push(layerMat);
       }
+      bhTuneRegister('disks', { mats: this._bhMats, bhR });
 
       // Soft orange glow sprite — same canvas gradient as the sim's BH.
       const gc = document.createElement('canvas'); gc.width = gc.height = 256;
@@ -892,9 +898,10 @@ const room = {
         map: new THREE.CanvasTexture(gc), blending: THREE.AdditiveBlending,
         transparent: true, depthWrite: false,
       }));
-      gSprite.scale.set(bhR * 7, bhR * 7, 1);
+      gSprite.scale.set(bhR * BH_TUNE.glowSize, bhR * BH_TUNE.glowSize, 1);
       gSprite.renderOrder = 15;
       inner.add(gSprite);
+      bhTuneRegister('glows', { sprite: gSprite, bhR });
 
       // The event-horizon shadow, photon ring, warm halo and background warp
       // come from the sim's screen-space gravitational-lensing pass (see
@@ -1099,7 +1106,7 @@ const room = {
     for (const s of this._spins) s.obj.rotation.y += s.rate * dScale;
 
     // Sgr A*'s accretion discs flow at the sim's rate (world.js: deltaMs × 0.0005).
-    for (const m of this._bhMats) m.uniforms.uTime.value += dScale * (1000 / 60) * 0.0005;
+    for (const m of this._bhMats) m.uniforms.uTime.value += dScale * (1000 / 60) * 0.0005 * BH_TUNE.spinSpeed;
 
     // Enceladus's jets stream steadily; sprite size follows the viewport/fov.
     if (this._plume) {
@@ -1154,7 +1161,7 @@ const room = {
       if (-v.z > 0) {   // in front of the camera
         const camToBH = this.camera.position.distanceTo(this._bhWorldPos);
         const halfTanFov = Math.tan(this.camera.fov * Math.PI / 360);
-        const shadowR = this._bhEHWorld / (camToBH * halfTanFov * 2.0);
+        const shadowR = this._bhEHWorld / (camToBH * halfTanFov * 2.0) * BH_TUNE.sphereScale;
         const p = this._bhWorldPos.clone().project(this.camera);
         const margin = 1 + 6 * shadowR;   // include the halo just off-screen
         if (shadowR > 0.0015 && Math.abs(p.x) < margin && Math.abs(p.y) < margin) {
@@ -1186,10 +1193,12 @@ const room = {
     } else {
       ctx.renderer.render(this.scene, this.camera);
     }
+    setBHTunerAvailable('room', lensOn);
   },
 
   exit(ctx) {
     this._active = false;
+    setBHTunerAvailable('room', false);
     this.controls.enabled = false;
     document.getElementById('sizeUI').style.display = 'none';
     document.getElementById('speedPanel').style.display = '';
