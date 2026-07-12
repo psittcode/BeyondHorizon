@@ -60,6 +60,11 @@ ctx.keplerEscapeToGalaxy = () => escapeKeplerToGalaxy();
 // which is what lets the laptop fan settle when you leave it running.
 const FPS_ACTIVE = 60;    // cap during interaction / visible motion
 const FPS_IDLE   = 10;    // ~static scene; 10fps keeps the sim clock accurate against the 100ms delta cap
+// While the main menu is fully opaque over the screen, the main scene render is
+// invisible — skip it entirely. Set/cleared by the menu code (initMainMenu):
+// true once the menu is fully faded in, false the instant a dismissal starts so
+// the scene is already animating during the 0.9s crossfade out.
+let menuHoldsFrame = false;
 let _lastDrawMs    = 0;   // timestamp of the last frame we actually rendered
 let _camDirtyUntil = 0;   // stay at full rate until this time — refreshed on every camera change
 // How long to hold full 60fps after the last interaction before idling down. Generous
@@ -5009,6 +5014,9 @@ function animate(){
   // Hidden tab/window → draw nothing. Otherwise render at full rate only while
   // something is actually changing, and idle down when it isn't.
   if (document.hidden) return;
+  // Main menu fully opaque over everything → this render can't be seen; skip it.
+  // (Resume path is safe: deltaMs below is capped at 100ms, same as tab-hidden.)
+  if (menuHoldsFrame) return;
   const _frameNow = performance.now();
   // A room that implements isActive() paces like the main views (60fps only
   // during interaction/its own flights, 10fps idle — raw pointer/wheel input
@@ -6154,8 +6162,22 @@ window.addEventListener("resize", ()=>{
   window.addEventListener('resize', resizeStarField);
 
   let menuActive = true;
+  // Menu boots fully opaque over a black scene — hold the main render loop
+  // immediately (released the instant dismissMenu starts the fade-out).
+  menuHoldsFrame = true;
+  // The menu's own loops pace to the same 60fps cap as the app's animate() loop
+  // (FPS_ACTIVE) instead of the display's native refresh — on a 120Hz ProMotion
+  // panel that halves the sustained GPU/CPU load for zero visual difference vs
+  // the in-app experience, which is already 60-capped. All motion is dt-based,
+  // so speeds are unaffected. Same 0.75 skip-gate margin as animate() so vsync
+  // jitter can't drop real frames on a true 60Hz display.
+  const MENU_FRAME_MS = (1000 / FPS_ACTIVE) * 0.75;
+  let starLastDraw = 0;
   function drawStars(ts) {
     if (!menuActive) return;
+    requestAnimationFrame(drawStars);
+    if (ts - starLastDraw < MENU_FRAME_MS) return;
+    starLastDraw = ts;
     starCtx.clearRect(0, 0, starW, starH);
     const t = ts * 0.001;
     for (const s of stars) {
@@ -6170,7 +6192,6 @@ window.addEventListener("resize", ()=>{
       starCtx.fill();
     }
     starCtx.globalAlpha = 1;
-    requestAnimationFrame(drawStars);
   }
   requestAnimationFrame(drawStars);
 
@@ -6178,9 +6199,14 @@ window.addEventListener("resize", ()=>{
   //    camera framing to the main 3D view, so the background reads as the same
   //    sky you fly into when the menu fades out.
   const menuSkyCanvas = document.getElementById('menuSky');
+  // No antialias: this renderer only ever draws the *inside* of a textured
+  // sphere — there is no geometry edge anywhere on screen for MSAA to smooth,
+  // so multisampling was pure fill-rate/bandwidth cost (a full-screen MSAA
+  // resolve every frame) with zero visual effect. The mini-solar renderer
+  // below keeps its antialias — its planet/ring silhouettes do benefit.
   const menuSkyRenderer = new THREE.WebGLRenderer({
     canvas: menuSkyCanvas,
-    antialias: true
+    antialias: false
   });
   menuSkyRenderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   const menuSkyScene = new THREE.Scene();
@@ -6510,7 +6536,11 @@ window.addEventListener("resize", ()=>{
   let miniLast = performance.now();
   function animateMini() {
     if (!menuActive) return;
+    requestAnimationFrame(animateMini);
     const now = performance.now();
+    // 60fps pacing (see MENU_FRAME_MS above). Skipped frames don't advance
+    // miniLast, so dt spans them and every orbit/rotation speed is unchanged.
+    if (now - miniLast < MENU_FRAME_MS) return;
     const dt = (now - miniLast) * 0.001;
     miniLast = now;
 
@@ -6603,14 +6633,15 @@ window.addEventListener("resize", ()=>{
     } else {
       miniPointer.classList.remove('visible');
     }
-
-    requestAnimationFrame(animateMini);
   }
   requestAnimationFrame(animateMini);
 
   // ── Button handlers
   function dismissMenu(then) {
     menuActive = false;
+    // Release the main render loop *before* the fade so the live scene is
+    // already animating behind the menu as it turns transparent.
+    menuHoldsFrame = false;
     menuEl.classList.add('hidden');
     setTimeout(() => {
       if (typeof then === 'function') then();
@@ -6641,6 +6672,10 @@ window.addEventListener("resize", ()=>{
       renderMenuSky();
       requestAnimationFrame(drawStars);
       requestAnimationFrame(animateMini);
+      // Hold the main render loop only once the menu has fully faded in
+      // (0.9s CSS transition) — the scene stays live behind the crossfade.
+      // Guarded so a dismissal inside that window never leaves the loop held.
+      setTimeout(() => { if (menuActive) menuHoldsFrame = true; }, 950);
     }
   }
 
