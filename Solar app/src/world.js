@@ -5330,7 +5330,7 @@ function animate(){
         var _gD = galacticViewActive
           ? camera.position.length()
           : camera.position.distanceTo(galacticCorePos);
-        var _dT = Math.max(0.0, Math.min(1.0, (_gD / _gR - 1.2) / (4.0 - 1.2)));
+        var _dT = Math.max(0.0, Math.min(1.0, (_gD / _gR - 0.05) / (1.0 - 0.05)));
         _dT = _dT * _dT * (3.0 - 2.0 * _dT);
         _dFade = 1.0 - _dT * 0.9;
       }
