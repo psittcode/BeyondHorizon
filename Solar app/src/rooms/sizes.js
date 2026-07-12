@@ -837,10 +837,11 @@ const room = {
             })));
         });
       }
-      // Invisible-ish disc as the click target for the whole system.
+      // Fully invisible disc as the click target for the whole system — it
+      // renders nothing (colorWrite off) but the raycaster still hits it.
       clickMesh = new THREE.Mesh(
         new THREE.CircleGeometry(b.span, 64),
-        new THREE.MeshBasicMaterial({ color: 0x88aaff, transparent: true, opacity: 0.02,
+        new THREE.MeshBasicMaterial({ colorWrite: false, transparent: true, opacity: 0,
                                       side: THREE.DoubleSide, depthWrite: false }));
       clickMesh.rotation.x = -Math.PI / 2;
       inner.add(clickMesh);
@@ -940,10 +941,14 @@ const room = {
     clickMesh.userData.bodyIndex = this.bodies.indexOf(b);
 
     b.group = group; b.mesh = clickMesh;
-    // Sgr A* excluded: the sim's BH geometry is static — all apparent motion
-    // comes from the disc shader's uTime flow, so spinning the mesh would
-    // add movement the original doesn't have.
-    if (b.mega !== 'sgr-a') this._spins.push({ obj: inner, rate: 0.0006 });
+    // Only the galaxy discs get the gentle presentation spin. Excluded:
+    // Sgr A* (its geometry is static — all apparent motion comes from the disc
+    // shader's uTime flow), and the planetary systems (their orbit rings are
+    // fixed real structures; the ecliptic doesn't visibly precess, so a spin
+    // would just misrepresent the physics).
+    const staticMega = b.mega === 'sgr-a'
+      || b.mega === 'solar-system' || b.mega === 'kepler-system';
+    if (!staticMega) this._spins.push({ obj: inner, rate: 0.0006 });
     this.scene.add(group);
   },
 
