@@ -933,19 +933,22 @@ const room = {
     const group = new THREE.Group();
     group.add(inner);
     // Orientation per entry:
-    //  · Planetary systems (Solar System, Kepler-22) — match the main sim's
-    //    ecliptic: keep the orbit plane flat and roll it 23.4° about the view
-    //    axis, exactly the tilt world.js gives the ecliptic via its camera.up
-    //    (world.js ECLIPTIC_TILT). No forward tip, so the rings read the same
-    //    way they do in the live solar view.
+    //  · Solar System — match the main sim's ecliptic: keep the orbit plane
+    //    flat and roll it 23.4° about the view axis, the same tilt world.js
+    //    gives the ecliptic via its camera.up (world.js ECLIPTIC_TILT). That
+    //    23.4° is Earth's obliquity of the ecliptic — real, and specific to our
+    //    Earth-anchored equatorial frame.
+    //  · Kepler-22 — left flat, matching the main sim's Kepler room. The 23.4°
+    //    is Earth's number and has no meaning there; the system's true obliquity
+    //    is unknown, so an untilted orbital plane is the honest neutral choice.
     //  · Sgr A* — stays flat: the near-grazing camera + lensing give the sim's
     //    "plasma wrapped around the void" look, not a top-down vinyl record.
     //  · Galaxy discs — tipped 0.6 rad toward the camera for a readable 3/4
     //    face-on view of the disc.
     const ECLIPTIC_TILT = 23.4 * Math.PI / 180;
-    if (b.mega === 'solar-system' || b.mega === 'kepler-system') {
+    if (b.mega === 'solar-system') {
       group.rotation.z = ECLIPTIC_TILT;
-    } else {
+    } else if (b.mega !== 'kepler-system') {
       group.rotation.x = b.mega === 'sgr-a' ? 0 : 0.6;
     }
     group.position.set(b.x, 0, 0);
