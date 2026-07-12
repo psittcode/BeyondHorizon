@@ -5171,11 +5171,14 @@ function animate(){
 
     // GLB star particles defocus-fade out over the same reveal so they stop
     // peppering the BH backdrop: points swell (reads as going out of focus)
-    // while their opacity drops, gone by t ≈ 0.75; the identical curve runs
-    // in reverse as the camera pulls back out. Shared by both views via
-    // _bhBackT. Materials are this instance's own clones (see GLB load).
+    // while their opacity drops. The window is front-loaded — gone by
+    // t ≈ 0.22, well before the BH disk dominates the frame (the smoothed
+    // transition also lags at low frame rates, so a late window leaves dots
+    // over the disk mid-zoom). The identical curve runs in reverse as the
+    // camera pulls back out. Shared by both views via _bhBackT. Materials
+    // are this instance's own clones (see GLB load).
     if (mwStarMaterials) {
-      var _sT = Math.max(0.0, Math.min(1.0, (_bhBackT - 0.15) / 0.6));
+      var _sT = Math.max(0.0, Math.min(1.0, (_bhBackT - 0.02) / 0.20));
       _sT = _sT * _sT * (3.0 - 2.0 * _sT);   // smoothstep — eases both ends
       for (var _smi = 0; _smi < mwStarMaterials.length; _smi++) {
         var _sm = mwStarMaterials[_smi];
