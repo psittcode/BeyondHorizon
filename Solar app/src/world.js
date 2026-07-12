@@ -770,7 +770,10 @@ export const BH_DISK_FRAG = [
   '  float density = 0.24 + 0.76 * lay;',
   // Outer edge dissolves into wisps: progressively only the bright
   // filaments survive, so the rim is ragged rather than a hard circle.
-  '  float wispZone = smoothstep(0.50, 0.95, t);',
+  // Starts at 0.70 (was 0.50) so the wisp dissolve only affects the true
+  // outer rim — the geometry spans the full 205M-km disc and the mid
+  // radii must stay filled, not thin out from half-radius.
+  '  float wispZone = smoothstep(0.70, 1.00, t);',
   '  density = mix(density, density * lay, wispZone * 0.65);',
   // Zoom-out: lift the floor so the far-away disk reads as smooth glow.
   '  density = mix(density, max(density, 0.35), uZoomOut * 0.6);',
@@ -787,7 +790,11 @@ export const BH_DISK_FRAG = [
   '  float innerDist = max(0.0, r - uInnerR);',
   '  float sigma     = uInnerR * 0.14;',
   '  float pr        = exp(-(innerDist*innerDist) / (2.0*sigma*sigma));',
-  '  float heat = pow(max(1.0 - t, 0.0), 1.6);',
+  // 1.6 -> 1.15: slower radial cooling. At the old exponent the disk hit
+  // near-black ember by half radius, visually truncating the disc to ~4x
+  // the shadow width; the true disc/horizon ratio is ~8.5x, so the outer
+  // half must stay a readable red-orange rather than vanish.
+  '  float heat = pow(max(1.0 - t, 0.0), 1.15);',
   '  heat *= 0.30 + 0.85 * lay;',
   '  heat *= 0.78 + 0.34 * c1;',
   '  heat += 0.45 * pr;',
@@ -811,7 +818,10 @@ export const BH_DISK_FRAG = [
   // The continuous cloud has a much higher mean coverage than the old
   // sparse ring combs, so a 0.30 scale keeps the 5 additively stacked
   // layers from clipping into a flat orange mass (tuned via screenshots).
-  '  float bright = pow(max(1.0-t, 0.0), 1.3) * 5.0;',
+  // Flattened 1.3 -> 0.6 (peak retuned 5.0 -> 4.2): alpha now survives to
+  // the geometric rim so the visible disc spans its true 205M-km width
+  // (~8.5x the event horizon) instead of fading out around half radius.
+  '  float bright = pow(max(1.0-t, 0.0), 0.6) * 4.2;',
   '  float alpha  = clamp(effMask * bright * 0.36, 0.0, 1.0);',
   '  alpha = min(alpha, 0.95);',
   '  alpha *= uAlphaMul;',
