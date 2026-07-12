@@ -694,22 +694,23 @@ loadGLB('need_some_space.glb').then(function(gltf) {
 // Radius-like values are stored in bhR units (1 bhR ≈ 20.5M km — the disc is
 // 10 bhR = 205M km wide) because each view uses a different world scale.
 // Values persist in localStorage under 'bhTune'.
+// Defaults are the user's hand-tuned look (picked via the panel, 2026-07-12).
 export const BH_TUNE_DEFAULTS = {
-  sphereScale:   1.00, // × true event-horizon radius (1.0 = exact 24M km)
+  sphereScale:   0.71, // × true event-horizon radius (1.0 = exact 24M km)
   discOuter:     10.0, // visible disc outer radius, bhR units (10 = 205M km)
-  discInner:     0.92, // disc inner colour anchor, bhR units
-  glowSize:      7.0,  // orange glow sprite width, bhR units
+  discInner:     0.1,  // disc inner colour anchor, bhR units
+  glowSize:      20.0, // orange glow sprite width, bhR units
   ringWidth:     0.04, // photon ring gaussian width, × shadow radius
-  ringIntensity: 4.5,  // photon ring brightness
+  ringIntensity: 12.0, // photon ring brightness
   haloWidth:     0.19, // warm halo gaussian width, × shadow radius
   haloIntensity: 1.26, // warm halo brightness
   warpStrength:  1.80, // gravitational background warp
-  brightExp:     0.32, // disc alpha radial falloff exponent (lower = wider visible disc)
+  brightExp:     1.0,  // disc alpha radial falloff exponent (lower = wider visible disc)
   brightPeak:    3.8,  // disc alpha peak at the inner edge
   heatExp:       1.15, // disc colour cooling exponent (lower = hotter outer disc)
   wispStart:     0.70, // where the ragged rim dissolve begins (fraction of disc)
   colorBoost:    2.5,  // disc emissive colour multiplier
-  spinSpeed:     1.0,  // disc flow speed ×
+  spinSpeed:     2.0,  // disc flow speed ×
   glowOpacity:   1.0,  // glow sprite opacity
   warmAmbient:   0.0,  // warm ambient light intensity in the BH environment
 };
