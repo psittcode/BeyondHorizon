@@ -7,6 +7,7 @@
 
 import { loadGLB, loadTexture } from '../core/assets.js';
 import { LY_KM } from '../core/scale.js';
+import { ctx as engineCtx } from '../core/engine.js';
 
 const SKYBOX_RADIUS = 20000;
 
@@ -143,6 +144,18 @@ const room = {
   kmPerUnit: 0,   // map-scale anchor; set in init() once the galaxy radius is measured
   _lastT: 0,
 
+  // Frame-pacing report for world.js's animate() — same contract as sizes.js.
+  // This scene is completely still at 1× speed (the spin term is ~4e-11
+  // rad/frame), yet without this hook the room drew its 16k-point star field
+  // + galaxy at a locked 60fps forever. Full rate only while the sim runs
+  // fast enough for the spin to read as motion — the same speed > 1.5×
+  // real-life test the main views use (SPEED_REALLIFE in world.js's pacing).
+  // Drags/zooms/damping already hold 60fps via the shared-canvas input
+  // listeners plus this room's controls 'change' hook (wired in init()).
+  isActive() {
+    return engineCtx.speed > 1e-4 * 1.5;
+  },
+
   // Frame the galaxy in a 3/4 view from above.
   frameCamera() {
     const R = this.radius;
@@ -167,6 +180,12 @@ const room = {
     this.controls.zoomSpeed = 0.2;   // much gentler zoom, matching the main view
     this.controls.minDistance   = 1;
     this.controls.maxDistance   = SKYBOX_RADIUS * 0.9;
+    // Damping frames past the raw-input window still render at full rate:
+    // every damped controls tick fires 'change', which refreshes the global
+    // camera-dirty timer that world.js's pacing checks.
+    this.controls.addEventListener('change', () => {
+      if (ctx.markCameraActive) ctx.markCameraActive();
+    });
     this.controls.target.set(0, 0, 0);
     this.scene = scene;
     this.frameCamera();
@@ -209,6 +228,7 @@ const room = {
 
   enter(ctx) {
     ctx.controls.enabled = false; // stop the main OrbitControls consuming input
+    if (ctx.markCameraActive) ctx.markCameraActive();   // smooth entry (as sizes.js)
     document.getElementById('andromedaBtn').style.display = 'none';
     document.getElementById('panel').style.display = 'block';
     document.getElementById('panelContent').innerHTML = ANDROMEDA_INFO;

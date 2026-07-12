@@ -59,6 +59,19 @@ const room = {
   introActive: false, introT: 0,
   _lastT: 0, _isActive: false,
 
+  // Frame-pacing report for world.js's animate() — same contract as sizes.js.
+  // Every body motion here is × ctx.speed, so at 1× real-life speed the scene
+  // is completely still; without this hook the room drew its 45k-point star
+  // field + skybox at a locked 60fps forever. Full rate during the intro dive
+  // and fly-to flights, and while the sim runs fast enough for the orbit to
+  // read as motion (same speed > 1.5× real-life test as the main views).
+  // Drags/zooms/damping hold 60fps via the shared-canvas input listeners plus
+  // this room's controls 'change' hook (wired in init()).
+  isActive() {
+    return this.introActive || this.flying ||
+           (this._ctx ? this._ctx.speed > 1e-4 * 1.5 : true);
+  },
+
   async init(ctx) {
     const scene = new THREE.Scene();
     scene.add(new THREE.Mesh(
@@ -255,6 +268,12 @@ const room = {
     this.controls.maxDistance   = 200;
     this.controls.target.set(0, 0, 0);
     this.controls.update();
+    // Damping frames past the raw-input window still render at full rate:
+    // every damped controls tick fires 'change', refreshing the global
+    // camera-dirty timer that world.js's pacing checks (see isActive above).
+    this.controls.addEventListener('change', () => {
+      if (ctx.markCameraActive) ctx.markCameraActive();
+    });
     this.scene = scene;
     this._ctx = ctx;
 

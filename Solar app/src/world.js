@@ -6172,16 +6172,26 @@ window.addEventListener("resize", ()=>{
   // so speeds are unaffected. Same 0.75 skip-gate margin as animate() so vsync
   // jitter can't drop real frames on a true 60Hz display.
   const MENU_FRAME_MS = (1000 / FPS_ACTIVE) * 0.75;
-  let starLastDraw = 0;
-  function drawStars(ts) {
-    if (!menuActive) return;
-    requestAnimationFrame(drawStars);
-    if (ts - starLastDraw < MENU_FRAME_MS) return;
-    starLastDraw = ts;
+  // The two BACKDROP layers (full-screen Milky Way sky + this twinkle starfield)
+  // update at 30fps, on the SAME tick, driven from animateMini below. Their
+  // motion is glacial — sky drift ≈3px/s, star drift ≤2.4px/s, twinkle period
+  // ~5s — so a 30fps step is under a third of a pixel: beneath perception.
+  // Sharing one tick matters beyond the halved canvas work: the frosted panels
+  // (.menuRight and the planet strip use backdrop-filter) force the compositor
+  // to re-capture and re-blur their whole region whenever ANY pixel beneath
+  // them changes, so two layers updating on alternating vsyncs would keep that
+  // re-blur running at full rate. One shared 30fps tick halves it too. The mini
+  // solar system itself keeps the full 60fps cap — it is not part of this.
+  const MENU_BACKDROP_MS = (1000 / 30) * 0.75;
+  let backdropLast = 0;
+  // One backdrop starfield pass. fScale = elapsed time in 60fps-frame units
+  // (same deltaScale idiom as the main loop) so the drift speeds are identical
+  // to the old once-per-frame stepping; twinkle phase is absolute-time already.
+  function drawStarLayer(nowMs, fScale) {
     starCtx.clearRect(0, 0, starW, starH);
-    const t = ts * 0.001;
+    const t = nowMs * 0.001;
     for (const s of stars) {
-      s.x += s.vx; s.y += s.vy;
+      s.x += s.vx * fScale; s.y += s.vy * fScale;
       if (s.x < 0) s.x += starW; else if (s.x > starW) s.x -= starW;
       if (s.y < 0) s.y += starH; else if (s.y > starH) s.y -= starH;
       const flicker = 0.75 + 0.25 * Math.sin(t * 1.2 + s.tw);
@@ -6193,7 +6203,6 @@ window.addEventListener("resize", ()=>{
     }
     starCtx.globalAlpha = 1;
   }
-  requestAnimationFrame(drawStars);
 
   // ── Full-screen Milky Way skybox behind the menu — identical texture and
   //    camera framing to the main 3D view, so the background reads as the same
@@ -6208,7 +6217,13 @@ window.addEventListener("resize", ()=>{
     canvas: menuSkyCanvas,
     antialias: false
   });
-  menuSkyRenderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  // pixelRatio 1, deliberately: the 8k panorama spreads only ~8192 × (55°/360°)
+  // ≈ 1250 texture columns across the entire viewport width, so a dpr-1 canvas
+  // already out-resolves the texture. Rendering at Retina dpr 2 quadrupled the
+  // fill cost for literally identical output — the texture, not the canvas, is
+  // the resolution ceiling. (The mini-solar renderer keeps dpr 2 + MSAA: its
+  // planet/ring silhouettes are geometry edges, which do resolve more finely.)
+  menuSkyRenderer.setPixelRatio(1);
   const menuSkyScene = new THREE.Scene();
   // fov matches the mini scene camera (55) so star scale is identical across the
   // card edge; position/orientation/skybox-rotation are synced to the mini scene
@@ -6593,10 +6608,17 @@ window.addEventListener("resize", ()=>{
     // Render the single full-screen sky first (the only background in the
     // menu), then the transparent solar-system canvas floats on top of it.
     // The mini camera drives the sky so planets and stars drift as one.
-    menuSkyMesh.rotation.y += dt * 0.002;
-    menuSkyCamera.position.copy(miniCamera.position);
-    menuSkyCamera.quaternion.copy(miniCamera.quaternion);
-    menuSkyRenderer.render(menuSkyScene, menuSkyCamera);
+    // Sky + twinkle starfield share one 30fps tick (see MENU_BACKDROP_MS);
+    // both advance by real elapsed time, so their speeds are unchanged.
+    if (now - backdropLast >= MENU_BACKDROP_MS) {
+      const dtB = Math.min(now - backdropLast, 100);
+      backdropLast = now;
+      menuSkyMesh.rotation.y += dtB * 0.001 * 0.002;
+      menuSkyCamera.position.copy(miniCamera.position);
+      menuSkyCamera.quaternion.copy(miniCamera.quaternion);
+      menuSkyRenderer.render(menuSkyScene, menuSkyCamera);
+      drawStarLayer(now, dtB / (1000 / 60));
+    }
 
     miniRenderer.render(miniScene, miniCamera);
 
@@ -6667,10 +6689,10 @@ window.addEventListener("resize", ()=>{
     if (!menuActive) {
       menuActive = true;
       miniLast = performance.now();
+      backdropLast = 0;              // force an immediate sky + starfield pass
       resizeStarField();
       resizeMini();
       renderMenuSky();
-      requestAnimationFrame(drawStars);
       requestAnimationFrame(animateMini);
       // Hold the main render loop only once the menu has fully faded in
       // (0.9s CSS transition) — the scene stays live behind the crossfade.
