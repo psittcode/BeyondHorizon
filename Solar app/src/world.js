@@ -5316,9 +5316,28 @@ function animate(){
     if (mwStarMaterials) {
       var _sT = Math.max(0.0, Math.min(1.0, (_bhBackT - 0.02) / 0.20));
       _sT = _sT * _sT * (3.0 - 2.0 * _sT);   // smoothstep — eases both ends
+
+      // Far-zoom fade: the GLB's points stop size-attenuating below ~1px, so
+      // from several galaxy-radii out thousands of them pile into a solid
+      // clump. Fade their opacity down over 1.8R → 5R of camera distance from
+      // the galactic centre (to a 10% floor — beauGaDisc's flat disc image
+      // takes over as the far-distance look). Same ratio works in the
+      // galactic schematic view, where the galaxy is rescaled to R = 400 at
+      // the origin. Multiplies with the BH-zoom fade above.
+      var _dFade = 1.0;
+      if (galaxyVisualRadius > 0) {
+        var _gR = galacticViewActive ? 400 : galaxyVisualRadius;
+        var _gD = galacticViewActive
+          ? camera.position.length()
+          : camera.position.distanceTo(galacticCorePos);
+        var _dT = Math.max(0.0, Math.min(1.0, (_gD / _gR - 1.8) / (5.0 - 1.8)));
+        _dT = _dT * _dT * (3.0 - 2.0 * _dT);
+        _dFade = 1.0 - _dT * 0.9;
+      }
+
       for (var _smi = 0; _smi < mwStarMaterials.length; _smi++) {
         var _sm = mwStarMaterials[_smi];
-        _sm.mat.opacity = _sm.baseOpacity * (1.0 - _sT);
+        _sm.mat.opacity = _sm.baseOpacity * (1.0 - _sT) * _dFade;
         if (_sm.baseSize !== undefined) _sm.mat.size = _sm.baseSize * (1.0 + _sT * 1.5);
       }
     }
