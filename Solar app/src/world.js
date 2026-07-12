@@ -313,6 +313,7 @@ let sgrPanelShown         = false; // Sgr A* info panel currently replacing the 
 const BH_MW_SCALE         = (2 / 400) / 0.04;
 let bhDiskMaterials       = null; // materials of each stacked disk layer, for uTime animation
 let galacticGlowSprite    = null; // bright white glow at the galactic core, visible at far zoom before BH detail kicks in
+let mwStarMaterials       = null; // milkyWayModel's own (cloned) point materials + authored opacity/size, for the BH-zoom star fade
 let galaxyPivot           = null; // pivot Group at galacticCorePos so milkyWayModel rotates wobble-free
 const _galaxyAxis         = new THREE.Vector3(0, 1, 0); // reused Y-axis vector for galaxy spin rotateOnWorldAxis
 const _bhScreenPos        = new THREE.Vector3();
@@ -386,6 +387,23 @@ loadGLB('need_some_space.glb').then(function(gltf) {
   milkyWayModel.rotation.set(0, 0, 0);
   milkyWayModel.renderOrder = 1;
   scene.add(milkyWayModel);
+
+  // The clone shares its materials with the cached GLB (the Andromeda room uses
+  // the same asset), so give this instance its own copies before the BH zoom
+  // starts fading them. Remember each material's authored opacity/point size so
+  // the fade can restore them exactly on zoom-out.
+  mwStarMaterials = [];
+  milkyWayModel.traverse(function(o) {
+    if (!o.material) return;
+    const mats = Array.isArray(o.material) ? o.material : [o.material];
+    const clones = mats.map(function(m) {
+      const c = m.clone();
+      c.transparent = true;
+      mwStarMaterials.push({ mat: c, baseOpacity: c.opacity, baseSize: c.size });
+      return c;
+    });
+    o.material = Array.isArray(o.material) ? clones : clones[0];
+  });
 
   // Compute the actual bounding box of the loaded geometry and shift the model
   // so its visual centre sits exactly at world origin (0,0,0). This ensures:
@@ -5150,6 +5168,21 @@ function animate(){
     bhSkybox.material.opacity = bhSkybox.visible
       ? Math.min(1.0, (_bhBackT - 0.1) / 0.4)
       : 0.0;
+
+    // GLB star particles defocus-fade out over the same reveal so they stop
+    // peppering the BH backdrop: points swell (reads as going out of focus)
+    // while their opacity drops, gone by t ≈ 0.75; the identical curve runs
+    // in reverse as the camera pulls back out. Shared by both views via
+    // _bhBackT. Materials are this instance's own clones (see GLB load).
+    if (mwStarMaterials) {
+      var _sT = Math.max(0.0, Math.min(1.0, (_bhBackT - 0.15) / 0.6));
+      _sT = _sT * _sT * (3.0 - 2.0 * _sT);   // smoothstep — eases both ends
+      for (var _smi = 0; _smi < mwStarMaterials.length; _smi++) {
+        var _sm = mwStarMaterials[_smi];
+        _sm.mat.opacity = _sm.baseOpacity * (1.0 - _sT);
+        if (_sm.baseSize !== undefined) _sm.mat.size = _sm.baseSize * (1.0 + _sT * 1.5);
+      }
+    }
   }
 
   // Advance simulation clock — at 1× real life, advances by real elapsed ms
