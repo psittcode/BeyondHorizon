@@ -567,7 +567,13 @@ loadGLB('need_some_space.glb').then(function(gltf) {
     // line — the stack shows a Gaussian-profile thickness from any angle.
     // Each layer has its own ShaderMaterial sharing diskGeo (cheap), with a
     // uAlphaMul that dims outer layers so the cross-section looks volumetric.
-    var diskGeo = new THREE.RingGeometry(bhR * 0.92, bhR * 10.0, 512, 1);
+    // Inner radius 0.05 bhR — the disk runs essentially to the centre, all
+    // of it hidden under the drawn shadow (1.171 bhR). The hidden inner disk
+    // is what the lensing warp SAMPLES for pixels around the sphere; its
+    // displaced sample radius sweeps through ~0 near the shadow edge, so any
+    // central hole paints a dark annulus around the sphere. uInnerR stays
+    // 0.92 so the visible coloring is unchanged.
+    var diskGeo = new THREE.RingGeometry(bhR * 0.05, bhR * 10.0, 512, 1);
     bhDiskMaterials = [];
     var diskLayerCount   = 7;
     var diskLayerSpacing = bhR * 0.045;  // vertical gap between adjacent layers
@@ -629,11 +635,10 @@ loadGLB('need_some_space.glb').then(function(gltf) {
     // Event horizon radius used for dynamic shadow calculation.
     // No sphere mesh: the lensing shader shadow mask IS the event horizon — eliminates
     // any frame-to-frame desync between a mesh position and the screen-space mask.
-    // 0.99 puts the DRAWN black circle at Sgr A*'s true proportion: the lens
-    // shader paints black out to bhEHRadius × 1.18, and the true horizon is
-    // (24 / 205) of the 10-bhR disc = 1.171 bhR, so bhEHRadius = 1.171 / 1.18.
-    // (The old 1.20 bump made the sphere ~21% too wide against the disc.)
-    bhEHRadius = bhR * 0.99;
+    // The lens shader draws black out to exactly this radius, so it is set
+    // to Sgr A*'s true horizon proportion: (24 / 205) of the 10-bhR disc
+    // = 1.171 bhR. A ruler on the screen matches the quoted numbers.
+    bhEHRadius = bhR * 1.171;
 
 
     // finalComposer: full scene render + gravitational lensing only.
@@ -678,24 +683,27 @@ export const BH_LENS_FRAG = [
   'void main(){',
   '  vec2 d=(vUv-uCenter)*vec2(uAspect,1.0);',
   '  float dist=length(d);',
-  // Shadow extended from 0.97 to 1.18 — black takes up more of the
-  // visible BH. Photon ring and halo move outward to the new shadow
-  // edge (peaked at uShadowR*1.18), and the halo sigma is narrowed
-  // (0.28 -> 0.19) so the outer fade ends at roughly the same screen
-  // radius as before — i.e. the overall "sphere" stays the same size,
-  // just the dark void inside it grows.
-  '  float shadowR = uShadowR * 1.18;',
+  // The black void is drawn at exactly uShadowR — callers pass the TRUE
+  // event-horizon screen radius, so a screenshot ruler-check matches the
+  // quoted numbers (Sgr A*: 24M-km horizon vs 205M-km disc ≈ 1:8.5).
+  // (The old ×1.18 inflation made every BH sphere read ~20% too wide.)
+  '  float shadowR = uShadowR;',
   '  if(dist < shadowR){ gl_FragColor=vec4(0.0,0.0,0.0,1.0); return; }',
-  // Gravitational warp — smooth Gaussian, no hard threshold (eliminates seam-line artifacts)
+  // Gravitational warp — smooth Gaussian, no hard threshold (eliminates
+  // seam-line artifacts). The displaced samples land deep inside the disk's
+  // centre, so the disk geometry extends well under the shadow (inner radius
+  // 0.45 bhR) — otherwise the warp painted a thick dark annulus around the
+  // sphere that read as a much bigger black ball than the quoted horizon.
   '  vec2 uv=vUv;',
   '  float warpMag=uStrength*uShadowR*exp(-pow((dist/uShadowR-1.0)*1.1,2.0));',
   '  vec2 dir=d/max(dist,0.001); dir.x/=uAspect;',
   '  uv-=dir*warpMag; uv=clamp(uv,0.001,0.999);',
   '  vec4 col=texture2D(tDiffuse,uv);',
-  // Photon ring + warm halo at the new shadow edge
+  // Photon ring + tight warm halo at the shadow edge — sigma 0.10 keeps
+  // the glowing rim hugging the void instead of fattening the sphere.
   '  float prD=(dist-shadowR)/(uShadowR*0.04);',
   '  float prRing=exp(-prD*prD);',
-  '  float haloD=(dist-shadowR)/(uShadowR*0.19);',
+  '  float haloD=(dist-shadowR)/(uShadowR*0.10);',
   '  float halo=exp(-haloD*haloD)*0.28;',
   '  col.rgb+=vec3(1.0,0.78,0.35)*(prRing+halo)*4.5;',
   '  gl_FragColor=col;',
@@ -820,10 +828,12 @@ export const BH_DISK_FRAG = [
   // The continuous cloud has a much higher mean coverage than the old
   // sparse ring combs, so a 0.30 scale keeps the 5 additively stacked
   // layers from clipping into a flat orange mass (tuned via screenshots).
-  // Flattened 1.3 -> 0.6 (peak retuned 5.0 -> 4.2): alpha now survives to
-  // the geometric rim so the visible disc spans its true 205M-km width
-  // (~8.5x the event horizon) instead of fading out around half radius.
-  '  float bright = pow(max(1.0-t, 0.0), 0.6) * 4.2;',
+  // Flattened 1.3 -> 0.32 (peak retuned 5.0 -> 3.8): alpha stays strong
+  // almost to the geometric rim, so the disc's VISIBLE edge is its true
+  // 205M-km width (~8.5x the event horizon) — a gentler exponent still
+  // faded out ~30% early, understating the disc against the black sphere.
+  // The wisp zone above supplies the ragged dissolve right at the rim.
+  '  float bright = pow(max(1.0-t, 0.0), 0.32) * 3.8;',
   '  float alpha  = clamp(effMask * bright * 0.36, 0.0, 1.0);',
   '  alpha = min(alpha, 0.95);',
   '  alpha *= uAlphaMul;',

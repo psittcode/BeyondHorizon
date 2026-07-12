@@ -723,15 +723,10 @@ const room = {
                'uniform sampler2D tDiffuse;\nuniform sampler2D tDepth;\nuniform float uBHDepth;')
       .replace('void main(){',
                'void main(){\n' +
-               '  if (texture2D(tDepth, vUv).x < uBHDepth) { gl_FragColor = texture2D(tDiffuse, vUv); return; }')
-      // True-scale corrections: the sim's shader inflates the black void 18%
-      // past the horizon (an aesthetic choice for the galaxy view) and wraps
-      // it in a wide warm halo — together they fatten the apparent sphere by
-      // ~40%. This room's caption promises a 24M-km horizon against a
-      // 205M-km disc, so the void is drawn at exactly the EH radius and the
-      // halo is tightened so the glowing rim hugs the shadow.
-      .replace('float shadowR = uShadowR * 1.18;', 'float shadowR = uShadowR;')
-      .replace('(uShadowR*0.19)', '(uShadowR*0.10)');
+               '  if (texture2D(tDepth, vUv).x < uBHDepth) { gl_FragColor = texture2D(tDiffuse, vUv); return; }');
+    // No size corrections needed here: the shared shader draws the void at
+    // exactly uShadowR (true horizon radius) with a tight halo, so this room
+    // and the galaxy view stay in lockstep — one change updates every BH.
     const depthTex = new THREE.DepthTexture(innerWidth, innerHeight);
     depthTex.type = THREE.UnsignedIntType;
     this._rt = new THREE.WebGLRenderTarget(innerWidth, innerHeight);
@@ -853,7 +848,10 @@ const room = {
       // sprite. Scaled so the event horizon (bhR × 1.20 in the sim) equals the
       // true Schwarzschild diameter of Sgr A* (~24.6 million km).
       const bhR = 12.3e6 / KM_PER_UNIT / 1.2;
-      const diskGeo = new THREE.RingGeometry(bhR * 0.92, bhR * 10.0, 512, 1);
+      // Inner radius 0.05 bhR (hidden under the shadow) feeds the lensing
+      // warp real disc material at every sample radius — same fix as the
+      // sim's diskGeo; a central hole paints a dark annulus around the sphere.
+      const diskGeo = new THREE.RingGeometry(bhR * 0.05, bhR * 10.0, 512, 1);
       const diskLayerCount = 7, diskLayerSpacing = bhR * 0.045;
       for (let di = 0; di < diskLayerCount; di++) {
         const slot = di - (diskLayerCount - 1) * 0.5;
@@ -905,7 +903,7 @@ const room = {
       // visible sphere here would black out the disc around the horizon in
       // the pre-lens frame, smearing into a wide empty annulus. The click
       // target renders nothing (colorWrite/depthWrite off).
-      this._bhEHWorld = bhR * 1.20;                   // sim: bhEHRadius = bhR × 1.20
+      this._bhEHWorld = bhR * 1.20;   // = 12.3e6 km / KM_PER_UNIT — the true EH radius (bhR was defined as EH/1.2)
       clickMesh = new THREE.Mesh(
         new THREE.SphereGeometry(this._bhEHWorld, 32, 32),
         new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false }));
