@@ -141,12 +141,6 @@ const sunLight = new THREE.PointLight(0xffffff, 1.0);
 sunLight.position.set(0, 0, 0);
 scene.add(sunLight);
 
-// The ISS renders in its own depth-cleared layer-1 pass (see
-// renderStationOverlay) — lights must be enabled on that layer too, or the
-// station would draw unlit there.
-ambientLight.layers.enable(1);
-sunLight.layers.enable(1);
-
 // Warm ambient light added only during the black hole view — not in scene by default
 
 const textureLoader = new THREE.TextureLoader();
@@ -1386,7 +1380,8 @@ export function getStudioEnvMap() {
   return _studioEnv;
 }
 
-let issModel = null;   // set once the GLB resolves; null-guarded everywhere below
+let issModel = null;     // set once the GLB resolves; null-guarded everywhere below
+let issOverlay = null;   // magnified scene the station is actually drawn in
 
 // ?v busts browser caches — the GLB is a multi-MB XHR fetch that browsers hang
 // on to. Bump the version whenever iss.glb is replaced (keep sizes.js in sync
@@ -1422,25 +1417,26 @@ loadGLB('iss.glb?v=3').then(gltf => {
   iss.position.set(ISS_ORBIT_RADIUS, 0, 0);
 
   // Render the model's PBR materials as authored — no metalness/roughness
-  // clamps — and give them the studio environment map they were authored
-  // against (see getStudioEnvMap). This is what makes the hull read white and
-  // the arrays gold instead of the muddy near-black of unlit metal.
+  // clamps, sidedness left as the GLB declares it — and give them the studio
+  // environment map they were authored against (see getStudioEnvMap). This is
+  // what makes the hull read white and the arrays gold instead of the muddy
+  // near-black of unlit metal. Materials are cloned (and the env map applied)
+  // BEFORE the overlay clone below, so both copies share the same materials.
   const env = getStudioEnvMap();
   model.traverse(o => {
     if (!o.isMesh) return;
     o.material = o.material.clone();
     o.material.envMap = env;
     o.material.envMapIntensity = 1.0;
-    // The solar-array blankets are single-sided sheets and the GLB marks
-    // nearly every material doubleSided:false — faced from behind they cull
-    // away, leaving see-through wings with only their rims drawn. Sketchfab's
-    // viewer shows them solid from every angle, so render both faces.
-    o.material.side = THREE.DoubleSide;
     o.material.needsUpdate = true;
-    // Layer 1 = drawn only by renderStationOverlay's depth-tight pass, not
-    // the main render — see the comment on that function for why.
-    o.layers.set(1);
   });
+
+  // The station is drawn by the magnified overlay pass, never by the main
+  // render — see createStationOverlay for why. Layer 1 hides these meshes from
+  // the main camera while leaving them in the scene graph at true scale, which
+  // is what click raycasting and the bodies-list fly-to still work against.
+  issOverlay = createStationOverlay(model, Math.max(size.x, size.y, size.z), 0.18, 1.0);
+  model.traverse(o => { if (o.isMesh) o.layers.set(1); });
 
   iss.userData.name = 'ISS';
   iss.userData.trueRadius = ISS_TRUE_RADIUS;
@@ -1449,33 +1445,71 @@ loadGLB('iss.glb?v=3').then(gltf => {
   issGroup.add(iss);
 });
 
-// Depth-tight overlay pass for the true-scale station. The station spans
-// ~7.3e-9 units, but the logarithmic depth buffer can only separate surfaces
-// ~ln2 · log2(far+1) / 2^24 apart near the camera — ~8e-7 units (12 km) at
-// far = 1e6, far worse at the True-Size room's far = 1e12. The whole model
-// sits two orders of magnitude below what the depth test can resolve, so its
-// faces won and lost at random: the speckled "transparent" panels that no
-// material tweak could ever fix. So the station's meshes live on layer 1,
-// invisible to the main render, and this pass redraws them afterwards over a
-// cleared depth buffer with near/far pinched to a shell around the station —
-// there the same depth buffer resolves sub-millimetre detail. Shared with the
-// True-Size room (its stops passed as `occluders` so a foreground body still
-// hides the station instead of being painted over).
+// ── Magnified overlay pass for the true-scale station ────────────────────────
+//
+// The renderer runs with logarithmicDepthBuffer, which is what lets one scene
+// hold both a 109-m station and a 100,000-AU galaxy. Its cost: three.js encodes
+// depth as log2(1.0 + w) in a float32 varying. That `1.0 +` is fatal at true
+// scale — the station spans 7.3e-9 units, so every fragment's w is ~1e-8, and
+// in float32 `1.0 + 1e-8` rounds to exactly 1.0. Every fragment across the whole
+// model therefore reports identical depth, the depth test becomes a coin flip,
+// and hull panels lose to the truss behind them: the see-through station.
+//
+// Nothing about the model or its materials causes this (the same GLB renders
+// solid at any ordinary scale), and no near/far tuning can fix it either —
+// the precision is destroyed by the `1.0 +` term, not by the depth range.
+//
+// The fix is to draw the station where floating point still works. Scaling the
+// station AND the camera's offset from it by the same factor is a similarity
+// transform: the projected image is identical pixel for pixel, but w becomes
+// ~100 instead of ~1e-8, where log depth has precision to spare. So the station
+// gets its own tiny scene at OVERLAY_SPAN units across, and each frame we pose
+// its camera at the real camera's offset, magnified. Drawn after the main
+// render over a cleared depth buffer.
+const OVERLAY_SPAN = 100;
+
+// `model` is the loaded GLB scene; `maxDim` its natural longest dimension.
+// Materials are shared with the source (cloned by the caller beforehand), so
+// this costs one extra node tree, not another copy of 22 MB of geometry.
+export function createStationOverlay(model, maxDim, ambientIntensity, lightIntensity) {
+  const scene = new THREE.Scene();
+  const root = new THREE.Group();
+  root.scale.setScalar(OVERLAY_SPAN / maxDim);
+  const clone = model.clone(true);
+  clone.traverse(o => { if (o.isMesh) o.layers.set(0); });  // never layer 1 here
+  root.add(clone);
+  scene.add(root);
+  scene.add(new THREE.AmbientLight(0xffffff, ambientIntensity));
+  const dir = new THREE.DirectionalLight(0xffffff, lightIntensity);
+  scene.add(dir, dir.target);
+  return { scene, root, dir, cam: new THREE.PerspectiveCamera(50, 1, 1, 1000) };
+}
+
 const _ovStation = new THREE.Vector3();
 const _ovCamPos  = new THREE.Vector3();
 const _ovDir     = new THREE.Vector3();
 const _ovToOcc   = new THREE.Vector3();
-export function renderStationOverlay(rnd, scn, cam, station, span, occluders) {
+const _ovQuat    = new THREE.Quaternion();
+const _issSunDir  = new THREE.Vector3();
+const _issWorldPos = new THREE.Vector3();
+
+// `station` is the true-scale object in the real scene — it supplies the pose;
+// `spanWorld` its world-space span. `sunDir` points from the station toward the
+// light. `occluders` ({pos, r} spheres) let a foreground body hide the station
+// instead of being painted over.
+export function renderStationOverlay(rnd, ov, mainCam, station, spanWorld, sunDir, occluders) {
+  if (!ov) return;
   for (let o = station; o; o = o.parent) if (!o.visible) return;
+  station.updateWorldMatrix(true, false);
   station.getWorldPosition(_ovStation);
-  cam.getWorldPosition(_ovCamPos);
+  mainCam.updateMatrixWorld();
+  mainCam.getWorldPosition(_ovCamPos);
   const d = _ovCamPos.distanceTo(_ovStation);
-  // Skip while sub-pixel (the station is invisible from further out anyway —
-  // which is also what keeps this pass from painting it over Earth when it is
-  // genuinely hidden behind the planet: from any pose where occlusion could
-  // matter, the station is far below this threshold).
-  const pxAngle = (cam.fov * Math.PI / 180) / rnd.domElement.clientHeight;
-  if (d <= 0 || span / d < pxAngle * 0.05) return;
+  // Skip while sub-pixel. This is also what keeps the pass from painting the
+  // station over Earth when it is genuinely behind the planet: from any pose
+  // where that could happen it is far below this threshold anyway.
+  const pxAngle = (mainCam.fov * Math.PI / 180) / rnd.domElement.clientHeight;
+  if (d <= 0 || spanWorld / d < pxAngle * 0.05) return;
   if (occluders) {
     _ovDir.subVectors(_ovStation, _ovCamPos).divideScalar(d);
     for (const oc of occluders) {
@@ -1484,20 +1518,29 @@ export function renderStationOverlay(rnd, scn, cam, station, span, occluders) {
       if (_ovToOcc.addScaledVector(_ovDir, -t).length() < oc.r) return;
     }
   }
-  const near0 = cam.near, far0 = cam.far, mask0 = cam.layers.mask;
+
+  // Overlay space is world space translated onto the station and scaled by K,
+  // with no rotation of its own — so world directions (sunDir) carry over and
+  // the station just needs the world orientation it has in the real scene.
+  const K = OVERLAY_SPAN / spanWorld;
+  station.getWorldQuaternion(_ovQuat);
+  ov.root.quaternion.copy(_ovQuat);
+  ov.cam.position.subVectors(_ovCamPos, _ovStation).multiplyScalar(K);
+  mainCam.getWorldQuaternion(_ovQuat);
+  ov.cam.quaternion.copy(_ovQuat);
+  ov.cam.fov    = mainCam.fov;
+  ov.cam.aspect = mainCam.aspect;
+  const dK = d * K;
+  ov.cam.near = Math.max(dK * 0.01, OVERLAY_SPAN * 1e-3);
+  ov.cam.far  = dK + OVERLAY_SPAN * 4;
+  ov.cam.updateProjectionMatrix();
+  ov.dir.position.copy(sunDir).normalize().multiplyScalar(OVERLAY_SPAN * 10);
+
   const auto0 = rnd.autoClear;
-  cam.near = d * 0.02;
-  cam.far  = d * 3 + span * 4;
-  cam.updateProjectionMatrix();
-  cam.layers.set(1);
   rnd.autoClear = false;
   rnd.clearDepth();
-  rnd.render(scn, cam);
+  rnd.render(ov.scene, ov.cam);
   rnd.autoClear = auto0;
-  cam.layers.mask = mask0;
-  cam.near = near0;
-  cam.far = far0;
-  cam.updateProjectionMatrix();
 }
 
 // ISS orbit ring — the station itself is sub-pixel from anywhere but arm's
@@ -6183,9 +6226,14 @@ function animate(){
     renderer.render(scene, camera);
   }
 
-  // Redraw the true-scale ISS over the frame with a depth range it can
-  // actually resolve — see renderStationOverlay.
-  if (issModel) renderStationOverlay(renderer, scene, camera, issModel, ISS_SPAN_UNITS);
+  // Draw the true-scale ISS in its magnified overlay scene — see
+  // createStationOverlay. The Sun sits at the origin, so the light direction
+  // from the station is simply back toward it.
+  if (issModel && issOverlay) {
+    _issSunDir.copy(issModel.getWorldPosition(_issWorldPos)).negate();
+    renderStationOverlay(renderer, issOverlay, camera, issModel,
+                         ISS_SPAN_UNITS, _issSunDir);
+  }
 }
 animate();
 
