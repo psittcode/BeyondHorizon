@@ -1404,6 +1404,29 @@ export function applyCutoutAlpha(mat) {
   mat.depthWrite  = true;
 }
 
+// NASA's glTF carries a uniform NEGATIVE scale on its root node (SSREF_IGOAL,
+// -0.00258 on all three axes). That is a point inversion — determinant < 0 — and
+// all 1091 nodes below inherit it, so the whole station renders as its own
+// mirror image and every decal comes out backwards: the meatball on Destiny
+// reads "AZAN", the JEM module reads "NAqAL". The texture atlases themselves are
+// drawn the right way round, which is what shows this to be a handedness slip in
+// the conversion out of Lightwave rather than anything intended. A second -1
+// cancels it: determinant goes positive, the lettering reads correctly, and the
+// station gets back its true chirality (port really is port).
+//
+// Applied to the model root rather than a wrapper on purpose — the wrappers'
+// world quaternions are read by renderStationOverlay, and a negative determinant
+// there would make Matrix4.decompose hand back a mirror-corrected rotation.
+// Idempotent via userData because loadGLB hands both views one cached gltf and
+// Object3D.clone deep-copies userData, so whichever view loads second inherits
+// the flag instead of flipping it back.
+export function unmirrorStation(root) {
+  if (root.userData.__unmirrored) return root;
+  root.scale.multiplyScalar(-1);
+  root.userData.__unmirrored = true;
+  return root;
+}
+
 // ?v busts browser caches — the GLB is a multi-MB XHR fetch that browsers hang
 // on to. Bump the version whenever iss.glb is replaced (keep sizes.js in sync
 // so both views share one cached copy).
@@ -1415,7 +1438,7 @@ export function applyCutoutAlpha(mat) {
 // alpha-cutout trusses — hence no processing here at all. (The webp copies its
 // EXT_texture_webp carries go unused: three r128 takes the PNG fallbacks.)
 loadGLB('iss.glb?v=4').then(gltf => {
-  const model = gltf.scene;
+  const model = unmirrorStation(gltf.scene);   // undo NASA's inverted root node
 
   // Normalise the authored model (arbitrary Blender units, off-centre origin) to
   // true scale: centre it on its own bounding box, then scale so the longest

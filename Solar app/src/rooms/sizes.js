@@ -38,7 +38,7 @@ import {
   BH_TUNE, bhTuneRegister, bhTuneDiskUniforms, bhTuneLensUniforms,
   setBHTunerAvailable,
   orbitalToXYZ, ORBIT_COLORS, getStudioEnvMap,
-  createStationOverlay, renderStationOverlay, applyCutoutAlpha,
+  createStationOverlay, renderStationOverlay, applyCutoutAlpha, unmirrorStation,
 } from '../world.js';
 
 const KM_PER_UNIT   = 14959787.07;  // same anchor as the solar view (1 AU = 10 units)
@@ -824,7 +824,7 @@ const room = {
     group.add(clickMesh);
 
     loadGLB(b.glb).then(gltf => {
-      const model = gltf.scene.clone(true);
+      const model = unmirrorStation(gltf.scene.clone(true));
       const box = new THREE.Box3().setFromObject(model);
       const size = new THREE.Vector3(), centre = new THREE.Vector3();
       box.getSize(size);
