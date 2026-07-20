@@ -3777,8 +3777,12 @@ window.addEventListener("click", e => {
     if (issHits.length > 0) { flyToObject(issModel); return; }
   }
 
-  // Check everything else
-  const allClickable = [...meshes, sun, moon];
+  // Check everything else. While locked on the ISS, Earth is NOT clickable:
+  // from 400 km up its disc fills half the sky, and the click the browser fires
+  // at the end of every orbit-drag would land on it and fly you straight back
+  // out. Earth stays reachable from the bodies panel (flyToObject via showList).
+  const lockedOnISS = issModel && lockedObject === issModel;
+  const allClickable = [...meshes.filter(m => !(lockedOnISS && m === earth)), sun, moon];
   const hits = raycaster.intersectObjects(allClickable, true);
 
   if (hits.length > 0) {
