@@ -141,6 +141,12 @@ const sunLight = new THREE.PointLight(0xffffff, 1.0);
 sunLight.position.set(0, 0, 0);
 scene.add(sunLight);
 
+// The ISS renders in its own depth-cleared layer-1 pass (see
+// renderStationOverlay) — lights must be enabled on that layer too, or the
+// station would draw unlit there.
+ambientLight.layers.enable(1);
+sunLight.layers.enable(1);
+
 // Warm ambient light added only during the black hole view — not in scene by default
 
 const textureLoader = new THREE.TextureLoader();
@@ -1426,6 +1432,9 @@ loadGLB('iss.glb?v=3').then(gltf => {
     o.material.envMap = env;
     o.material.envMapIntensity = 1.0;
     o.material.needsUpdate = true;
+    // Layer 1 = drawn only by renderStationOverlay's depth-tight pass, not
+    // the main render — see the comment on that function for why.
+    o.layers.set(1);
   });
 
   iss.userData.name = 'ISS';
@@ -1434,6 +1443,57 @@ loadGLB('iss.glb?v=3').then(gltf => {
   issModel = iss;
   issGroup.add(iss);
 });
+
+// Depth-tight overlay pass for the true-scale station. The station spans
+// ~7.3e-9 units, but the logarithmic depth buffer can only separate surfaces
+// ~ln2 · log2(far+1) / 2^24 apart near the camera — ~8e-7 units (12 km) at
+// far = 1e6, far worse at the True-Size room's far = 1e12. The whole model
+// sits two orders of magnitude below what the depth test can resolve, so its
+// faces won and lost at random: the speckled "transparent" panels that no
+// material tweak could ever fix. So the station's meshes live on layer 1,
+// invisible to the main render, and this pass redraws them afterwards over a
+// cleared depth buffer with near/far pinched to a shell around the station —
+// there the same depth buffer resolves sub-millimetre detail. Shared with the
+// True-Size room (its stops passed as `occluders` so a foreground body still
+// hides the station instead of being painted over).
+const _ovStation = new THREE.Vector3();
+const _ovCamPos  = new THREE.Vector3();
+const _ovDir     = new THREE.Vector3();
+const _ovToOcc   = new THREE.Vector3();
+export function renderStationOverlay(rnd, scn, cam, station, span, occluders) {
+  for (let o = station; o; o = o.parent) if (!o.visible) return;
+  station.getWorldPosition(_ovStation);
+  cam.getWorldPosition(_ovCamPos);
+  const d = _ovCamPos.distanceTo(_ovStation);
+  // Skip while sub-pixel (the station is invisible from further out anyway —
+  // which is also what keeps this pass from painting it over Earth when it is
+  // genuinely hidden behind the planet: from any pose where occlusion could
+  // matter, the station is far below this threshold).
+  const pxAngle = (cam.fov * Math.PI / 180) / rnd.domElement.clientHeight;
+  if (d <= 0 || span / d < pxAngle * 0.05) return;
+  if (occluders) {
+    _ovDir.subVectors(_ovStation, _ovCamPos).divideScalar(d);
+    for (const oc of occluders) {
+      _ovToOcc.subVectors(oc.pos, _ovCamPos);
+      const t = Math.min(Math.max(_ovToOcc.dot(_ovDir), 0), d);
+      if (_ovToOcc.addScaledVector(_ovDir, -t).length() < oc.r) return;
+    }
+  }
+  const near0 = cam.near, far0 = cam.far, mask0 = cam.layers.mask;
+  const auto0 = rnd.autoClear;
+  cam.near = d * 0.02;
+  cam.far  = d * 3 + span * 4;
+  cam.updateProjectionMatrix();
+  cam.layers.set(1);
+  rnd.autoClear = false;
+  rnd.clearDepth();
+  rnd.render(scn, cam);
+  rnd.autoClear = auto0;
+  cam.layers.mask = mask0;
+  cam.near = near0;
+  cam.far = far0;
+  cam.updateProjectionMatrix();
+}
 
 // ISS orbit ring — the station itself is sub-pixel from anywhere but arm's
 // length, so this thin circle is how you find it. Unlike the other orbit rings
@@ -3329,6 +3389,9 @@ const helioObjects = [
 
 // Click interaction
 const raycaster = new THREE.Raycaster();
+// The ISS meshes live on layer 1 (see renderStationOverlay); the raycaster
+// tests only layer 0 by default, so enable 1 too or the station is unclickable.
+raycaster.layers.enable(1);
 const mouse = new THREE.Vector2();
 
 // TEMP (size-comparison Earth): Sun panel with a button to toggle the true-size
@@ -6114,6 +6177,10 @@ function animate(){
   } else {
     renderer.render(scene, camera);
   }
+
+  // Redraw the true-scale ISS over the frame with a depth range it can
+  // actually resolve — see renderStationOverlay.
+  if (issModel) renderStationOverlay(renderer, scene, camera, issModel, ISS_SPAN_UNITS);
 }
 animate();
 

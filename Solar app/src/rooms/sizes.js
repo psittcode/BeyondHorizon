@@ -37,7 +37,7 @@ import {
   REAL_MOON_SHAPES, BH_DISK_VERT, BH_DISK_FRAG, BH_LENS_FRAG,
   BH_TUNE, bhTuneRegister, bhTuneDiskUniforms, bhTuneLensUniforms,
   setBHTunerAvailable,
-  orbitalToXYZ, ORBIT_COLORS, getStudioEnvMap,
+  orbitalToXYZ, ORBIT_COLORS, getStudioEnvMap, renderStationOverlay,
 } from '../world.js';
 
 const KM_PER_UNIT   = 14959787.07;  // same anchor as the solar view (1 AU = 10 units)
@@ -602,6 +602,8 @@ const room = {
   _rt: null, _lensMat: null, _lensScene: null, _lensCam: null, _rtW: 0, _rtH: 0,
   _lastT: 0, _fly: null, _active: false,
   _raycaster: null, _downXY: null,
+  _glbStops: [],        // { obj, span } — redrawn by renderStationOverlay each frame
+  _occluders: null,     // sphere stops as { pos, r }, built lazily for the overlay
 
   async init(ctx) {
     window.__sizesRoom = this;   // debug/inspection handle (harmless)
@@ -622,11 +624,16 @@ const room = {
 
     // Realistic lighting: one fixed sun-like key light + a whisper of ambient,
     // so every body has a proper day side and night side.
-    scene.add(new THREE.AmbientLight(0xffffff, 0.10));
+    const ambient = new THREE.AmbientLight(0xffffff, 0.10);
+    scene.add(ambient);
     const sunLight = new THREE.DirectionalLight(0xffffff, 1.35);
     sunLight.position.copy(SUN_DIR);   // direction only — magnitude is irrelevant
     scene.add(sunLight);
     scene.add(sunLight.target);
+    // The ISS stop renders in a depth-cleared layer-1 pass (renderStationOverlay
+    // in world.js) — enable the lights there too or it draws unlit.
+    ambient.layers.enable(1);
+    sunLight.layers.enable(1);
 
     this.camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 1e-7, 1e12);
     this.controls = new THREE.OrbitControls(this.camera, ctx.domElement);
@@ -841,9 +848,13 @@ const room = {
         o.material.envMap = env;
         o.material.envMapIntensity = 1.0;
         o.material.needsUpdate = true;
+        // Layer 1: drawn only by renderStationOverlay's depth-tight pass —
+        // at 7e-9 units the main pass's depth buffer can't resolve the model.
+        o.layers.set(1);
       });
       group.add(wrap);
       this._spins.push({ obj: wrap, rate: 0.0028 });   // same slow turn as the globes
+      this._glbStops.push({ obj: wrap, span: b.r * 2 });
     });
 
     b.group = group; b.mesh = clickMesh;
@@ -1278,6 +1289,20 @@ const room = {
       ctx.renderer.render(this._lensScene, this._lensCam);
     } else {
       ctx.renderer.render(this.scene, this.camera);
+    }
+    // Redraw the true-scale ISS with a depth range it can actually resolve
+    // (see renderStationOverlay in world.js). Neighbouring sphere stops act as
+    // occluders so e.g. orbiting behind Deimos still hides the station.
+    if (this._glbStops.length) {
+      if (!this._occluders) {
+        this._occluders = this.bodies
+          .filter(b => !b.mega && !b.glb)
+          .map(b => ({ pos: new THREE.Vector3(b.x, b.r, 0), r: b.r }));
+      }
+      for (const g of this._glbStops) {
+        renderStationOverlay(ctx.renderer, this.scene, this.camera,
+                             g.obj, g.span, this._occluders);
+      }
     }
     setBHTunerAvailable('room', lensOn);
   },
