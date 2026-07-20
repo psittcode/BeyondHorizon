@@ -1473,11 +1473,6 @@ loadGLB('iss.glb?v=4').then(gltf => {
     .setFromAxisAngle(_axisZ, Math.PI)
     .multiply(_qTmp.setFromAxisAngle(_axisY, -Math.PI / 2))
     .multiply(_qTmp.setFromAxisAngle(_axisX, -Math.PI / 2));
-  // Then swap which way it faces along the track: a half turn about the radial
-  // (Earth-up) axis — parent +X at the parked position — so the modules point
-  // the other way down the orbit. Applied in the parent frame, after the
-  // attitude above, so the nadir side keeps facing the planet either way.
-  iss.quaternion.premultiply(_qTmp.setFromAxisAngle(_axisX, Math.PI));
   iss.position.set(ISS_ORBIT_RADIUS, 0, 0);
 
   // Materials as authored — no metalness/roughness clamps, sidedness left as the

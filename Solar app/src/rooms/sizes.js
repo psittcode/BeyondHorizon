@@ -833,6 +833,12 @@ const room = {
       const wrap = new THREE.Group();
       wrap.add(model);
       wrap.scale.setScalar((b.r * 2) / Math.max(size.x, size.y, size.z));
+      // Flip it upright: +Y in the IGOAL model is the station's NADIR (see
+      // world.js), so as authored it stands on this room's baseline inverted,
+      // Cupola pointing at the ceiling. Rolling half a turn about Z puts that
+      // side down. Euler order XYZ composes as Ry·Rz, so the per-frame
+      // rotation.y spin stays a level turntable on top of this.
+      wrap.rotation.z = Math.PI;
       // Materials are shared with the main sim's cached GLB — clone before
       // touching them, or the solar view's station changes with it. PBR as
       // authored + the shared studio environment map (see world.js) so metal
