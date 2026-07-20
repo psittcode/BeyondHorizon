@@ -1539,10 +1539,17 @@ export function createStationOverlay(model, maxDim, ambientIntensity, lightInten
   clone.traverse(o => { if (o.isMesh) o.layers.set(0); });  // never layer 1 here
   root.add(clone);
   scene.add(root);
-  scene.add(new THREE.AmbientLight(0xffffff, ambientIntensity));
+  const amb = new THREE.AmbientLight(0xffffff, ambientIntensity);
+  scene.add(amb);
   const dir = new THREE.DirectionalLight(0xffffff, lightIntensity);
   scene.add(dir, dir.target);
-  return { scene, root, dir, cam: new THREE.PerspectiveCamera(50, 1, 1, 1000) };
+  // baseAmbient/baseKey are the full-sunlight intensities; setStationSunlight
+  // scales the overlay back down from them as the station enters Earth's shadow.
+  return {
+    scene, root, amb, dir,
+    baseAmbient: ambientIntensity, baseKey: lightIntensity, lit: 1,
+    cam: new THREE.PerspectiveCamera(50, 1, 1, 1000)
+  };
 }
 
 const _ovStation = new THREE.Vector3();
@@ -1605,6 +1612,60 @@ export function renderStationOverlay(rnd, ov, mainCam, station, spanWorld, sunDi
   rnd.clearDepth();
   rnd.render(ov.scene, ov.cam);
   rnd.autoClear = auto0;
+}
+
+// ── Earth's shadow on the station ────────────────────────────────────────────
+//
+// Three things light the station in its overlay scene: the sun-tracking key
+// light, a faint ambient, and the studio environment map that gives its PBR
+// materials something to reflect. All three are blind to where the station
+// actually is, so it stayed uniformly bright even while flying over the night
+// side — where the real ISS goes dark. (NASA's Eyes draws it there as a dim
+// grey silhouette, panels barely readable.) The two functions below measure how
+// much sunlight reaches the station and scale all three by it.
+//
+// The Sun sits at the origin, so Earth's shadow axis is just Earth's own
+// position direction. Over the station's 408-km altitude the umbra cone narrows
+// by under 4 km — nothing against Earth's 6371-km radius — so a cylinder is the
+// right approximation. The soft edge stands in for the atmosphere, which dims
+// and reddens the last stretch of the crossing rather than cutting it off.
+const SHADOW_EARTH_R = 6371 / 14959787.07;
+const SHADOW_FADE    = SHADOW_EARTH_R * 0.02;   // ~130 km of penumbra
+const _shStation = new THREE.Vector3();
+const _shSunward = new THREE.Vector3();
+const _shRel     = new THREE.Vector3();
+
+// 1 in full sun, 0 deep in the umbra.
+export function stationSunlitFraction(station, occluder, occluderRadius) {
+  station.getWorldPosition(_shStation);
+  occluder.getWorldPosition(_shSunward);
+  _shRel.subVectors(_shStation, _shSunward);
+  const dSun = _shSunward.length();
+  if (dSun === 0) return 1;
+  _shSunward.divideScalar(-dSun);                 // occluder → Sun (at the origin)
+  const along = _shRel.dot(_shSunward);
+  if (along >= 0) return 1;                       // sunward side — never shadowed
+  const perp = Math.sqrt(Math.max(_shRel.lengthSq() - along * along, 0));
+  const t = (perp - (occluderRadius - SHADOW_FADE)) / (2 * SHADOW_FADE);
+  const u = Math.min(Math.max(t, 0), 1);
+  return u * u * (3 - 2 * u);                     // smoothstep across the fade band
+}
+
+// The key light goes out entirely in shadow; ambient and the environment map
+// keep a floor, so the station reads as a dark silhouette rather than a hole in
+// the sky. That residual is Earthshine, which the night side genuinely supplies.
+const ECLIPSE_AMBIENT = 0.12;   // fraction of full-sun ambient retained
+const ECLIPSE_ENV     = 0.10;   // fraction of full-sun envMapIntensity retained
+export function setStationSunlight(ov, lit) {
+  if (!ov || Math.abs(lit - ov.lit) < 0.004) return;
+  ov.lit = lit;
+  ov.dir.intensity = ov.baseKey * lit;
+  ov.amb.intensity = ov.baseAmbient * (ECLIPSE_AMBIENT + (1 - ECLIPSE_AMBIENT) * lit);
+  // envMapIntensity is a plain uniform read at draw time — no needsUpdate, and
+  // the overlay's clone shares these materials with the true-scale original, so
+  // one traversal covers both copies.
+  const envI = ECLIPSE_ENV + (1 - ECLIPSE_ENV) * lit;
+  ov.root.traverse(o => { if (o.isMesh && o.material) o.material.envMapIntensity = envI; });
 }
 
 // ISS orbit ring — the station itself is sub-pixel from anywhere but arm's
@@ -6307,6 +6368,11 @@ function animate(){
   // from the station is simply back toward it.
   if (issModel && issOverlay) {
     _issSunDir.copy(issModel.getWorldPosition(_issWorldPos)).negate();
+    // Half of every 92.9-minute orbit is spent in Earth's shadow — dim the
+    // overlay's lighting to match instead of flying a permanently sunlit
+    // station over the night side.
+    setStationSunlight(issOverlay,
+      stationSunlitFraction(issModel, earth, SHADOW_EARTH_R));
     renderStationOverlay(renderer, issOverlay, camera, issModel,
                          ISS_SPAN_UNITS, _issSunDir);
   }
