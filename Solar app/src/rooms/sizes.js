@@ -29,7 +29,7 @@
 // the exact real shape models / seeded procedural shapes via world.js exports
 // (safe: world.js has long finished evaluating by the time this lazy-loads).
 
-import { loadTexture } from '../core/assets.js';
+import { loadTexture, loadGLB } from '../core/assets.js';
 import { data } from '../data/planets.js';
 import { LY_KM } from '../core/scale.js';
 import {
@@ -73,6 +73,14 @@ const PLANET_EXTRAS = {
 // Bodies that live outside the data array (built directly in world.js / kepler.js),
 // with the same true radii those files use.
 const EXTRA_BODIES = [
+  // The line-up's new first stop, and the only thing in it we built ourselves.
+  // At 109 m it is ~113× smaller than Deimos, the smallest natural body here —
+  // so it opens the tour by making the whole rest of the row look enormous.
+  // NASA's own glTF model (nasa/NASA-3D-Resources), not a sphere: `glb` sends it
+  // down the model branch in the build loop instead of the SphereGeometry path.
+  { name: 'International Space Station', r: (0.109 / 2) / KM_PER_UNIT,
+    glb: 'iss.glb', type: 'Space station · orbits Earth at 408 km',
+    stats: '109 m across the solar arrays · 420 tonnes · the largest structure humans have put in space' },
   { name: 'Sun',      r: 696340 / KM_PER_UNIT, tex: '2k_sun.jpg', selfLit: true,
     type: 'Star · G-type', glow: 0xffcc66 },
   { name: 'Moon',     r: 1737.4 / KM_PER_UNIT, tex: '2k_earth_moon.jpg', type: 'Moon of Earth' },
@@ -658,6 +666,7 @@ const room = {
     const ringsToInit = [];
     for (const b of this.bodies) {
       if (b.mega) { this._buildMega(b); continue; }
+      if (b.glb)  { this._buildGLB(b);  continue; }
 
       const geo = b.mn ? moonGeometry(b.mn, b.mnIdx) : new THREE.SphereGeometry(b.r, 64, 64);
       let mesh;
@@ -790,6 +799,51 @@ const room = {
     });
     document.getElementById('sizePrev').onclick = () => this.step(-1);
     document.getElementById('sizeNext').onclick = () => this.step(1);
+  },
+
+  // Build a model-based stop (the ISS): an actual mesh rather than a sphere,
+  // normalised so its longest dimension is the real span 2·r. The GLB arrives
+  // asynchronously, so the stop's group, its click proxy and its slot in the row
+  // all exist immediately — the model just drops into the group when it lands.
+  _buildGLB(b) {
+    const group = new THREE.Group();
+    group.position.set(b.x, b.r, 0);            // rests on the same baseline as the spheres
+
+    // Invisible sphere at the stop's own scale so clicking works the moment the
+    // room opens (and regardless of how sparse the model's geometry is — a truss
+    // is mostly empty space, and rays would sail straight through it). Same
+    // trick _buildMega uses for the flat cosmic-scale stops.
+    const clickMesh = new THREE.Mesh(
+      new THREE.SphereGeometry(b.r, 16, 16),
+      new THREE.MeshBasicMaterial({ visible: false })
+    );
+    clickMesh.userData.bodyIndex = this.bodies.indexOf(b);
+    group.add(clickMesh);
+
+    loadGLB(b.glb).then(gltf => {
+      const model = gltf.scene.clone(true);
+      const box = new THREE.Box3().setFromObject(model);
+      const size = new THREE.Vector3(), centre = new THREE.Vector3();
+      box.getSize(size);
+      box.getCenter(centre);
+      model.position.sub(centre);
+      const wrap = new THREE.Group();
+      wrap.add(model);
+      wrap.scale.setScalar((b.r * 2) / Math.max(size.x, size.y, size.z));
+      // Materials are shared with the main sim's cached GLB — clone before
+      // touching metalness, or the solar view's station changes with it.
+      model.traverse(o => {
+        if (!o.isMesh) return;
+        o.material = o.material.clone();
+        if (o.material.metalness !== undefined) o.material.metalness = Math.min(o.material.metalness, 0.35);
+        if (o.material.roughness !== undefined) o.material.roughness = Math.max(o.material.roughness, 0.45);
+      });
+      group.add(wrap);
+      this._spins.push({ obj: wrap, rate: 0.0028 });   // same slow turn as the globes
+    });
+
+    b.group = group; b.mesh = clickMesh;
+    this.scene.add(group);
   },
 
   // Build one cosmic-scale entry: a whole planetary system (star + true-scale
@@ -1063,6 +1117,14 @@ const room = {
     const b = this.selected >= 0 ? this.bodies[this.selected] : this.bodies[0];
     this.controls.minDistance = b.mega ? b.span * 0.05 : b.r * 1.25;
     this.controls.maxDistance = Math.max(b.span * 12, 0.01);
+    // The default 1e-7 near plane sits in FRONT of the whole ISS (span 7.3e-9),
+    // clipping it away entirely. Pull the near plane in for any stop small enough
+    // to need it; the log depth buffer absorbs the widened near/far ratio.
+    const wantNear = Math.min(1e-7, this.controls.minDistance * 0.05);
+    if (this.camera.near !== wantNear) {
+      this.camera.near = wantNear;
+      this.camera.updateProjectionMatrix();
+    }
   },
 
   _updateCaption() {

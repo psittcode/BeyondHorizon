@@ -172,3 +172,46 @@ The Moon is the only extraterrestrial body visited by humans.<br>
 
 Future exploration focuses on establishing lunar bases and using the Moon as a platform for deep space missions.<br>
 `;
+
+export const ISS_INFO = `
+<b>International Space Station</b><br><br>
+
+<b>General Overview</b><br>
+• Type: Crewed orbital laboratory — the largest structure humans have ever put in space<br>
+• Mean altitude: ~408 km above sea level (low Earth orbit)<br>
+• Orbital speed: ~27,600 km/h (7.66 km/s)<br>
+• Orbital period: ~92.9 minutes — about 15.5 orbits every day<br>
+• Inclination: 51.64°, which carries it over ~90% of the world's population<br>
+• Size: 109 m across the solar-array truss, 73 m along the pressurised modules<br>
+• Mass: ~420,000 kg<br><br>
+
+<b>A note on scale</b><br>
+This model is at TRUE size. The station spans 109 m against Earth's 12,742-km diameter — a ratio of roughly 1 : 117,000. At any normal zoom it is far smaller than a single pixel, which is exactly the point: the ISS is the largest thing we have ever built off-world, and it is still a speck beside its own planet. The thin blue ring marks its orbit; use it to find the station, then fly in.<br><br>
+
+<b>Orbit</b><br>
+At 408 km the station is still inside the thin upper atmosphere, so it loses altitude continuously to drag — a few hundred metres a month. Visiting spacecraft periodically boost it back up in a manoeuvre called a reboost. Without them the ISS would re-enter within a couple of years.<br><br>
+
+Its 51.64° inclination was chosen so that Russian rockets launching from Baikonur could reach it as easily as American ones from Florida — the orbit is a piece of diplomacy written into orbital mechanics.<br><br>
+
+<b>Structure</b><br>
+The station is assembled from modules launched separately and joined in orbit:<br>
+• Integrated Truss Structure: the 109-m backbone carrying eight solar arrays<br>
+• Pressurised modules: Zarya, Unity, Zvezda, Destiny, Columbus, Kibō, and others<br>
+• Cupola: the seven-window observation dome used for Earth observation and robotics<br>
+• Canadarm2: the 17-m robotic arm that captures arriving cargo craft<br><br>
+
+The solar arrays generate 75–90 kW, and the whole array wing tracks the Sun as the station circles Earth.<br><br>
+
+<b>Continuous Human Presence</b><br>
+The first crew, Expedition 1, arrived on 2 November 2000. Humans have lived aboard without a break ever since — the longest continuous human presence in space in history. The station is a partnership of NASA, Roscosmos, ESA, JAXA and CSA.<br><br>
+
+<b>Science</b><br>
+Microgravity removes convection, sedimentation and hydrostatic pressure from every experiment, which makes the ISS a laboratory that cannot be reproduced on the ground:<br>
+• Human physiology — bone and muscle loss, fluid shifts, radiation exposure on long missions<br>
+• Protein crystal growth, combustion science and fluid physics<br>
+• Materials exposure on the station's exterior<br>
+• Earth observation and cosmic-ray instruments mounted outside<br><br>
+
+<b>Visibility from Earth</b><br>
+Sunlight on those large arrays makes the ISS one of the brightest objects in the night sky — brighter than any star, moving steadily across the sky in a few minutes. It is visible to the naked eye from most of the planet.<br>
+`;

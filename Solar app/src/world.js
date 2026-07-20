@@ -6,7 +6,7 @@ import { deimosShape } from './data/deimosShape.js';
 import { phobosShape } from './data/phobosShape.js';
 import { nixShape } from './data/nixShape.js';
 import { hydraShape } from './data/hydraShape.js';
-import { MILKY_WAY_INFO, SGR_A_INFO, marsTransformedInfo, SUN_INFO, MOON_INFO } from './data/info.js';
+import { MILKY_WAY_INFO, SGR_A_INFO, marsTransformedInfo, SUN_INFO, MOON_INFO, ISS_INFO } from './data/info.js';
 import { scaleRatioN, formatRatio, realPerCm, AU_KM, LY_KM } from './core/scale.js';
 
 // Rooms (lazy-loaded). register() only stores a factory; the module is import()-ed
@@ -1320,6 +1320,103 @@ const moon = new THREE.Mesh(
 moon.position.set(MOON_ORBIT_DIST, 0, 0);
 moon.userData.trueRadius = MOON_TRUE_RADIUS;
 moonGroup.add(moon);
+
+// ── International Space Station ──────────────────────────────────────────────
+// NASA's own glTF model (nasa/NASA-3D-Resources, "ISS (B)"), at TRUE scale: the
+// station's 109-m truss is 1/117,000th of Earth's diameter, so it is genuinely
+// sub-pixel until you fly right up to it — exactly as it should be. The orbit
+// ring below is what makes it findable; fly to the ISS (bodies list, or click
+// the ring's neighbourhood once you're close) and flyToObject's true-radius
+// framing brings you in to a few hundred metres, where the model fills the view.
+//
+// Real orbital elements: 408 km mean altitude, 51.64° inclination, 92.9-min
+// period. Earth's equator IS the scene's XZ plane here (the sim tilts the
+// camera's up-vector by 23.4° rather than tilting Earth), so the inclination
+// goes straight onto the group's X rotation, the same way the Moon's 5.1° does.
+const ISS_ALT_KM        = 408;
+const ISS_ORBIT_RADIUS  = (6371 + ISS_ALT_KM) / 14959787.07;
+const ISS_INCLINATION   = 51.64 * (Math.PI / 180);
+const ISS_LENGTH_KM     = 0.109;                      // 109 m across the solar-array truss
+const ISS_SPAN_UNITS    = ISS_LENGTH_KM / 14959787.07;
+const ISS_TRUE_RADIUS   = ISS_SPAN_UNITS / 2;
+// Orbital rate in the sim's units. The Moon's 0.0004434 gives its 27.321-day
+// period, so scaling by the period ratio gives the ISS its real 92.9 minutes
+// (~15.5 orbits/day) on the same clock — it responds to the speed slider like
+// every other body. As with Pluto's short-period moons, moonOrbitStep()'s fixed
+// 0.05-rad/frame anti-aliasing cap takes over past ~2,600× real time (the ISS
+// would be strobing well before that); below it the period is exactly right.
+const ISS_ORBIT_RATE = 0.0004434 * ((27.321661 * 24 * 60) / 92.9);
+
+const issGroup = new THREE.Object3D();
+issGroup.rotation.x = ISS_INCLINATION;
+scene.add(issGroup);
+
+let issModel = null;   // set once the GLB resolves; null-guarded everywhere below
+
+loadGLB('iss.glb').then(gltf => {
+  const model = gltf.scene;
+
+  // Normalise the authored model (arbitrary Blender units, off-centre origin) to
+  // true scale: centre it on its own bounding box, then scale so the longest
+  // dimension is the real 109 m. Measured before scaling so the numbers are the
+  // model's own, not a previous run's.
+  const box = new THREE.Box3().setFromObject(model);
+  const size = new THREE.Vector3(), centre = new THREE.Vector3();
+  box.getSize(size);
+  box.getCenter(centre);
+  model.position.sub(centre);
+  const fit = ISS_SPAN_UNITS / Math.max(size.x, size.y, size.z);
+
+  // Wrapper carries the scale + attitude so the inner model keeps its centring offset.
+  const iss = new THREE.Group();
+  iss.add(model);
+  iss.scale.setScalar(fit);
+  // Flight attitude: the station flies with its truss (the model's long axis)
+  // perpendicular to the velocity vector and its modules pointing at Earth. The
+  // group orbits in the XZ plane moving along +Z at the +X node, so a quarter
+  // turn about Y lays the truss across the track.
+  iss.rotation.y = Math.PI / 2;
+  iss.position.set(ISS_ORBIT_RADIUS, 0, 0);
+
+  // The GLB is untextured — vertex-coloured PBR materials. Take them off full
+  // metalness so the point light at the Sun actually reads on the hull instead
+  // of leaving it a black silhouette against space.
+  model.traverse(o => {
+    if (!o.isMesh) return;
+    o.material = o.material.clone();
+    if (o.material.metalness !== undefined) o.material.metalness = Math.min(o.material.metalness, 0.35);
+    if (o.material.roughness !== undefined) o.material.roughness = Math.max(o.material.roughness, 0.45);
+  });
+
+  iss.userData.name = 'ISS';
+  iss.userData.trueRadius = ISS_TRUE_RADIUS;
+  iss.userData.info = ISS_INFO;
+  issModel = iss;
+  issGroup.add(iss);
+});
+
+// ISS orbit ring — the station itself is sub-pixel from anywhere but arm's
+// length, so this thin circle is how you find it. Unlike the other orbit rings
+// (hidden as you close in on their body) this one does the opposite: it appears
+// only once Earth is a real disc on screen, since at solar-system zoom it would
+// sit inside Earth's own 2.6px dot.
+const issOrbitPoints = [];
+for (let i = 0; i <= 256; i++) {
+  const a = (i / 256) * Math.PI * 2;
+  issOrbitPoints.push(new THREE.Vector3(Math.cos(a) * ISS_ORBIT_RADIUS, 0, Math.sin(a) * ISS_ORBIT_RADIUS));
+}
+const issOrbitLine = new THREE.Line(
+  new THREE.BufferGeometry().setFromPoints(issOrbitPoints),
+  // Brighter and more opaque than the planetary orbit rings, which can afford to
+  // be subtle because they enclose empty space. This one sits at 1.06 Earth radii
+  // — it is glued to the limb, half of it occluded by Earth — so at the other
+  // rings' 0.3 opacity it reads as a rendering artifact rather than an orbit.
+  // (That it hugs the planet at all is the honest lesson: "low" Earth orbit is
+  // 408 km above a 6,371-km radius, a skin barely 6% out from the surface.)
+  new THREE.LineBasicMaterial({ color: 0x9fe4ff, transparent: true, opacity: 0.8 })
+);
+issOrbitLine.visible = false;   // animate() shows it once Earth is a disc
+issGroup.add(issOrbitLine);
 
 // ── Mercury's relativistic perihelion precession (Einstein) ──────────────────
 // Mercury orbits on its real ellipse (e=0.2056, Sun at the focus); the long axis
@@ -3175,6 +3272,7 @@ const helioObjects = [
   sun,
   glowMesh,
   moonGroup,
+  issGroup,
   saturnTiltGroup,
   neptuneTiltGroup,
   uranusTiltGroup,
@@ -3549,7 +3647,10 @@ function flyToObject(obj, fromList = false) {
   // Let the zoom-in get proportionally close to whatever body we're framing — tiny
   // bodies (dwarf planets, Pluto's moons) need a far smaller min distance than the big
   // planets, or you'd be clamped many radii away (a dot) instead of ~2× (filling view).
-  controls.minDistance = Math.max(0.0000001, size * 2.0);
+  // Floor is 1e-9 rather than 1e-7 so the true-scale ISS (3.6e-9 units — a 109-m
+  // object in a 1 unit = 15M km world) can actually be approached; every natural
+  // body is orders of magnitude larger and never reaches the floor.
+  controls.minDistance = Math.max(1e-9, size * 2.0);
 
   // Hand the glide to animate() (see the camera-follow block there): it lerps the offset
   // from its current value to `offset` over ~3s while always parking the camera at
@@ -3661,6 +3762,16 @@ window.addEventListener("click", e => {
     const mHits = raycaster.intersectObjects(marsMoons.map(mm => mm.mesh), false);
     marsMesh.visible = marsWasVisible;
     if (mHits.length > 0) { flyToObject(mHits[0].object); return; }
+  }
+
+  // Check the ISS before anything else — it is tiny and orbits close enough to
+  // Earth that Earth's own sphere would otherwise swallow every ray aimed at it.
+  if (issModel && issModel.visible) {
+    const earthWasVisible = earth.visible;
+    earth.visible = false;
+    const issHits = raycaster.intersectObject(issModel, true);
+    earth.visible = earthWasVisible;
+    if (issHits.length > 0) { flyToObject(issModel); return; }
   }
 
   // Check everything else
@@ -5497,6 +5608,25 @@ function animate(){
     moonGroup.rotation.y += moonOrbitStep(0.0004434 * speed, MOON_ORBIT_DIST, deltaScale);
   }
 
+  // 🛰️ ISS — same treatment as the Moon: the inclined group rides Earth's world
+  // position and spins at the station's real 92.9-minute rate. Parenting the
+  // model to the rotating group keeps it nadir-pointing (modules toward Earth)
+  // for free, exactly as the tidally-locked Moon gets its facing for free.
+  if (issGroup) {
+    const _issEarthPos = new THREE.Vector3();
+    earth.getWorldPosition(_issEarthPos);
+    issGroup.position.copy(_issEarthPos);
+    issGroup.rotation.y += moonOrbitStep(ISS_ORBIT_RATE * speed, ISS_ORBIT_RADIUS, deltaScale);
+
+    // The station and its ring only mean anything once Earth is a real disc on
+    // screen; below that the ring is a sub-pixel smear inside Earth's own dot.
+    const _issTanHalf = Math.tan((camera.fov * Math.PI / 180) / 2);
+    const _earthPx = bodyApparentPx(earth, _issTanHalf);
+    const _issShow = !galacticViewActive && !spaceshipViewActive && _earthPx > 14;
+    issOrbitLine.visible = _issShow && orbitsVisible;
+    if (issModel) issModel.visible = _issShow;
+  }
+
   // 🪐 Jupiter moons follow Jupiter in world space — the whole tilted equatorial plane
   // (moons + orbit rings) rides Jupiter's position; each moon orbits within it.
   if (typeof jupiterMoons !== "undefined" && jupiterMoons.length) {
@@ -5945,6 +6075,9 @@ const bodyList = [
   { label: "• Venus", obj: meshes.find(m => m.userData.name === "Venus") },
   { label: "• Earth", obj: meshes.find(m => m.userData.name === "Earth") },
   { label: "　 ◦ Moon", obj: moon },
+  // Getter, not a value: the ISS model arrives asynchronously from its GLB, long
+  // after this array is built. Read at click time it is always the live object.
+  { label: "　 ◦ ISS", get obj() { return issModel; } },
   { label: " • Mars", obj: meshes.find(m => m.userData.name === "Mars") },
   { label: "　 ◦ Phobos", obj: (marsMoons.find(p => p.mesh.userData.name === "Phobos") || {}).mesh },
   { label: "　 ◦ Deimos", obj: (marsMoons.find(p => p.mesh.userData.name === "Deimos") || {}).mesh },
