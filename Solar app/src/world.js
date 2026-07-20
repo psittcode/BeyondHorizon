@@ -1351,6 +1351,35 @@ const issGroup = new THREE.Object3D();
 issGroup.rotation.x = ISS_INCLINATION;
 scene.add(issGroup);
 
+// Studio environment map for the ISS (and any future PBR model). This is how
+// Sketchfab-class viewers get metal to read as metal: PBR materials need an
+// environment to reflect — under the sim's single point light + faint ambient,
+// a metallic hull has nothing to mirror and renders near-black. A tiny PMREM
+// baked from three emissive panels (key / cool fill / warm bounce) gives the
+// materials that missing incident light. Built once, shared by both views.
+let _studioEnv = null;
+export function getStudioEnvMap() {
+  if (_studioEnv) return _studioEnv;
+  const pmrem = new THREE.PMREMGenerator(renderer);
+  const sc = new THREE.Scene();
+  const panel = (color, intensity, x, y, z, size) => {
+    const m = new THREE.Mesh(
+      new THREE.PlaneGeometry(size, size),
+      new THREE.MeshBasicMaterial({ color })
+    );
+    m.material.color.multiplyScalar(intensity);
+    m.position.set(x, y, z);
+    m.lookAt(0, 0, 0);
+    sc.add(m);
+  };
+  panel(0xffffff, 5.0,  10,  14,   8, 22);   // key — bright sun-white, high and to the side
+  panel(0xbfd4ff, 1.4, -14,   2,  -8, 26);   // fill — faint cool sky
+  panel(0xfff0d6, 2.2,   2, -12,   5, 24);   // bounce — warm Earth-shine from below
+  _studioEnv = pmrem.fromScene(sc, 0.04).texture;
+  pmrem.dispose();
+  return _studioEnv;
+}
+
 let issModel = null;   // set once the GLB resolves; null-guarded everywhere below
 
 // ?v busts browser caches — the GLB is a multi-MB XHR fetch that browsers hang
@@ -1386,15 +1415,17 @@ loadGLB('iss.glb?v=3').then(gltf => {
   iss.rotation.z = Math.PI / 2;
   iss.position.set(ISS_ORBIT_RADIUS, 0, 0);
 
-  // Rein in the PBR metalness: with no environment map, metal surfaces reflect
-  // nothing and go black under the single point light at the Sun. Clamping the
-  // scalar (it multiplies the metallic texture) keeps the hull readable on the
-  // dim side without flattening the material response.
+  // Render the model's PBR materials as authored — no metalness/roughness
+  // clamps — and give them the studio environment map they were authored
+  // against (see getStudioEnvMap). This is what makes the hull read white and
+  // the arrays gold instead of the muddy near-black of unlit metal.
+  const env = getStudioEnvMap();
   model.traverse(o => {
     if (!o.isMesh) return;
     o.material = o.material.clone();
-    if (o.material.metalness !== undefined) o.material.metalness = Math.min(o.material.metalness, 0.2);
-    if (o.material.roughness !== undefined) o.material.roughness = Math.max(o.material.roughness, 0.55);
+    o.material.envMap = env;
+    o.material.envMapIntensity = 1.0;
+    o.material.needsUpdate = true;
   });
 
   iss.userData.name = 'ISS';

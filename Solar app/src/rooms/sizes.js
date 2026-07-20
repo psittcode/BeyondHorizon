@@ -37,7 +37,7 @@ import {
   REAL_MOON_SHAPES, BH_DISK_VERT, BH_DISK_FRAG, BH_LENS_FRAG,
   BH_TUNE, bhTuneRegister, bhTuneDiskUniforms, bhTuneLensUniforms,
   setBHTunerAvailable,
-  orbitalToXYZ, ORBIT_COLORS,
+  orbitalToXYZ, ORBIT_COLORS, getStudioEnvMap,
 } from '../world.js';
 
 const KM_PER_UNIT   = 14959787.07;  // same anchor as the solar view (1 AU = 10 units)
@@ -831,12 +831,16 @@ const room = {
       wrap.add(model);
       wrap.scale.setScalar((b.r * 2) / Math.max(size.x, size.y, size.z));
       // Materials are shared with the main sim's cached GLB — clone before
-      // touching metalness, or the solar view's station changes with it.
+      // touching them, or the solar view's station changes with it. PBR as
+      // authored + the shared studio environment map (see world.js) so metal
+      // reflects like it does in a Sketchfab-class viewer.
+      const env = getStudioEnvMap();
       model.traverse(o => {
         if (!o.isMesh) return;
         o.material = o.material.clone();
-        if (o.material.metalness !== undefined) o.material.metalness = Math.min(o.material.metalness, 0.2);
-        if (o.material.roughness !== undefined) o.material.roughness = Math.max(o.material.roughness, 0.55);
+        o.material.envMap = env;
+        o.material.envMapIntensity = 1.0;
+        o.material.needsUpdate = true;
       });
       group.add(wrap);
       this._spins.push({ obj: wrap, rate: 0.0028 });   // same slow turn as the globes
