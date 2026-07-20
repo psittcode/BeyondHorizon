@@ -79,7 +79,7 @@ const EXTRA_BODIES = [
   // NASA's own glTF model (nasa/NASA-3D-Resources), not a sphere: `glb` sends it
   // down the model branch in the build loop instead of the SphereGeometry path.
   { name: 'International Space Station', r: (0.109 / 2) / KM_PER_UNIT,
-    glb: 'iss.glb?v=2', type: 'Space station · orbits Earth at 408 km',  // ?v must match world.js so the loader cache is shared
+    glb: 'iss.glb?v=3', type: 'Space station · orbits Earth at 408 km',  // ?v must match world.js so the loader cache is shared
     stats: '109 m across the solar arrays · 420 tonnes · the largest structure humans have put in space' },
   { name: 'Sun',      r: 696340 / KM_PER_UNIT, tex: '2k_sun.jpg', selfLit: true,
     type: 'Star · G-type', glow: 0xffcc66 },

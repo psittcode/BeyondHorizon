@@ -1353,11 +1353,13 @@ scene.add(issGroup);
 
 let issModel = null;   // set once the GLB resolves; null-guarded everywhere below
 
-// ?v=2 busts browser caches — the GLB is a 13 MB XHR fetch that browsers hang
-// on to, and v1 had the see-through-panels alpha bug baked into its materials.
-// Bump the version whenever iss.glb is regenerated (keep sizes.js in sync so
-// both views share one cached copy).
-loadGLB('iss.glb?v=2').then(gltf => {
+// ?v busts browser caches — the GLB is a multi-MB XHR fetch that browsers hang
+// on to. Bump the version whenever iss.glb is replaced (keep sizes.js in sync
+// so both views share one cached copy). v3 = the Sketchfab model by rhuket
+// (CC-BY-4.0, credited in the info panel) — the earlier NASA IGOAL model came
+// out of the offline optimizer with torn hulls and alpha-cutout trusses turned
+// to solid slabs.
+loadGLB('iss.glb?v=3').then(gltf => {
   const model = gltf.scene;
 
   // Normalise the authored model (arbitrary Blender units, off-centre origin) to
