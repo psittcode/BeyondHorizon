@@ -1353,7 +1353,11 @@ scene.add(issGroup);
 
 let issModel = null;   // set once the GLB resolves; null-guarded everywhere below
 
-loadGLB('iss.glb').then(gltf => {
+// ?v=2 busts browser caches — the GLB is a 13 MB XHR fetch that browsers hang
+// on to, and v1 had the see-through-panels alpha bug baked into its materials.
+// Bump the version whenever iss.glb is regenerated (keep sizes.js in sync so
+// both views share one cached copy).
+loadGLB('iss.glb?v=2').then(gltf => {
   const model = gltf.scene;
 
   // Normalise the authored model (arbitrary Blender units, off-centre origin) to
