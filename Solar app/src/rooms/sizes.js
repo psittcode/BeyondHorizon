@@ -835,8 +835,8 @@ const room = {
       model.traverse(o => {
         if (!o.isMesh) return;
         o.material = o.material.clone();
-        if (o.material.metalness !== undefined) o.material.metalness = Math.min(o.material.metalness, 0.35);
-        if (o.material.roughness !== undefined) o.material.roughness = Math.max(o.material.roughness, 0.45);
+        if (o.material.metalness !== undefined) o.material.metalness = Math.min(o.material.metalness, 0.2);
+        if (o.material.roughness !== undefined) o.material.roughness = Math.max(o.material.roughness, 0.55);
       });
       group.add(wrap);
       this._spins.push({ obj: wrap, rate: 0.0028 });   // same slow turn as the globes

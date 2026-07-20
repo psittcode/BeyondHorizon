@@ -1371,21 +1371,24 @@ loadGLB('iss.glb').then(gltf => {
   const iss = new THREE.Group();
   iss.add(model);
   iss.scale.setScalar(fit);
-  // Flight attitude: the station flies with its truss (the model's long axis)
-  // perpendicular to the velocity vector and its modules pointing at Earth. The
-  // group orbits in the XZ plane moving along +Z at the +X node, so a quarter
-  // turn about Y lays the truss across the track.
-  iss.rotation.y = Math.PI / 2;
+  // Flight attitude. The IGOAL model's truss (its 109-m long axis) lies along
+  // +X and the pressurised modules along Z. The real station flies modules-
+  // first with the truss cross-track (along the orbit normal): the group spins
+  // about Y with the station parked at +X, where velocity is -Z, so the modules
+  // already line up with the track — a quarter roll about Z stands the truss up
+  // onto the orbit normal.
+  iss.rotation.z = Math.PI / 2;
   iss.position.set(ISS_ORBIT_RADIUS, 0, 0);
 
-  // The GLB is untextured — vertex-coloured PBR materials. Take them off full
-  // metalness so the point light at the Sun actually reads on the hull instead
-  // of leaving it a black silhouette against space.
+  // Rein in the PBR metalness: with no environment map, metal surfaces reflect
+  // nothing and go black under the single point light at the Sun. Clamping the
+  // scalar (it multiplies the metallic texture) keeps the hull readable on the
+  // dim side without flattening the material response.
   model.traverse(o => {
     if (!o.isMesh) return;
     o.material = o.material.clone();
-    if (o.material.metalness !== undefined) o.material.metalness = Math.min(o.material.metalness, 0.35);
-    if (o.material.roughness !== undefined) o.material.roughness = Math.max(o.material.roughness, 0.45);
+    if (o.material.metalness !== undefined) o.material.metalness = Math.min(o.material.metalness, 0.2);
+    if (o.material.roughness !== undefined) o.material.roughness = Math.max(o.material.roughness, 0.55);
   });
 
   iss.userData.name = 'ISS';
@@ -5998,6 +6001,19 @@ function animate(){
     const dir = earthPos.clone().negate().normalize(); // direction from Earth to Sun (Sun is at 0,0,0)
     earthMesh.material.uniforms.sunDirection.value.copy(dir);
     if (cloudMesh.material.uniforms) cloudMesh.material.uniforms.sunDirection.value.copy(dir);
+
+    // Fade the limb-glow shell away as the camera drops to orbital altitude.
+    // The shell sits at 1.09R (it can't be tighter — see buildEarthAtmosphere),
+    // but the ISS orbits at 1.064R, INSIDE it: from there the BackSide additive
+    // dome reads as a white haze wrapped around the station. The dome is only
+    // meant to be seen from outside anyway, so it dims from full strength at
+    // 1.6R down to nothing by 1.12R.
+    if (earthAtmoShell) {
+      const R = earthMesh.userData.size;
+      const dCam = camera.position.distanceTo(earthMesh.position) / R;
+      const fade = Math.min(1, Math.max(0, (dCam - 1.12) / (1.6 - 1.12)));
+      earthAtmoShell.material.uniforms.uStrength.value = 1.67 * fade;
+    }
   }
 
   // ☀️ Update Terraformed Mars shader sun direction (surface + clouds)
