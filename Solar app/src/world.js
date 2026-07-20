@@ -1385,6 +1385,7 @@ let issOverlay = null;   // magnified scene the station is actually drawn in
 
 const _axisX = new THREE.Vector3(1, 0, 0);
 const _axisY = new THREE.Vector3(0, 1, 0);
+const _axisZ = new THREE.Vector3(0, 0, 1);
 const _qTmp  = new THREE.Quaternion();
 
 // NASA's IGOAL model marks its hull, truss and decal materials alphaMode BLEND,
@@ -1456,13 +1457,21 @@ loadGLB('iss.glb?v=4').then(gltf => {
   iss.add(model);
   iss.scale.setScalar(fit);
   // Flight attitude. In the IGOAL model the truss (the 109-m long axis) runs
-  // along Z and the pressurised modules along X. The real station flies modules-
-  // first with the truss cross-track: the group spins about Y with the station
-  // parked at +X, where velocity is -Z, so the modules must end up along Z and
-  // the truss along Y (the orbit normal). Quarter turn about X takes the truss
-  // Z→Y, then a quarter turn about Y takes the modules X→Z.
+  // along Z, the pressurised modules along X, and +Y is the station's NADIR —
+  // the Earth-facing side. (Established from parts whose real facing is not in
+  // doubt: Rassvet, which docks nadir, sits at +5.5; Poisk, which docks zenith,
+  // at -7.3; the Cupola is on the +Y side too.)
+  //
+  // The real station flies modules-first with the truss cross-track. The group
+  // spins about Y with the station parked at +X, where velocity is -Z and +X is
+  // straight up away from Earth. So: quarter turn about X takes the truss Z→Y
+  // (onto the orbit normal), a quarter turn about Y takes the modules X→Z (onto
+  // the track), and a half turn about the track axis rolls the station over so
+  // its nadir side faces the planet instead of deep space — without that last
+  // roll it flies inverted, Cupola pointing at the sky.
   iss.quaternion
-    .setFromAxisAngle(_axisY, -Math.PI / 2)
+    .setFromAxisAngle(_axisZ, Math.PI)
+    .multiply(_qTmp.setFromAxisAngle(_axisY, -Math.PI / 2))
     .multiply(_qTmp.setFromAxisAngle(_axisX, -Math.PI / 2));
   iss.position.set(ISS_ORBIT_RADIUS, 0, 0);
 
