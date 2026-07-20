@@ -1528,6 +1528,45 @@ loadGLB('iss.glb?v=4').then(gltf => {
 // render over a cleared depth buffer.
 const OVERLAY_SPAN = 100;
 
+// ── Cost control for the overlay pass ────────────────────────────────────────
+//
+// The IGOAL station is 555 meshes / 839 draw calls / 2.7 M triangles, and the
+// overlay redraws all of it every frame the station is anywhere in the frustum
+// — including the usual case, where it is a speck beside Earth. At 60fps that
+// is ~160 M triangles a second spent on a sub-pixel dot, which is what makes
+// the laptop hot. Two size-aware gates below cut that without changing a pixel:
+//
+//  1. Under DOT_PX across, the whole model is replaced by one soft sprite. At
+//     that size the render resolves to a dot regardless, so a dot is what we
+//     draw — 1 draw call instead of 839.
+//  2. Above PART_CULL_PX (i.e. close enough that the structure itself is large
+//     on screen), individual parts whose own projected diameter is under
+//     PART_PX are skipped. A part narrower than half a pixel cannot be
+//     resolved; the gate keeps this off at smaller sizes, where culling fine
+//     parts could thin the silhouette.
+const DOT_PX        = 2.0;   // station span below which the sprite stands in
+const PART_PX       = 0.5;   // per-part projected diameter that still draws
+const PART_CULL_PX  = 150;   // station span above which per-part culling runs
+
+// Soft round dot for gate 1, built once and shared. A gradient rather than a
+// hard disc so the stand-in fades exactly like the sub-pixel render it replaces
+// instead of popping in as a crisp circle.
+let _stationDotTex = null;
+function getStationDotTexture() {
+  if (_stationDotTex) return _stationDotTex;
+  const c = document.createElement('canvas');
+  c.width = c.height = 64;
+  const g = c.getContext('2d').createRadialGradient(32, 32, 0, 32, 32, 32);
+  g.addColorStop(0,    'rgba(255,255,255,1)');
+  g.addColorStop(0.35, 'rgba(255,250,240,0.85)');
+  g.addColorStop(1,    'rgba(255,250,240,0)');
+  const ctx2d = c.getContext('2d');
+  ctx2d.fillStyle = g;
+  ctx2d.fillRect(0, 0, 64, 64);
+  _stationDotTex = new THREE.CanvasTexture(c);
+  return _stationDotTex;
+}
+
 // `model` is the loaded GLB scene; `maxDim` its natural longest dimension.
 // Materials are shared with the source (cloned by the caller beforehand), so
 // this costs one extra node tree, not another copy of 22 MB of geometry.
@@ -1543,10 +1582,40 @@ export function createStationOverlay(model, maxDim, ambientIntensity, lightInten
   scene.add(amb);
   const dir = new THREE.DirectionalLight(0xffffff, lightIntensity);
   scene.add(dir, dir.target);
+
+  // Sub-pixel stand-in (gate 1). Sized to the station's own span, so it covers
+  // the same footprint the model would have; sits at the overlay origin, which
+  // is where the station is. Unlit and depth-free — nothing else is in the
+  // scene when it draws.
+  const dot = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: getStationDotTexture(),
+    transparent: true, depthTest: false, depthWrite: false
+  }));
+  dot.scale.setScalar(OVERLAY_SPAN * 1.5);
+  dot.visible = false;
+  scene.add(dot);
+
+  // Per-part radii for gate 2, in overlay-scene units, measured once here so
+  // the per-frame test is one multiply per part rather than any matrix work.
+  root.updateMatrixWorld(true);
+  const parts = [];
+  const _col = new THREE.Vector3();
+  clone.traverse(o => {
+    if (!o.isMesh) return;
+    if (!o.geometry.boundingSphere) o.geometry.computeBoundingSphere();
+    const bs = o.geometry.boundingSphere;
+    if (!bs) return;
+    let s = 0;
+    for (let i = 0; i < 3; i++) {
+      s = Math.max(s, _col.setFromMatrixColumn(o.matrixWorld, i).length());
+    }
+    parts.push({ mesh: o, r: bs.radius * s });
+  });
+
   // baseAmbient/baseKey are the full-sunlight intensities; setStationSunlight
   // scales the overlay back down from them as the station enters Earth's shadow.
   return {
-    scene, root, amb, dir,
+    scene, root, amb, dir, dot, parts, culled: false,
     baseAmbient: ambientIntensity, baseKey: lightIntensity, lit: 1,
     cam: new THREE.PerspectiveCamera(50, 1, 1, 1000)
   };
@@ -1576,7 +1645,9 @@ export function renderStationOverlay(rnd, ov, mainCam, station, spanWorld, sunDi
   // station over Earth when it is genuinely behind the planet: from any pose
   // where that could happen it is far below this threshold anyway.
   const pxAngle = (mainCam.fov * Math.PI / 180) / rnd.domElement.clientHeight;
-  if (d <= 0 || spanWorld / d < pxAngle * 0.05) return;
+  if (d <= 0) return;
+  const spanPx = (spanWorld / d) / pxAngle;
+  if (spanPx < 0.05) return;
   if (occluders) {
     _ovDir.subVectors(_ovStation, _ovCamPos).divideScalar(d);
     for (const oc of occluders) {
@@ -1590,6 +1661,30 @@ export function renderStationOverlay(rnd, ov, mainCam, station, spanWorld, sunDi
   // with no rotation of its own — so world directions (sunDir) carry over and
   // the station just needs the world orientation it has in the real scene.
   const K = OVERLAY_SPAN / spanWorld;
+
+  // Size gates — see DOT_PX / PART_PX above.
+  const tiny = spanPx < DOT_PX;
+  ov.root.visible = !tiny;                       // hidden root skips its whole subtree
+  if (ov.dot) {
+    ov.dot.visible = tiny;
+    // Match the brightness the model would have had: the sunlit fraction the
+    // shadow code applies to the lights can't reach an unlit sprite.
+    ov.dot.material.opacity = ov.lit;
+  }
+  if (!tiny && ov.parts) {
+    // Per-part cull, and the restore that must follow it — without the `culled`
+    // latch a part hidden while far would stay hidden after the gate turns off.
+    const cull = spanPx > PART_CULL_PX;
+    if (cull) {
+      const minR = (PART_PX * pxAngle * d * K) / 2;   // overlay units, from px
+      for (const p of ov.parts) p.mesh.visible = p.r >= minR;
+      ov.culled = true;
+    } else if (ov.culled) {
+      for (const p of ov.parts) p.mesh.visible = true;
+      ov.culled = false;
+    }
+  }
+
   station.getWorldQuaternion(_ovQuat);
   ov.root.quaternion.copy(_ovQuat);
   ov.cam.position.subVectors(_ovCamPos, _ovStation).multiplyScalar(K);
