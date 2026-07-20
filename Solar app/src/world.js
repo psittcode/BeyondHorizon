@@ -1383,13 +1383,38 @@ export function getStudioEnvMap() {
 let issModel = null;     // set once the GLB resolves; null-guarded everywhere below
 let issOverlay = null;   // magnified scene the station is actually drawn in
 
+const _axisX = new THREE.Vector3(1, 0, 0);
+const _axisY = new THREE.Vector3(0, 1, 0);
+const _qTmp  = new THREE.Quaternion();
+
+// NASA's IGOAL model marks its hull, truss and decal materials alphaMode BLEND,
+// but their alpha channels are cutout masks, not translucency: sampling them
+// shows ~99% of texels are fully opaque or fully clear, with only antialiased
+// edges in between. glTF BLEND maps to transparent + depthWrite:false in three,
+// which drops those surfaces out of the depth buffer entirely — the hull stops
+// occluding the truss behind it and the station reads as see-through, the exact
+// failure this model was blamed for last time. Alpha TEST is the right mode for
+// a mask: cut texels are discarded, kept texels are fully opaque and write depth
+// like any solid surface, so the lattice and decals survive and sorting is
+// correct. 0.5 is glTF's own default alphaCutoff.
+export function applyCutoutAlpha(mat) {
+  if (!mat.transparent) return;
+  mat.transparent = false;
+  mat.alphaTest   = 0.5;
+  mat.depthWrite  = true;
+}
+
 // ?v busts browser caches — the GLB is a multi-MB XHR fetch that browsers hang
 // on to. Bump the version whenever iss.glb is replaced (keep sizes.js in sync
-// so both views share one cached copy). v3 = the Sketchfab model by rhuket
-// (CC-BY-4.0, credited in the info panel) — the earlier NASA IGOAL model came
-// out of the offline optimizer with torn hulls and alpha-cutout trusses turned
-// to solid slabs.
-loadGLB('iss.glb?v=3').then(gltf => {
+// so both views share one cached copy).
+//
+// v4 = NASA/JSC's IGOAL production model, "ISS (D)" from nasa/NASA-3D-Resources:
+// 2.7 M triangles, 110 PNG textures, Draco-compressed, shipped byte-for-byte as
+// NASA published it. An earlier attempt at this same model was run through an
+// offline optimizer first, which tore thin hull faces open and flattened the
+// alpha-cutout trusses — hence no processing here at all. (The webp copies its
+// EXT_texture_webp carries go unused: three r128 takes the PNG fallbacks.)
+loadGLB('iss.glb?v=4').then(gltf => {
   const model = gltf.scene;
 
   // Normalise the authored model (arbitrary Blender units, off-centre origin) to
@@ -1407,27 +1432,29 @@ loadGLB('iss.glb?v=3').then(gltf => {
   const iss = new THREE.Group();
   iss.add(model);
   iss.scale.setScalar(fit);
-  // Flight attitude. The IGOAL model's truss (its 109-m long axis) lies along
-  // +X and the pressurised modules along Z. The real station flies modules-
-  // first with the truss cross-track (along the orbit normal): the group spins
-  // about Y with the station parked at +X, where velocity is -Z, so the modules
-  // already line up with the track — a quarter roll about Z stands the truss up
-  // onto the orbit normal.
-  iss.rotation.z = Math.PI / 2;
+  // Flight attitude. In the IGOAL model the truss (the 109-m long axis) runs
+  // along Z and the pressurised modules along X. The real station flies modules-
+  // first with the truss cross-track: the group spins about Y with the station
+  // parked at +X, where velocity is -Z, so the modules must end up along Z and
+  // the truss along Y (the orbit normal). Quarter turn about X takes the truss
+  // Z→Y, then a quarter turn about Y takes the modules X→Z.
+  iss.quaternion
+    .setFromAxisAngle(_axisY, -Math.PI / 2)
+    .multiply(_qTmp.setFromAxisAngle(_axisX, -Math.PI / 2));
   iss.position.set(ISS_ORBIT_RADIUS, 0, 0);
 
-  // Render the model's PBR materials as authored — no metalness/roughness
-  // clamps, sidedness left as the GLB declares it — and give them the studio
-  // environment map they were authored against (see getStudioEnvMap). This is
-  // what makes the hull read white and the arrays gold instead of the muddy
-  // near-black of unlit metal. Materials are cloned (and the env map applied)
-  // BEFORE the overlay clone below, so both copies share the same materials.
+  // Materials as authored — no metalness/roughness clamps, sidedness left as the
+  // GLB declares it — plus the studio environment map they were authored against
+  // (see getStudioEnvMap), which is what makes metal read as metal rather than
+  // the muddy near-black of unlit PBR. Cloned (and the env map applied) BEFORE
+  // the overlay clone below, so both copies share the same materials.
   const env = getStudioEnvMap();
   model.traverse(o => {
     if (!o.isMesh) return;
     o.material = o.material.clone();
     o.material.envMap = env;
     o.material.envMapIntensity = 1.0;
+    applyCutoutAlpha(o.material);
     o.material.needsUpdate = true;
   });
 
@@ -1441,6 +1468,7 @@ loadGLB('iss.glb?v=3').then(gltf => {
   iss.userData.name = 'ISS';
   iss.userData.trueRadius = ISS_TRUE_RADIUS;
   iss.userData.info = ISS_INFO;
+  iss.userData.inspectable = true;   // flyToObject lets you get right up to it
   issModel = iss;
   issGroup.add(iss);
 });
@@ -1530,8 +1558,12 @@ export function renderStationOverlay(rnd, ov, mainCam, station, spanWorld, sunDi
   ov.cam.quaternion.copy(_ovQuat);
   ov.cam.fov    = mainCam.fov;
   ov.cam.aspect = mainCam.aspect;
+  // Near tracks the approach so the far side never loses precision, but its floor
+  // is what sets how close you may get before geometry clips: OVERLAY_SPAN·1e-4
+  // is 1 cm on a 109-m station. Log depth carries the resulting near/far ratio
+  // without trouble now that w is order-1 rather than 1e-8.
   const dK = d * K;
-  ov.cam.near = Math.max(dK * 0.01, OVERLAY_SPAN * 1e-3);
+  ov.cam.near = Math.max(dK * 0.002, OVERLAY_SPAN * 1e-4);
   ov.cam.far  = dK + OVERLAY_SPAN * 4;
   ov.cam.updateProjectionMatrix();
   ov.dir.position.copy(sunDir).normalize().multiplyScalar(OVERLAY_SPAN * 10);
@@ -3801,7 +3833,19 @@ function flyToObject(obj, fromList = false) {
   // Floor is 1e-9 rather than 1e-7 so the true-scale ISS (3.6e-9 units — a 109-m
   // object in a 1 unit = 15M km world) can actually be approached; every natural
   // body is orders of magnitude larger and never reaches the floor.
-  controls.minDistance = Math.max(1e-9, size * 2.0);
+  // Natural bodies stop at 2 radii — closer just fills the screen with terrain.
+  // The station is a structure you want to fly around and inspect, so it gets to
+  // 12% of its half-span (~7 m off the hull); the overlay pass it is drawn in
+  // has the depth precision to hold up right down to centimetres (see
+  // createStationOverlay), so nothing clips at that range.
+  const closeUp = obj.userData.inspectable;
+  controls.minDistance = Math.max(1e-9, size * (closeUp ? 0.12 : 2.0));
+  // Wheel zoom is multiplicative, so what costs scrolling is the RATIO from the
+  // framing distance down to minDistance — for the station that is ~70×, which at
+  // the default gentle 0.2 would take hundreds of clicks to cross. Give
+  // inspectable targets a faster wheel so getting right up to the hull is a few
+  // seconds of scrolling; flying anywhere else restores the slow glide.
+  controls.zoomSpeed = closeUp ? 1.6 : 0.2;
 
   // Hand the glide to animate() (see the camera-follow block there): it lerps the offset
   // from its current value to `offset` over ~3s while always parking the camera at

@@ -215,5 +215,5 @@ Microgravity removes convection, sedimentation and hydrostatic pressure from eve
 <b>Visibility from Earth</b><br>
 Sunlight on those large arrays makes the ISS one of the brightest objects in the night sky — brighter than any star, moving steadily across the sky in a few minutes. It is visible to the naked eye from most of the planet.<br><br>
 
-<span style="opacity:0.55;font-size:11px">3D model: "ISS - International Space Station." by <a href="https://sketchfab.com/Bimax86" target="_blank" style="color:inherit">rhuket</a>, licensed <a href="http://creativecommons.org/licenses/by/4.0/" target="_blank" style="color:inherit">CC BY 4.0</a></span><br>
+<span style="opacity:0.55;font-size:11px">3D model: "International Space Station (ISS) (D)" by <a href="https://github.com/nasa/NASA-3D-Resources" target="_blank" style="color:inherit">NASA/JSC Integrated Graphics, Operations and Analysis Laboratory</a> — 2.7 million triangles, shown as NASA published it</span><br>
 `;

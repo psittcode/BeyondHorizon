@@ -38,7 +38,7 @@ import {
   BH_TUNE, bhTuneRegister, bhTuneDiskUniforms, bhTuneLensUniforms,
   setBHTunerAvailable,
   orbitalToXYZ, ORBIT_COLORS, getStudioEnvMap,
-  createStationOverlay, renderStationOverlay,
+  createStationOverlay, renderStationOverlay, applyCutoutAlpha,
 } from '../world.js';
 
 const KM_PER_UNIT   = 14959787.07;  // same anchor as the solar view (1 AU = 10 units)
@@ -80,7 +80,7 @@ const EXTRA_BODIES = [
   // NASA's own glTF model (nasa/NASA-3D-Resources), not a sphere: `glb` sends it
   // down the model branch in the build loop instead of the SphereGeometry path.
   { name: 'International Space Station', r: (0.109 / 2) / KM_PER_UNIT,
-    glb: 'iss.glb?v=3', type: 'Space station · orbits Earth at 408 km',  // ?v must match world.js so the loader cache is shared
+    glb: 'iss.glb?v=4', type: 'Space station · orbits Earth at 408 km',  // ?v must match world.js so the loader cache is shared
     stats: '109 m across the solar arrays · 420 tonnes · the largest structure humans have put in space' },
   { name: 'Sun',      r: 696340 / KM_PER_UNIT, tex: '2k_sun.jpg', selfLit: true,
     type: 'Star · G-type', glow: 0xffcc66 },
@@ -843,6 +843,7 @@ const room = {
         o.material = o.material.clone();
         o.material.envMap = env;
         o.material.envMapIntensity = 1.0;
+        applyCutoutAlpha(o.material);   // BLEND hull/truss → alpha test, see world.js
         o.material.needsUpdate = true;
       });
       group.add(wrap);
@@ -1130,7 +1131,16 @@ const room = {
     // limits — a stale larger minDistance would let OrbitControls clamp the
     // camera thousands of Deimos radii out and wreck the framing.
     const b = this.selected >= 0 ? this.bodies[this.selected] : this.bodies[0];
-    this.controls.minDistance = b.mega ? b.span * 0.05 : b.r * 1.25;
+    // Spheres stop at 1.25 radii (closer is just featureless surface); the model
+    // stops are structures worth inspecting, so they let you in to 12% of their
+    // half-span. They are drawn by the magnified overlay pass, which holds its
+    // depth precision down to centimetres — see world.js's createStationOverlay.
+    this.controls.minDistance = b.mega ? b.span * 0.05
+                              : b.glb  ? b.r * 0.12
+                                       : b.r * 1.25;
+    // Same reasoning as the solar view: the model stops have a far larger zoom
+    // range to cross than a sphere, so their wheel is quicker.
+    this.controls.zoomSpeed = b.glb ? 1.4 : 0.5;
     this.controls.maxDistance = Math.max(b.span * 12, 0.01);
     // The default 1e-7 near plane sits in FRONT of the whole ISS (span 7.3e-9),
     // clipping it away entirely. Pull the near plane in for any stop small enough
