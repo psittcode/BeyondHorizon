@@ -847,6 +847,9 @@ const room = {
         o.material = o.material.clone();
         o.material.envMap = env;
         o.material.envMapIntensity = 1.0;
+        // Both faces: the array blankets are single-sided sheets that would
+        // otherwise cull (turn see-through) viewed from behind — see world.js.
+        o.material.side = THREE.DoubleSide;
         o.material.needsUpdate = true;
         // Layer 1: drawn only by renderStationOverlay's depth-tight pass —
         // at 7e-9 units the main pass's depth buffer can't resolve the model.

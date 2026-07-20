@@ -1431,6 +1431,11 @@ loadGLB('iss.glb?v=3').then(gltf => {
     o.material = o.material.clone();
     o.material.envMap = env;
     o.material.envMapIntensity = 1.0;
+    // The solar-array blankets are single-sided sheets and the GLB marks
+    // nearly every material doubleSided:false — faced from behind they cull
+    // away, leaving see-through wings with only their rims drawn. Sketchfab's
+    // viewer shows them solid from every angle, so render both faces.
+    o.material.side = THREE.DoubleSide;
     o.material.needsUpdate = true;
     // Layer 1 = drawn only by renderStationOverlay's depth-tight pass, not
     // the main render — see the comment on that function for why.
